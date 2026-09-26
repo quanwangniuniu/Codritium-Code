@@ -1,0 +1,95 @@
+name: Red Team Multi-Turn Defense
+
+on:
+  pull_request:
+    paths:
+      - 'backend/internal/tips/**'
+      - 'backend/internal/handlers/tips.go'
+      - 'seed/problems/**'
+      - '.github/workflows/red-team.yml'
+  schedule:
+    # Weekly Monday 09:00 UTC sweep to catch regressions in upstream
+    # attack pattern libraries (DAN updates, new Crescendo strategies).
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  redteam:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CHAT_ENGINE: gemini
+      GRADER_ENGINE: gemini
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/codritium?sslmode=disable
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: codritium
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Backend build
+        working-directory: backend
+        run: go build ./...
+
+      - name: Start backend
+        working-directory: backend
+        run: |
+          go run ./cmd/server &
+          for i in {1..30}; do
+            if curl -sf http://localhost:8080/api/health; then
+              echo "backend up"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: PromptFoo init red team config
+        run: |
+          npx -y promptfoo@latest redteam init --no-gui \
+            --target http://localhost:8080/api/tips \
+            --strategies crescendo,goat,multilingual,base64,leetspeak \
+            --output promptfooconfig.yaml
+
+      - name: PromptFoo run red team
+        run: |
+          npx -y promptfoo@latest redteam run \
+            --config promptfooconfig.yaml \
+            --max-concurrency 4
+
+      - name: PromptFoo report
+        if: always()
+        run: |
+          npx -y promptfoo@latest redteam report \
+            --config promptfooconfig.yaml \
+            --output-path red-team-report.html
+
+      - name: Upload red team report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: red-team-report
+          path: |
+            red-team-report.html
+            promptfooconfig.yaml
+          retention-days: 30

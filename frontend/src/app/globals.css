@@ -1,0 +1,382 @@
+@import "tailwindcss";
+
+/* ----------------------------------------------------------------------------
+   Theme tokens (semantic). Two themes: default, bright.
+   Components reference semantic utilities (bg-canvas, text-ink, etc.) compiled
+   from these CSS variables via @theme inline. Switching <html data-theme="..."/>
+   recolours the entire app without component edits.
+---------------------------------------------------------------------------- */
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-divider: var(--divider);
+  --color-divider-strong: var(--divider-strong);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --font-sans: var(--font-current-sans);
+  --font-mono: var(--font-current-mono);
+}
+
+/* Default theme (zinc-neutral, system colour-scheme aware). */
+:root,
+[data-theme="default"] {
+  --canvas: #fafafa;
+  --surface: #ffffff;
+  --surface-2: #f4f4f5;
+  --ink: #09090b;
+  --muted: #71717a;
+  --faint: #a1a1aa;
+  --divider: #e4e4e7;
+  --divider-strong: #d4d4d8;
+  --accent: #007acc;
+  --accent-fg: #fafafa;
+  --accent-soft: #f4f4f5;
+
+  --success: #15803d;
+  --success-soft: #dcfce7;
+  --warning: #b45309;
+  --warning-soft: #fef3c7;
+  --danger: #b91c1c;
+  --danger-soft: #fee2e2;
+
+  --font-current-sans: var(--font-geist-sans);
+  --font-current-mono: var(--font-geist-mono);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root,
+  [data-theme="default"] {
+    --canvas: #09090b;
+    --surface: #18181b;
+    --surface-2: #27272a;
+    --ink: #fafafa;
+    --muted: #a1a1aa;
+    --faint: #71717a;
+    --divider: #27272a;
+    --divider-strong: #3f3f46;
+    --accent: #007acc;
+    --accent-fg: #ffffff;
+    --accent-soft: #0c2a3d;
+    --success: #4ade80;
+    --success-soft: #052e16;
+    --warning: #fbbf24;
+    --warning-soft: #422006;
+    --danger: #f87171;
+    --danger-soft: #450a0a;
+    color-scheme: dark;
+  }
+}
+
+/* Theme: bright — white canvas, violet accent, airy rhythm. */
+[data-theme="bright"] {
+  --canvas: #ffffff;
+  --surface: #f8fafd;
+  --surface-2: #e5edf5;
+  --ink: #061b31;
+  --muted: #50617a;
+  --faint: #64748d;
+  --divider: #e5edf5;
+  --divider-strong: #d8d6df;
+  --accent: #0066b8;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(0, 102, 184, 0.08);
+
+  --success: #2f7d32;
+  --success-soft: rgba(129, 184, 26, 0.14);
+  --warning: #d97706;
+  --warning-soft: rgba(255, 97, 24, 0.10);
+  --danger: #c0392b;
+  --danger-soft: rgba(192, 57, 43, 0.10);
+
+  --font-current-sans: var(--font-geist-sans);
+  --font-current-mono: var(--font-geist-mono);
+  color-scheme: light;
+}
+
+[data-theme="bright"] body {
+  font-feature-settings: "ss01", "tnum";
+}
+
+[data-theme="bright"] h1 {
+  font-weight: 300;
+  letter-spacing: -0.026em;
+}
+[data-theme="bright"] h2 {
+  font-weight: 300;
+  letter-spacing: -0.018em;
+}
+[data-theme="bright"] h3 {
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+[data-theme="bright"] .gradient-violet {
+  background-image: radial-gradient(
+    circle at 30% 0%,
+    rgba(127, 125, 252, 0.18),
+    rgba(244, 75, 204, 0.08) 40%,
+    transparent 70%
+  );
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-current-sans, system-ui, sans-serif);
+}
+
+/* ----------------------------------------------------------------------------
+   Codritium IDE workspace tokens — aligned to VS Code Dark+ regardless of
+   the demo2 chrome theme. The editor is always dark; that's what code
+   editor users expect.
+---------------------------------------------------------------------------- */
+
+:root {
+  --bg-app: #1e1e1e;
+  --bg-editor: #1e1e1e;
+  --bg-side: #252526;
+  --bg-side-header: #252526;
+  --bg-activity: #333333;
+  --bg-chat: #1e1e1e;
+  --bg-tab: #2d2d30;
+  --bg-tab-active: #1e1e1e;
+  --bg-tab-hover: #2a2a2c;
+  --bg-row-active: #37373d;
+  --bg-row-hover: #2a2d2e;
+  --icon-activity: rgba(255, 255, 255, 0.55);
+  --icon-activity-active: #ffffff;
+  --bg-statusbar: #007acc;
+
+  --border: #3c3c3c;
+  --border-soft: #2a2a2c;
+  --border-strong: #4a4a4a;
+
+  --text: #cccccc;
+  --text-strong: #ffffff;
+  --text-dim: #969696;
+  --text-muted: #6c6c6c;
+
+  /* --accent comes from the semantic block (single source of truth); the IDE
+     layer only adds its own hover/active steps. */
+  --accent-hover: #1f8ad6;
+  --accent-active: #094771;
+  --good: #4ec9b0;
+  --warn: #ce9178;
+  --bad: #f48771;
+
+  --syntax-blue: #569cd6;
+  --syntax-yellow: #dcdcaa;
+  --syntax-orange: #ce9178;
+  --syntax-green: #6a9955;
+
+  /* python file icon colour — VS Code material icon theme uses Python blue */
+  --icon-python: #3776ab;
+
+  --activity-width: 48px;
+  --side-width-default: 280px;
+  --chat-width-default: 380px;
+  --appbar-height: 36px;
+  --statusbar-height: 22px;
+
+  --splitter-width: 6px;
+  --splitter-hover: #007acc;
+}
+
+/* Bright theme — IDE workspace tokens align to VS Code Light+ so the
+   editor area (Monaco + ReadmeTab) and surrounding chrome track the
+   light scheme together. */
+[data-theme="bright"] {
+  --bg-app: #f3f3f3;
+  --bg-editor: #ffffff;
+  --bg-side: #f3f3f3;
+  --bg-side-header: #ececec;
+  --bg-activity: #ececec;
+  --bg-chat: #ffffff;
+  --bg-tab: #ececec;
+  --bg-tab-active: #ffffff;
+  --bg-tab-hover: #e5e5e5;
+  --bg-row-active: #cee0f5;
+  --bg-row-hover: #e8e8e8;
+  --icon-activity: #6b6b6b;
+  --icon-activity-active: #1f1f1f;
+
+  --border: #e5e5e5;
+  --border-soft: #efefef;
+  --border-strong: #d4d4d4;
+
+  --text: #3b3b3b;
+  --text-strong: #1f1f1f;
+  --text-dim: #616161;
+  --text-muted: #8c8c8c;
+
+  --accent-hover: #0a7ad1;
+  --good: #098658;
+  --warn: #b86200;
+  --bad: #cd3131;
+}
+
+/* Mono font helper used inside IDE chrome. */
+.mono {
+  font-family: var(--font-jetbrains-mono), ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* Splitter (resize handle between IDE panels) — VS Code style. */
+.splitter-v {
+  width: var(--splitter-width);
+  cursor: col-resize;
+  flex-shrink: 0;
+  background: transparent;
+  position: relative;
+  z-index: 5;
+  transition: background 80ms linear;
+}
+.splitter-v:hover,
+.splitter-v.dragging {
+  background: var(--splitter-hover);
+}
+
+/* Scroll containers inside IDE panels. */
+.scroll-y {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #424242 transparent;
+}
+.scroll-y::-webkit-scrollbar {
+  width: 10px;
+}
+.scroll-y::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 5px;
+}
+.scroll-y::-webkit-scrollbar-thumb:hover {
+  background: #4f4f4f;
+}
+.scroll-y::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-theme="bright"] .scroll-y {
+  scrollbar-color: #c4c4c4 transparent;
+}
+[data-theme="bright"] .scroll-y::-webkit-scrollbar-thumb {
+  background: #c4c4c4;
+}
+[data-theme="bright"] .scroll-y::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* While dragging a splitter, suppress text selection elsewhere. */
+body.is-resizing,
+body.is-resizing * {
+  user-select: none !important;
+  cursor: col-resize !important;
+}
+
+/* ----------------------------------------------------------------------------
+   Pill button + nav-tab system (landing hero + website nav). Layout / shape /
+   shadow / hover behaviour follow the awesomic capture (PLAN/v1.0/frontenddesign2/
+   design-hero.md); all colour comes from theme tokens so it adapts across
+   default / dark / bright. Scoped utility classes — the shared ui/button.tsx is
+   left untouched so already-reviewed pages don't shift.
+---------------------------------------------------------------------------- */
+
+.btn-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-radius: 14px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 0.22s ease, box-shadow 0.22s ease,
+    color 0.22s ease, transform 0.22s ease;
+}
+
+/* Primary — the "black key" CTA. bg = accent token (near-black on default,
+   white on dark, violet on bright); four-layer shadow gives the raised-key
+   look. Hover lifts 1px and the ring tints to the accent ("glows"). */
+.btn-pill--primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: 0.5px solid rgba(255, 255, 255, 0.2);
+  box-shadow:
+    rgba(255, 255, 255, 0.5) 0 0.5px 0 0 inset,
+    rgba(117, 123, 133, 0.4) 0 9px 14px -5px inset,
+    var(--divider-strong) 0 0 0 1.5px,
+    rgba(0, 0, 0, 0.14) 0 4px 6px 0;
+}
+.btn-pill--primary:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    rgba(255, 255, 255, 0.5) 0 0.5px 0 0 inset,
+    rgba(255, 255, 255, 0.5) 0 9px 14px -5px inset,
+    color-mix(in srgb, var(--accent) 45%, transparent) 0 0 0 1.5px,
+    rgba(0, 0, 0, 0.18) 0 6px 14px -4px;
+}
+
+/* Larger footprint for hero CTAs. */
+.btn-pill--lg {
+  padding: 14px 24px;
+  font-size: 0.95rem;
+  border-radius: 16px;
+}
+
+/* Secondary — light pill. Surface fill, hover brightens to the base surface. */
+.btn-pill--ghost {
+  background: var(--surface-2);
+  color: var(--ink);
+  border: 1px solid var(--divider);
+}
+.btn-pill--ghost:hover {
+  background: var(--surface);
+  border-color: var(--divider-strong);
+}
+
+/* Icon button in the nav (notification bell, theme toggle sibling). */
+.nav-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+.nav-icon-btn:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+/* Nav tab — transparent, fills a soft pill on hover (awesomic navbar-link). */
+.nav-pill {
+  border-radius: 14px;
+  padding: 8px 14px;
+  color: var(--muted);
+  text-decoration: none;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+.nav-pill:hover,
+.nav-pill[aria-current="page"] {
+  background: var(--surface-2);
+  color: var(--ink);
+}
