@@ -49,7 +49,7 @@ func makeSession(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 		t.Fatalf("create session: %v", err)
 	}
 	t.Cleanup(func() {
-		// cascade-deletes session_events / session_messages / corrections too
+		// cascade-deletes session_events / session_messages too
 		_, _ = pool.Exec(context.Background(),
 			`DELETE FROM candidate_sessions WHERE session_id = $1`, id)
 	})
