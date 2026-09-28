@@ -78,9 +78,10 @@ func Load() (*Config, error) {
 		PublicURL:              getenv("PUBLIC_URL", "http://localhost:3000"),
 	}
 
-	// The session cookie is Secure everywhere except local dev, which runs
-	// over plain HTTP. COOKIE_SECURE overrides in either direction.
-	c.CookieSecure = getenvBool("COOKIE_SECURE", c.Env != "dev")
+	// The session cookie is Secure by default in prod. dev and staging may
+	// run over plain HTTP, where a Secure cookie would be silently dropped.
+	// COOKIE_SECURE overrides in either direction.
+	c.CookieSecure = getenvBool("COOKIE_SECURE", c.Env == "prod")
 
 	switch c.Env {
 	case "dev", "staging", "prod":

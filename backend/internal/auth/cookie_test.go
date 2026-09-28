@@ -33,11 +33,29 @@ func TestSessionCookieCarriesDomainAndSecure(t *testing.T) {
 
 	// Logout must clear with the same Domain/Secure or the browser keeps
 	// the original cookie.
+	// It also clears the host-only cookie issued before Domain was set.
 	out := httptest.NewRecorder()
 	Logout(opts)(out, httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil))
-	c = onlyCookie(t, out)
-	if !c.Secure || c.Domain != "codritium.com" || c.MaxAge >= 0 || c.Value != "" {
-		t.Fatalf("clear cookie = %+v", c)
+	cs := out.Result().Cookies()
+	if len(cs) != 2 {
+		t.Fatalf("logout set %d cookies, want 2 (domain + host-only)", len(cs))
+	}
+	domains := map[string]bool{}
+	for _, c := range cs {
+		if !c.Secure || c.MaxAge >= 0 || c.Value != "" || c.Name != CookieName {
+			t.Fatalf("clear cookie = %+v", c)
+		}
+		domains[c.Domain] = true
+	}
+	if !domains["codritium.com"] || !domains[""] {
+		t.Fatalf("cleared domains = %v, want codritium.com and host-only", domains)
+	}
+
+	// Without a Domain there is only one cookie to clear.
+	out = httptest.NewRecorder()
+	Logout(CookieOptions{})(out, httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil))
+	if n := len(out.Result().Cookies()); n != 1 {
+		t.Fatalf("host-only logout set %d cookies, want 1", n)
 	}
 }
 

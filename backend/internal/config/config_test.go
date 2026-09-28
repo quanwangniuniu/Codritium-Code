@@ -92,7 +92,8 @@ func TestLoadCookieSecureDefaultsByEnv(t *testing.T) {
 		want          bool
 	}{
 		{"dev", "", false},
-		{"staging", "", true},
+		{"staging", "", false},
+		{"staging", "true", true},
 		{"prod", "", true},
 		{"prod", "false", false},
 		{"dev", "true", true},

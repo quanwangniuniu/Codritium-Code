@@ -189,6 +189,11 @@ func SwitchUser(pool *pgxpool.Pool, cookieSecret string, opts CookieOptions) htt
 func Logout(opts CookieOptions) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, sessionCookie("", -1, opts))
+		if opts.Domain != "" {
+			// Cookies issued before COOKIE_DOMAIN was honored are host-only
+			// and survive a Domain-scoped delete; clear that variant too.
+			http.SetCookie(w, sessionCookie("", -1, CookieOptions{Secure: opts.Secure}))
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
