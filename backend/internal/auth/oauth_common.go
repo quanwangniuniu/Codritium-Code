@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"net/http"
 	"time"
 
@@ -35,10 +34,6 @@ const (
 	ProviderGitHub Provider = "github"
 	ProviderEmail  Provider = "email"
 )
-
-// ErrInvalidState fires when a state token doesn't exist, expired, or was
-// presented to the wrong provider.
-var ErrInvalidState = errors.New("oauth state invalid or expired")
 
 // GenerateState returns 32 random bytes as a hex string. 64 chars of
 // hex is unguessable per the OAuth 2.0 CSRF guidance.

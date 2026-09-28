@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -164,7 +163,3 @@ func (s *Store) fanout(sessionID uuid.UUID, env Envelope) {
 		}
 	}
 }
-
-// ErrUnknownSession is returned when a caller asks for state on a session
-// that has never had an event appended. Currently unused but reserved.
-var ErrUnknownSession = errors.New("events: unknown session")

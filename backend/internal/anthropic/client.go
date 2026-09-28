@@ -8,10 +8,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 )
 
-const (
-	ModelSonnet = "claude-sonnet-4-6"
-	ModelHaiku  = "claude-haiku-4-5-20251001"
-)
+const ModelSonnet = "claude-sonnet-4-6"
 
 type Client struct {
 	c anthropic.Client

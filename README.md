@@ -6,16 +6,15 @@ Self-serve AI-coding interview practice. IDE-style workspace, 5-dimension scorin
 
 - **Frontend**: Next.js 15 (App Router) + TypeScript + Tailwind v4 + shadcn/ui + Monaco Editor
 - **Backend**: Go 1.26 + pgx/v5 + Anthropic Go SDK + E2B Go SDK
-- **DB / Cache**: Postgres 17 (port 5434) + Redis 7 (port 6381)
+- **DB**: Postgres 17 (port 5434)
 - **Sandbox**: E2B SaaS (Firecracker microVM) for candidate code execution
 - **Grader**: Anthropic Claude Sonnet 4.6 (5 independent dimensions, double-run averaged)
-- **Apply diff**: Anthropic Claude Haiku 4.5
 
 ## Quick start
 
 ```bash
 cp .env.example .env   # fill in keys
-docker-compose up -d   # start Postgres + Redis
+docker-compose up -d   # start Postgres
 cd backend && go run ./cmd/server   # backend on :8080
 cd frontend && npm run dev          # frontend on :3000
 ```
@@ -44,7 +43,6 @@ Codritium/
 ANTHROPIC_API_KEY=sk-...
 E2B_API_KEY=e2b_...
 DATABASE_URL=postgres://codritium:codritium@localhost:5434/codritium?sslmode=disable
-REDIS_URL=redis://localhost:6381
 COOKIE_SECRET=...
 ```
 

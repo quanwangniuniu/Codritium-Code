@@ -81,7 +81,6 @@ func main() {
 		E2B:       e2bClient,
 	}
 	probDeps := handlers.ProblemDeps{Pool: database.Pool}
-	chatDeps := handlers.ChatDeps{Pool: database.Pool, Anthropic: anthClient}
 	decisionWaiter := llm.NewDecisionWaiter()
 	decisionDeps := handlers.DecisionDeps{Waiter: decisionWaiter}
 	eventStore := events.NewStore(database.Pool)
@@ -180,8 +179,6 @@ func main() {
 		handlers.WriteUserJSON(w, u)
 	})
 	mux.Handle("GET /api/me", authMiddleware(meHandler))
-	// /api/chat (v0.7 path) retired per decision_log Q2=B. Front-end uses chat_v2.
-	_ = chatDeps
 	mux.Handle("POST /api/submissions", authMiddleware(handlers.Submit(subDeps)))
 	mux.Handle("GET /api/submissions/{id}", authMiddleware(handlers.GetSubmission(subDeps)))
 	mux.Handle("DELETE /api/submissions/{id}", authMiddleware(handlers.DeleteSubmission(subDeps)))
