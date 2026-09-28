@@ -39,6 +39,7 @@ type Store struct {
 
 type sessionSeq struct {
 	once sync.Once
+	err  error // bootstrap failure; read only after once.Do returns
 	val  int64 // accessed via sync/atomic
 }
 
@@ -55,7 +56,6 @@ func NewStore(pool *pgxpool.Pool) *Store {
 func (s *Store) NextSeq(ctx context.Context, sessionID uuid.UUID) (int64, error) {
 	raw, _ := s.seq.LoadOrStore(sessionID, &sessionSeq{})
 	ss := raw.(*sessionSeq)
-	var bootstrapErr error
 	ss.once.Do(func() {
 		var maxSeq sql.NullInt64
 		// Both tables draw from this counter, so bootstrap past the max of
@@ -69,16 +69,17 @@ func (s *Store) NextSeq(ctx context.Context, sessionID uuid.UUID) (int64, error)
 			sessionID,
 		).Scan(&maxSeq)
 		if err != nil {
-			bootstrapErr = fmt.Errorf("bootstrap seq for %s: %w", sessionID, err)
+			ss.err = fmt.Errorf("bootstrap seq for %s: %w", sessionID, err)
 			return
 		}
 		atomic.StoreInt64(&ss.val, maxSeq.Int64)
 	})
-	if bootstrapErr != nil {
-		// Clear the entry so a retry can re-bootstrap; sync.Once would
-		// otherwise permanently silence retries.
-		s.seq.Delete(sessionID)
-		return 0, bootstrapErr
+	if ss.err != nil {
+		// Every caller that shared this failed bootstrap must fail too —
+		// counting up from zero would reuse existing seqs. Clear the entry
+		// (only if it is still this one) so a later call re-bootstraps.
+		s.seq.CompareAndDelete(sessionID, ss)
+		return 0, ss.err
 	}
 	return atomic.AddInt64(&ss.val, 1), nil
 }

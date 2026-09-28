@@ -85,6 +85,22 @@ func Submit(deps SubmissionDeps) http.HandlerFunc {
 			}
 		}
 
+		var sessionID *uuid.UUID
+		if req.SessionID != "" {
+			if id, err := uuid.Parse(req.SessionID); err == nil {
+				// The session's transcript feeds grading and submit tears
+				// down its agent, so only the owner may attach it.
+				var owner string
+				if err := deps.Pool.QueryRow(ctx,
+					`SELECT candidate_id FROM candidate_sessions WHERE session_id = $1`, id,
+				).Scan(&owner); err != nil || owner != u.Handle {
+					http.Error(w, "session not found", http.StatusNotFound)
+					return
+				}
+				sessionID = &id
+			}
+		}
+
 		// Resolve problem.
 		var problemID uuid.UUID
 		var problemTitle, readmeMD, difficulty, hiddenTestFile, hiddenTestContent string
@@ -161,27 +177,25 @@ func Submit(deps SubmissionDeps) http.HandlerFunc {
 				submissionID = id
 			}
 		}
-		var sessionID *uuid.UUID
-		if req.SessionID != "" {
-			if id, err := uuid.Parse(req.SessionID); err == nil {
-				sessionID = &id
-			}
-		}
 
 		codeJSON, _ := json.Marshal(req.CodeFiles)
 
 		if submissionID != uuid.Nil {
-			_, err = deps.Pool.Exec(ctx, `
+			tag, err := deps.Pool.Exec(ctx, `
 				UPDATE submissions SET
 					code_files = $2::jsonb,
 					variant = $3,
 					session_id = COALESCE($4, session_id),
 					status = 'grading',
 					submitted_at = now()
-				WHERE id = $1`,
-				submissionID, string(codeJSON), req.Variant, sessionID)
+				WHERE id = $1 AND user_id = $5`,
+				submissionID, string(codeJSON), req.Variant, sessionID, u.ID)
 			if err != nil {
 				http.Error(w, "update submission: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if tag.RowsAffected() == 0 {
+				http.Error(w, "submission not found", http.StatusNotFound)
 				return
 			}
 		} else {
@@ -196,10 +210,18 @@ func Submit(deps SubmissionDeps) http.HandlerFunc {
 			}
 		}
 
-		// The transcript is already in session_messages; the in-memory
-		// agent is no longer needed once the session is submitted.
-		if sessionID != nil && deps.Agents != nil {
-			deps.Agents.Drop(*sessionID)
+		// Close the session: it must not be offered for resume (its agent
+		// and history are about to go), and the in-memory agent is no
+		// longer needed — the transcript is already in session_messages.
+		if sessionID != nil {
+			if _, err := deps.Pool.Exec(ctx, `
+				UPDATE candidate_sessions SET submitted_at = now()
+				WHERE session_id = $1 AND submitted_at IS NULL`, *sessionID); err != nil {
+				log.Printf("[submit %s] mark session %s submitted: %v", submissionID, *sessionID, err)
+			}
+			if deps.Agents != nil {
+				deps.Agents.Drop(*sessionID)
+			}
 		}
 
 		// Spin grader off in background.

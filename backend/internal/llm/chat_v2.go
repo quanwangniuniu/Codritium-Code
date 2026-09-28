@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -46,6 +47,31 @@ type Agent struct {
 
 	// running history (carried across turns within the session)
 	messages []Message
+
+	closeMu sync.Mutex
+	closed  chan struct{} // closed by Close; lazily created
+}
+
+func (a *Agent) closedCh() chan struct{} {
+	a.closeMu.Lock()
+	defer a.closeMu.Unlock()
+	if a.closed == nil {
+		a.closed = make(chan struct{})
+	}
+	return a.closed
+}
+
+// Close cancels any in-flight RunTurn (including one blocked waiting on a
+// candidate decision). Safe to call more than once.
+func (a *Agent) Close() {
+	ch := a.closedCh()
+	a.closeMu.Lock()
+	defer a.closeMu.Unlock()
+	select {
+	case <-ch:
+	default:
+		close(ch)
+	}
 }
 
 // RunResult is what RunTurn returns to the caller after the turn ends.
@@ -66,6 +92,16 @@ func (a *Agent) RunTurn(ctx context.Context, sessionID uuid.UUID, turnIndex int,
 	if maxIter <= 0 {
 		maxIter = defaultMaxIterations
 	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		select {
+		case <-a.closedCh():
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
 
 	a.recordMessage(ctx, sessionID, Message{
 		Role:    "user",
