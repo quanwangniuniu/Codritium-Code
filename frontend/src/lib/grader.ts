@@ -198,6 +198,7 @@ function detectAntiPatterns(submission: Submission): AntiPatternBundle {
   const lower = prompts.toLowerCase();
 
   const handsOff: AntiPatternFlag = {
+    evaluated: true,
     triggered: promptCount <= 1 && prompts.length > 0,
     evidence:
       promptCount <= 1 && prompts.length > 0
@@ -205,14 +206,17 @@ function detectAntiPatterns(submission: Submission): AntiPatternBundle {
         : "",
   };
   const featureMarathon: AntiPatternFlag = {
+    evaluated: true,
     triggered: promptCount > 12,
     evidence: promptCount > 12 ? `High prompt rate (${promptCount}) without proportional review evidence.` : "",
   };
   const aiShowcase: AntiPatternFlag = {
+    evaluated: true,
     triggered: /showcase|demo my|let me show|advanced technique/i.test(prompts),
     evidence: /showcase|demo my|let me show|advanced technique/i.test(prompts) ? "Prompt mentions demonstrating tooling rather than solving problem." : "",
   };
   const notThinking: AntiPatternFlag = {
+    evaluated: true,
     triggered: /just fix it|rewrite this|do whatever/i.test(lower),
     evidence: /just fix it|rewrite this|do whatever/i.test(lower) ? "Prompt delegates planning entirely to AI." : "",
   };

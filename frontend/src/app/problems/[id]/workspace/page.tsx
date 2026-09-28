@@ -263,12 +263,12 @@ export default function ProblemWorkspacePage() {
       const tabs = alreadyOpen
         ? p.tabs
         : [
-            ...p.tabs,
-            {
-              name,
-              dirty: fileContents[name] !== originalContents[name],
-            },
-          ];
+          ...p.tabs,
+          {
+            name,
+            dirty: fileContents[name] !== originalContents[name],
+          },
+        ];
       return { ...p, activeTab: name, tabs };
     });
     updateEditorPanes(next);
@@ -447,6 +447,7 @@ export default function ProblemWorkspacePage() {
           problem_slug: slug,
           variant: problem.variant,
           code_files: fileContents,
+          session_id: sessionId,
         }),
       });
       if (!res.ok) {

@@ -61,6 +61,7 @@ export interface ScoreBreakdown {
 }
 
 export interface AntiPatternFlag {
+  evaluated: boolean;
   triggered: boolean;
   evidence: string;
 }

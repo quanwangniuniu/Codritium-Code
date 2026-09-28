@@ -41,28 +41,7 @@ func RunGemini(ctx context.Context, client *genai.Client, input GraderInput) (*G
 		results[dim.Name] = gradeOneDimGemini(ctx, client, dim, clean, geminiModelPrimary)
 	}
 
-	validWeights := map[string]float64{}
-	evaluated := []string{}
-	for dim, w := range weights {
-		s, ok := results[dim]
-		if !ok || s.Score == nil {
-			continue
-		}
-		validWeights[dim] = w
-		evaluated = append(evaluated, dim)
-	}
-	var totalW float64
-	for _, w := range validWeights {
-		totalW += w
-	}
-	finalScore := 0.0
-	if totalW > 0 {
-		for dim, w := range validWeights {
-			s := results[dim]
-			finalScore += float64(*s.Score) * (w / totalW)
-		}
-	}
-	final100 := finalScore * 20
+	final100, evaluated := aggregateScores(weights, results)
 
 	return &GraderResult{
 		DimensionScores: results,

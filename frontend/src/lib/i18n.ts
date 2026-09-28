@@ -319,6 +319,7 @@ type LocaleKey =
   | "antipattern_label_not_thinking"
   | "antipattern_flagged"
   | "antipattern_clear"
+  | "antipattern_not_evaluated"
   // problems list
   | "problems_count_seed_fmt"
   | "problems_count_fmt"
@@ -373,6 +374,7 @@ type LocaleKey =
   | "submission_anti_pattern_title"
   | "submission_anti_pattern_clean"
   | "submission_anti_pattern_count_fmt"
+  | "submission_anti_pattern_unevaluated"
   | "submission_metadata_title"
   | "submission_meta_ai_tool"
   | "submission_meta_model"
@@ -736,6 +738,7 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     antipattern_label_not_thinking: "Not Thinking",
     antipattern_flagged: "flagged",
     antipattern_clear: "clear",
+    antipattern_not_evaluated: "not evaluated",
     problems_count_seed_fmt: "{count} problem{s} in the demo seed. Production v0.5 ships 12-15 problems across debugging, refactoring, feature build, and security.",
     problems_count_fmt: "{count} problem{s}",
     problems_filter_category: "Category",
@@ -781,12 +784,13 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     submission_judge_prefix: "judge:",
     submission_meta_submitted_fmt: "Submitted {submitted}. Graded {graded}.",
     submission_five_dim_title: "Five-dimension breakdown",
-    submission_five_dim_desc_prefix: "Weights are difficulty-dependent. Dimensions marked \"—\" are not evaluated for",
+    submission_five_dim_desc_prefix: "All difficulties use the same five weights. Dimensions marked \"—\" have insufficient evidence.",
     submission_code_grader_title: "Code-based grader",
     submission_code_grader_desc_fmt: "Pass rate {rate}%. In production this runs in an E2B Firecracker microVM; the demo uses deterministic mock test results.",
     submission_anti_pattern_title: "Anti-pattern flags",
-    submission_anti_pattern_clean: "Clean submission — none of the four anti-patterns triggered.",
-    submission_anti_pattern_count_fmt: "{n} of 4 patterns triggered. Each flag deducts from AI Collaboration.",
+    submission_anti_pattern_clean: "None of the four evaluated anti-patterns triggered.",
+    submission_anti_pattern_count_fmt: "{n} of 4 patterns triggered.",
+    submission_anti_pattern_unevaluated: "Insufficient evidence to evaluate anti-patterns.",
     submission_metadata_title: "Details",
     submission_meta_ai_tool: "AI tool",
     submission_meta_model: "Model",
@@ -1142,6 +1146,7 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     antipattern_label_not_thinking: "",
     antipattern_flagged: "",
     antipattern_clear: "",
+    antipattern_not_evaluated: "",
     problems_count_seed_fmt: "",
     problems_count_fmt: "",
     problems_filter_category: "",
@@ -1193,6 +1198,7 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     submission_anti_pattern_title: "",
     submission_anti_pattern_clean: "",
     submission_anti_pattern_count_fmt: "",
+    submission_anti_pattern_unevaluated: "",
     submission_metadata_title: "",
     submission_meta_ai_tool: "",
     submission_meta_model: "",

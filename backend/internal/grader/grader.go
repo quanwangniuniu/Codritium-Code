@@ -14,13 +14,13 @@ import (
 
 // GraderInput is everything the LLM judges need.
 type GraderInput struct {
-	ProblemTitle      string                 `json:"problem_title"`
-	ProblemDifficulty string                 `json:"problem_difficulty"`
-	ProblemReadme     string                 `json:"problem_readme"`
-	StarterFiles      map[string]string      `json:"starter_files"`
-	CandidateFiles    map[string]string      `json:"candidate_files"`
-	PromptHistory     []PromptHistoryItem    `json:"prompt_history"`
-	TestResults       *SandboxOutput         `json:"test_results"`
+	ProblemTitle      string              `json:"problem_title"`
+	ProblemDifficulty string              `json:"problem_difficulty"`
+	ProblemReadme     string              `json:"problem_readme"`
+	StarterFiles      map[string]string   `json:"starter_files"`
+	CandidateFiles    map[string]string   `json:"candidate_files"`
+	PromptHistory     []PromptHistoryItem `json:"prompt_history"`
+	TestResults       *SandboxOutput      `json:"test_results"`
 }
 
 type PromptHistoryItem struct {
@@ -37,12 +37,30 @@ type DimensionScore struct {
 	Error     string                 `json:"error,omitempty"`
 }
 
+// AntiPatternFlag distinguishes a confirmed clean result from a result that
+// could not be evaluated because the candidate left no observable evidence.
+type AntiPatternFlag struct {
+	Evaluated bool   `json:"evaluated"`
+	Triggered bool   `json:"triggered"`
+	Evidence  string `json:"evidence"`
+}
+
+// AntiPatternBundle contains the four anti-pattern evaluation results.
+type AntiPatternBundle struct {
+	HandsOff        AntiPatternFlag `json:"hands_off"`
+	FeatureMarathon AntiPatternFlag `json:"feature_marathon"`
+	AIShowcase      AntiPatternFlag `json:"ai_showcase"`
+	NotThinking     AntiPatternFlag `json:"not_thinking"`
+}
+
 // GraderResult is the final aggregated score for one submission.
 type GraderResult struct {
 	DimensionScores map[string]DimensionScore `json:"dimension_scores"`
 	Weights         map[string]float64        `json:"weights"`
 	FinalScore      float64                   `json:"final_score"`
 	EvaluatedDims   []string                  `json:"evaluated_dims"`
+	AntiPatterns    *AntiPatternBundle        `json:"anti_patterns,omitempty"`
+	JudgeModel      string                    `json:"judge_model,omitempty"`
 }
 
 func Run(ctx context.Context, client *anthClient.Client, input GraderInput) (*GraderResult, error) {
@@ -69,30 +87,7 @@ func Run(ctx context.Context, client *anthClient.Client, input GraderInput) (*Gr
 		results[s.Dimension] = s
 	}
 
-	// OQ6 fallback: drop null-score dimensions and renormalize remaining weights.
-	validWeights := map[string]float64{}
-	evaluated := []string{}
-	for dim, w := range weights {
-		s, ok := results[dim]
-		if !ok || s.Score == nil {
-			continue
-		}
-		validWeights[dim] = w
-		evaluated = append(evaluated, dim)
-	}
-	var totalW float64
-	for _, w := range validWeights {
-		totalW += w
-	}
-	finalScore := 0.0
-	if totalW > 0 {
-		for dim, w := range validWeights {
-			s := results[dim]
-			finalScore += float64(*s.Score) * (w / totalW)
-		}
-	}
-	// Scale 1-5 -> 0-100.
-	final100 := finalScore * 20
+	final100, evaluated := aggregateScores(weights, results)
 
 	return &GraderResult{
 		DimensionScores: results,

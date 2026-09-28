@@ -35,6 +35,14 @@ const DIM_LABEL_KEYS: Record<string, LocaleKey> = {
   communication: "dim_label_communication",
 };
 
+const DIM_ORDER = [
+  "correctness",
+  "problem_decomposition",
+  "ai_collaboration",
+  "verification_quality",
+  "communication",
+] as const;
+
 export default async function SubmissionPage({ params }: SubmissionPageProps) {
   const { id } = await params;
   const user = await currentUser();
@@ -94,7 +102,11 @@ export default async function SubmissionPage({ params }: SubmissionPageProps) {
     );
   }
 
-  const flaggedCount = Object.values(flags).filter((f) => f.triggered).length;
+  const flagValues = Object.values(flags);
+  const flaggedCount = flagValues.filter(
+    (flag) => flag.evaluated && flag.triggered,
+  ).length;
+  const evaluatedCount = flagValues.filter((flag) => flag.evaluated).length;
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-6 space-y-4">
@@ -230,23 +242,23 @@ export default async function SubmissionPage({ params }: SubmissionPageProps) {
                 <CardHeader>
                   <CardTitle className="text-base">{t("submission_five_dim_title")}</CardTitle>
                   <CardDescription>
-                    {t("submission_five_dim_desc_prefix")}{" "}
-                    <span className="font-medium text-ink">{problem.difficulty}</span>.
+                    {t("submission_five_dim_desc_prefix")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-5">
-                  {Object.entries(score.weights_applied).map(([dim, weight]) => {
-                    const dimScore = score[dim as keyof typeof score] as {
-                      score: number | null;
-                      reasoning: string;
-                    };
+                  {DIM_ORDER.map((dim) => {
+                    const weight = score.weights_applied[dim];
+                    if (weight === undefined) return null;
+
+                    const dimScore = score[dim];
                     const key = DIM_LABEL_KEYS[dim];
+
                     return (
                       <ScoreBar
                         key={dim}
                         label={key ? t(key) : dim}
                         score={dimScore.score}
-                        weight={weight as number}
+                        weight={weight}
                         reasoning={dimScore.reasoning}
                       />
                     );
@@ -261,9 +273,13 @@ export default async function SubmissionPage({ params }: SubmissionPageProps) {
                 <CardHeader>
                   <CardTitle className="text-base">{t("submission_anti_pattern_title")}</CardTitle>
                   <CardDescription>
-                    {flaggedCount === 0
-                      ? t("submission_anti_pattern_clean")
-                      : t("submission_anti_pattern_count_fmt", { params: { n: flaggedCount } })}
+                    {evaluatedCount === 0
+                      ? t("submission_anti_pattern_unevaluated")
+                      : flaggedCount === 0
+                        ? t("submission_anti_pattern_clean")
+                        : t("submission_anti_pattern_count_fmt", {
+                          params: { n: flaggedCount },
+                        })}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2.5">
@@ -272,6 +288,7 @@ export default async function SubmissionPage({ params }: SubmissionPageProps) {
                       <AntiPatternChip
                         key={k}
                         name={k}
+                        evaluated={flags[k].evaluated}
                         triggered={flags[k].triggered}
                         evidence={flags[k].evidence}
                       />
@@ -287,4 +304,3 @@ export default async function SubmissionPage({ params }: SubmissionPageProps) {
     </div>
   );
 }
-

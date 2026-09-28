@@ -56,6 +56,11 @@ func main() {
 
 	anthClient := anthropic.New(cfg.AnthropicAPIKey)
 	e2bClient := e2b.New(cfg.E2BAPIKey)
+	ollamaClient := grader.NewOllamaClient(
+		cfg.OllamaBaseURL,
+		cfg.OllamaModel,
+		time.Duration(cfg.OllamaTimeoutSec)*time.Second,
+	)
 
 	// genai.Client has no Close() in v1.57.0 — its HTTP transport is reused
 	// for the process lifetime and cleaned up by GC, so no explicit shutdown.
@@ -90,11 +95,14 @@ func main() {
 	// (enforced in config.Load).
 	chatEngine := cfg.ChatEngine
 	var streamClient llm.LLMStreamClient
+
 	switch chatEngine {
+	case "disabled":
+		log.Printf("chat engine disabled")
 	case "anthropic":
 		streamClient = llm.NewClaudeStream(anthClient)
 		log.Printf("chat engine: anthropic (claude_stream)")
-	default:
+	case "gemini":
 		if geminiClient == nil {
 			log.Fatalf("CHAT_ENGINE=gemini but GOOGLE_API_KEY not set")
 		}
@@ -125,6 +133,7 @@ func main() {
 		Pool:         database.Pool,
 		Anthropic:    anthClient,
 		Gemini:       geminiClient,
+		Ollama:       ollamaClient,
 		GraderEngine: cfg.GraderEngine,
 	}
 	commentsDeps := handlers.CommentsDeps{Pool: database.Pool}
@@ -181,7 +190,19 @@ func main() {
 	mux.Handle("POST /api/events", authMiddleware(handlers.PostEvent(eventsDeps)))
 	mux.Handle("POST /api/sessions", authMiddleware(handlers.PostSession(sessionsDeps)))
 	mux.Handle("GET /api/me/attempted", authMiddleware(handlers.ListMyAttempted(sessionsDeps)))
-	mux.Handle("POST /api/chat/v2", authMiddleware(handlers.PostChatV2(chatV2Deps)))
+	if cfg.ChatEngine == "disabled" {
+		mux.Handle(
+			"POST /api/chat/v2",
+			authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Error(w, "chat engine disabled", http.StatusServiceUnavailable)
+			})),
+		)
+	} else {
+		mux.Handle(
+			"POST /api/chat/v2",
+			authMiddleware(handlers.PostChatV2(chatV2Deps)),
+		)
+	}
 	mux.Handle("POST /api/tips", authMiddleware(handlers.PostTips(tipsDeps)))
 	mux.Handle("GET /api/tips/messages", authMiddleware(handlers.GetTipsMessages(tipsDeps)))
 	mux.Handle("GET /api/sessions/{id}/stream", authMiddleware(handlers.SessionStream(streamDeps)))
