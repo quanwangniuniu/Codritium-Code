@@ -12,7 +12,6 @@ type Config struct {
 	Env                    string
 	Port                   string
 	DatabaseURL            string
-	RedisURL               string
 	AnthropicAPIKey        string
 	GoogleAPIKey           string
 	E2BAPIKey              string
@@ -39,11 +38,6 @@ type Config struct {
 	PublicURL              string
 }
 
-// IsDev reports whether the deployment is the local dev environment. Use to
-// gate routes that exist solely to ease local iteration (mock login, fixture
-// resetters) and must never be reachable in staging or prod.
-func (c *Config) IsDev() bool { return c.Env == "dev" }
-
 func Load() (*Config, error) {
 	_ = godotenv.Load("../.env")
 	_ = godotenv.Load(".env")
@@ -52,7 +46,6 @@ func Load() (*Config, error) {
 		Env:                    getenv("ENV", "dev"),
 		Port:                   getenv("PORT", "8080"),
 		DatabaseURL:            getenv("DATABASE_URL", "postgres://codritium:codritium@localhost:5434/codritium?sslmode=disable"),
-		RedisURL:               getenv("REDIS_URL", "redis://localhost:6381"),
 		AnthropicAPIKey:        os.Getenv("ANTHROPIC_API_KEY"),
 		GoogleAPIKey:           os.Getenv("GOOGLE_API_KEY"),
 		E2BAPIKey:              os.Getenv("E2B_API_KEY"),

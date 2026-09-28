@@ -32,16 +32,6 @@ type Workspace struct {
 	Files map[string]string // path -> contents
 }
 
-// Clone returns a deep copy so the main loop can snapshot before /
-// after a tool_use if needed.
-func (w *Workspace) Clone() *Workspace {
-	cp := &Workspace{Files: make(map[string]string, len(w.Files))}
-	for k, v := range w.Files {
-		cp.Files[k] = v
-	}
-	return cp
-}
-
 // SandboxRunner runs the visible test suite (V0: pytest) against the
 // current workspace state. The real implementation goes through E2B.
 type SandboxRunner interface {
