@@ -39,6 +39,7 @@ type Store struct {
 
 type sessionSeq struct {
 	once sync.Once
+	err  error // bootstrap failure; read only after once.Do returns
 	val  int64 // accessed via sync/atomic
 }
 
@@ -55,24 +56,30 @@ func NewStore(pool *pgxpool.Pool) *Store {
 func (s *Store) NextSeq(ctx context.Context, sessionID uuid.UUID) (int64, error) {
 	raw, _ := s.seq.LoadOrStore(sessionID, &sessionSeq{})
 	ss := raw.(*sessionSeq)
-	var bootstrapErr error
 	ss.once.Do(func() {
 		var maxSeq sql.NullInt64
-		err := s.pool.QueryRow(ctx,
-			`SELECT COALESCE(MAX(seq), 0) FROM session_events WHERE session_id = $1`,
+		// Both tables draw from this counter, so bootstrap past the max of
+		// either — otherwise a restart could hand out a seq already used by
+		// a transcript row.
+		err := s.pool.QueryRow(ctx, `
+			SELECT GREATEST(
+				(SELECT COALESCE(MAX(seq), 0) FROM session_events   WHERE session_id = $1),
+				(SELECT COALESCE(MAX(seq), 0) FROM session_messages WHERE session_id = $1)
+			)`,
 			sessionID,
 		).Scan(&maxSeq)
 		if err != nil {
-			bootstrapErr = fmt.Errorf("bootstrap seq for %s: %w", sessionID, err)
+			ss.err = fmt.Errorf("bootstrap seq for %s: %w", sessionID, err)
 			return
 		}
 		atomic.StoreInt64(&ss.val, maxSeq.Int64)
 	})
-	if bootstrapErr != nil {
-		// Clear the entry so a retry can re-bootstrap; sync.Once would
-		// otherwise permanently silence retries.
-		s.seq.Delete(sessionID)
-		return 0, bootstrapErr
+	if ss.err != nil {
+		// Every caller that shared this failed bootstrap must fail too —
+		// counting up from zero would reuse existing seqs. Clear the entry
+		// (only if it is still this one) so a later call re-bootstraps.
+		s.seq.CompareAndDelete(sessionID, ss)
+		return 0, ss.err
 	}
 	return atomic.AddInt64(&ss.val, 1), nil
 }
@@ -113,6 +120,28 @@ func (s *Store) Append(ctx context.Context, sessionID uuid.UUID, ev Event) (Enve
 	}
 	s.fanout(sessionID, env)
 	return env, nil
+}
+
+// AppendMessage persists one chat transcript message to session_messages.
+// content must be a JSON array of Anthropic content blocks (text /
+// tool_use / tool_result). The seq comes from the same per-session counter
+// as Append, so replay can totally order messages and events. Messages are
+// not fanned out to subscribers — chat text reaches the client through the
+// TextBroadcaster instead.
+func (s *Store) AppendMessage(ctx context.Context, sessionID uuid.UUID, role string, content []byte) error {
+	seq, err := s.NextSeq(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(ctx, `
+		INSERT INTO session_messages (session_id, message_id, role, content, seq)
+		VALUES ($1, $2, $3, $4::jsonb, $5)`,
+		sessionID, uuid.NewString(), role, string(content), seq,
+	)
+	if err != nil {
+		return fmt.Errorf("insert message: %w", err)
+	}
+	return nil
 }
 
 // Subscribe registers a channel to receive every Envelope persisted for the

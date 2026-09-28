@@ -161,6 +161,44 @@ func TestStore_BootstrapFromExistingMax(t *testing.T) {
 	}
 }
 
+func TestStore_AppendMessageSharesSeqCounter(t *testing.T) {
+	pool := setupPool(t)
+	sid := makeSession(t, pool)
+	ctx := context.Background()
+
+	store := NewStore(pool)
+	if _, err := store.Append(ctx, sid, SessionStarted{ChallengeID: "x", Difficulty: "medium"}); err != nil {
+		t.Fatalf("append event: %v", err)
+	}
+	if err := store.AppendMessage(ctx, sid, "user", []byte(`[{"type":"text","text":"hi"}]`)); err != nil {
+		t.Fatalf("append message: %v", err)
+	}
+
+	var role, text string
+	var seq int64
+	if err := pool.QueryRow(ctx, `
+		SELECT role, content->0->>'text', seq FROM session_messages WHERE session_id = $1`,
+		sid).Scan(&role, &text, &seq); err != nil {
+		t.Fatalf("read message: %v", err)
+	}
+	if role != "user" || text != "hi" || seq != 2 {
+		t.Fatalf("message = (%q, %q, seq %d), want (user, hi, seq 2)", role, text, seq)
+	}
+
+	// A fresh Store (process restart) must bootstrap past the transcript's
+	// seq, not just session_events'.
+	if err := NewStore(pool).AppendMessage(ctx, sid, "assistant", []byte(`[]`)); err != nil {
+		t.Fatalf("append after restart: %v", err)
+	}
+	env, err := NewStore(pool).Append(ctx, sid, SessionStarted{ChallengeID: "x", Difficulty: "medium"})
+	if err != nil {
+		t.Fatalf("append event after restart: %v", err)
+	}
+	if env.Seq != 4 {
+		t.Fatalf("seq after restart = %d, want 4", env.Seq)
+	}
+}
+
 func TestStore_ConcurrentAppendUniqueSeq(t *testing.T) {
 	pool := setupPool(t)
 	store := NewStore(pool)

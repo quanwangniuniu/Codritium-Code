@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"log"
 	"sync"
 
 	"github.com/google/uuid"
@@ -53,9 +54,21 @@ func (r *AgentRegistry) GetOrCreate(ctx context.Context, sessionID uuid.UUID, ch
 }
 
 // Drop forgets the Agent for sessionID (e.g. when the session is
-// submitted). Safe to call when no Agent is cached.
+// submitted), cancels any turn it is still running, and removes its
+// scratch directory. Safe to call when no Agent is cached.
 func (r *AgentRegistry) Drop(sessionID uuid.UUID) {
 	r.mu.Lock()
+	a, ok := r.agents[sessionID]
 	delete(r.agents, sessionID)
 	r.mu.Unlock()
+	if !ok {
+		return
+	}
+	a.Close()
+	if a.TmpFS == nil {
+		return
+	}
+	if err := a.TmpFS.Cleanup(); err != nil {
+		log.Printf("agent registry: cleanup tmpfs for %s: %v", sessionID, err)
+	}
 }

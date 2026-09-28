@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 )
@@ -18,6 +19,9 @@ type SessionTmpFS struct {
 	sessionID uuid.UUID
 	dir       string
 	skipPaths map[string]struct{}
+
+	mu      sync.Mutex // serializes Sync against Cleanup
+	cleaned bool       // set by Cleanup; Sync refuses to recreate the dir
 }
 
 // NewSessionTmpFS creates the backing directory. Callers are expected to
@@ -54,6 +58,11 @@ func (s *SessionTmpFS) Sync(files map[string]string) error {
 	if s == nil {
 		return nil
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cleaned {
+		return fmt.Errorf("session tmpfs %s already cleaned up", s.sessionID)
+	}
 	for path, content := range files {
 		clean := filepath.Clean(path)
 		if _, skip := s.skipPaths[clean]; skip {
@@ -81,5 +90,8 @@ func (s *SessionTmpFS) Cleanup() error {
 	if s == nil {
 		return nil
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cleaned = true
 	return os.RemoveAll(s.dir)
 }
