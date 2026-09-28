@@ -85,3 +85,30 @@ func TestLoadRejectsUnknownGraderEngine(t *testing.T) {
 		t.Fatalf("Load() error = %q, want GRADER_ENGINE error", err)
 	}
 }
+
+func TestLoadCookieSecureDefaultsByEnv(t *testing.T) {
+	for _, tc := range []struct {
+		env, override string
+		want          bool
+	}{
+		{"dev", "", false},
+		{"staging", "", false},
+		{"staging", "true", true},
+		{"prod", "", true},
+		{"prod", "false", false},
+		{"dev", "true", true},
+	} {
+		setBaseTestEnv(t)
+		t.Setenv("ENV", tc.env)
+		t.Setenv("COOKIE_SECURE", tc.override)
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("ENV=%s COOKIE_SECURE=%q: Load() error = %v", tc.env, tc.override, err)
+		}
+		if cfg.CookieSecure != tc.want {
+			t.Fatalf("ENV=%s COOKIE_SECURE=%q: CookieSecure = %v, want %v",
+				tc.env, tc.override, cfg.CookieSecure, tc.want)
+		}
+	}
+}

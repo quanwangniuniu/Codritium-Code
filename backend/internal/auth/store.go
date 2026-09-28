@@ -187,15 +187,16 @@ func (s *SQLUserStore) upsertCore(ctx context.Context, email, display, avatarURL
 // SetSessionCookie path. ttl is honored only via the cookie MaxAge already
 // hard-coded in SetSessionCookie; values longer than that are clamped.
 type CookieSessionManager struct {
-	Secret string
+	Secret  string
+	Options CookieOptions
 }
 
-func NewCookieSessionManager(secret string) *CookieSessionManager {
-	return &CookieSessionManager{Secret: secret}
+func NewCookieSessionManager(secret string, opts CookieOptions) *CookieSessionManager {
+	return &CookieSessionManager{Secret: secret, Options: opts}
 }
 
 func (m *CookieSessionManager) Create(w http.ResponseWriter, userID uuid.UUID, ttl time.Duration) error {
 	_ = ttl // cookie MaxAge is set inside SetSessionCookie; ttl is informational
-	SetSessionCookie(w, userID, m.Secret)
+	SetSessionCookie(w, userID, m.Secret, m.Options)
 	return nil
 }

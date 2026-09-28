@@ -75,18 +75,33 @@ func WithUser(ctx context.Context, u *User) context.Context {
 	return context.WithValue(ctx, userCtxKey, u)
 }
 
-// SetSessionCookie writes the signed session cookie for the given user.
-// Used by SwitchUser today; OAuth and magic-link callbacks will call it from
-// their handlers once those land.
-func SetSessionCookie(w http.ResponseWriter, userID uuid.UUID, cookieSecret string) {
-	http.SetCookie(w, &http.Cookie{
+// CookieOptions carries the per-deployment session cookie attributes
+// (COOKIE_DOMAIN / COOKIE_SECURE). The zero value is a host-only,
+// non-Secure cookie, which is only appropriate for local HTTP dev.
+type CookieOptions struct {
+	Domain string
+	Secure bool
+}
+
+// sessionCookie builds the session cookie with the shared attributes so
+// set and clear always agree — a browser only deletes a cookie whose
+// Domain/Path match the one it stored.
+func sessionCookie(value string, maxAge int, opts CookieOptions) *http.Cookie {
+	return &http.Cookie{
 		Name:     CookieName,
-		Value:    signCookie(userID, cookieSecret),
+		Value:    value,
 		Path:     "/",
+		Domain:   opts.Domain,
+		Secure:   opts.Secure,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   cookieMaxAge,
-	})
+		MaxAge:   maxAge,
+	}
+}
+
+// SetSessionCookie writes the signed session cookie for the given user.
+func SetSessionCookie(w http.ResponseWriter, userID uuid.UUID, cookieSecret string, opts CookieOptions) {
+	http.SetCookie(w, sessionCookie(signCookie(userID, cookieSecret), cookieMaxAge, opts))
 }
 
 func signCookie(userID uuid.UUID, cookieSecret string) string {
@@ -153,7 +168,7 @@ func loadUserByHandle(ctx context.Context, pool *pgxpool.Pool, handle string) (*
 // GitHubHandler / EmailHandler in google.go / github.go / email.go; those
 // handlers always upsert from a verified provider identity before signing
 // a session.
-func SwitchUser(pool *pgxpool.Pool, cookieSecret string) http.HandlerFunc {
+func SwitchUser(pool *pgxpool.Pool, cookieSecret string, opts CookieOptions) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		handle := r.URL.Query().Get("handle")
 		if handle == "" {
@@ -165,22 +180,20 @@ func SwitchUser(pool *pgxpool.Pool, cookieSecret string) http.HandlerFunc {
 			http.Error(w, "unknown handle", http.StatusUnauthorized)
 			return
 		}
-		SetSessionCookie(w, u.ID, cookieSecret)
+		SetSessionCookie(w, u.ID, cookieSecret, opts)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
 
 // Logout clears the session cookie. POST /api/auth/logout
-func Logout() http.HandlerFunc {
+func Logout(opts CookieOptions) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		http.SetCookie(w, &http.Cookie{
-			Name:     CookieName,
-			Value:    "",
-			Path:     "/",
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-			MaxAge:   -1,
-		})
+		http.SetCookie(w, sessionCookie("", -1, opts))
+		if opts.Domain != "" {
+			// Cookies issued before COOKIE_DOMAIN was honored are host-only
+			// and survive a Domain-scoped delete; clear that variant too.
+			http.SetCookie(w, sessionCookie("", -1, CookieOptions{Secure: opts.Secure}))
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
