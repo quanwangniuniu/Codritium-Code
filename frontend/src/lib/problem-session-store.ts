@@ -162,18 +162,6 @@ export function isDirty(session: ProblemSession): boolean {
   return session.messages.length > 0;
 }
 
-// Has the current (handle, slug) session been touched at all (file edited or
-// chat sent)? Useful for "is there anything to save?" checks before user
-// switch.
-export function hasUnsavedWork(handle: string | null, slug: string | null): boolean {
-  if (!handle || !slug) return false;
-  const userMap = store.get(handle);
-  if (!userMap) return false;
-  const session = userMap.get(slug);
-  if (!session) return false;
-  return isDirty(session);
-}
-
 export function subscribe(listener: Listener): () => void {
   listeners.add(listener);
   return () => {

@@ -80,28 +80,6 @@ export type Note = {
   updated_at: string;
 };
 
-export type ReplyEnvelope = {
-  session_id?: string;
-  seq?: number;
-  kind: string;
-  emitted_at?: string;
-  payload: unknown;
-};
-
-export type ReplyResponse = {
-  source: "official_ai" | "user_session";
-  challenge_slug: string;
-  generator_model?: string;
-  candidate_index?: number;
-  created_at?: string;
-  session_id?: string;
-  started_at?: string;
-  envelopes: ReplyEnvelope[];
-  files?: Record<string, string>;
-  explanation_md?: string;
-  starter_files?: Record<string, string>;
-};
-
 export type SessionResp = {
   session_id: string;
   created: boolean;
@@ -126,17 +104,11 @@ export type TipsStreamCallbacks = {
 
 export const Backend = {
   me: () => api<Me>("/api/me"),
-  switchUser: (handle: string) =>
-    fetch(`${API_BASE}/api/auth/switch?handle=${encodeURIComponent(handle)}`, {
-      method: "POST",
-      credentials: "include",
-    }),
   logout: () =>
     fetch(`${API_BASE}/api/auth/logout`, {
       method: "POST",
       credentials: "include",
     }),
-  listProblems: () => api<ProblemListItem[]>("/api/problems"),
   getProblem: (slug: string, variant: "as-is" | "stripped" = "as-is") =>
     api<ProblemDetail>(`/api/problems/${slug}?variant=${variant}`),
   deleteSubmission: async (id: string): Promise<void> => {
@@ -181,24 +153,8 @@ export const Backend = {
       throw new Error(`POST decision ${res.status}: ${text}`);
     }
   },
-  emitEvent: async (sessionId: string, kind: string, payload: Record<string, unknown>): Promise<void> => {
-    const res = await fetch(`${API_BASE}/api/events`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: sessionId, kind, payload }),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`POST event ${res.status}: ${text}`);
-    }
-  },
   streamURL: (sessionId: string) =>
     `${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/stream`,
-  officialReply: (slug: string): Promise<ReplyResponse> =>
-    api<ReplyResponse>(`/api/challenges/${encodeURIComponent(slug)}/official-reply`),
-  myReplay: (slug: string): Promise<ReplyResponse> =>
-    api<ReplyResponse>(`/api/me/replays/${encodeURIComponent(slug)}`),
   listComments: (slug: string, cursor?: string, limit = 20): Promise<CommentPage> => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (cursor) params.set("cursor", cursor);
@@ -324,12 +280,3 @@ export const Backend = {
   },
   apiBase: API_BASE,
 };
-
-// 5 mock users available for the demo cookie switcher.
-export const MOCK_USERS = [
-  { handle: "john", display_name: "John Smith", avatar_color: "#7dd3fc" },
-  { handle: "alice", display_name: "Alice Wang", avatar_color: "#c4b5fd" },
-  { handle: "bob", display_name: "Bob Martinez", avatar_color: "#fcd34d" },
-  { handle: "carol", display_name: "Carol Lee", avatar_color: "#86efac" },
-  { handle: "dan", display_name: "Dan Patel", avatar_color: "#fca5a5" },
-] as const;

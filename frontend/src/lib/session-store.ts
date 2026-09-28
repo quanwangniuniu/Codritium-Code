@@ -112,19 +112,6 @@ export function putRaw(key: string, value: unknown): void {
   pendingWrites.set(key, { value, timer });
 }
 
-// Immediate write — flushes any pending debounced write for the same key
-// first. Use when you need persistence to be done before a navigation /
-// process exit (e.g. on sign-out).
-export function putRawNow(key: string, value: unknown): void {
-  if (typeof window === "undefined") return;
-  const existing = pendingWrites.get(key);
-  if (existing) {
-    window.clearTimeout(existing.timer);
-    pendingWrites.delete(key);
-  }
-  writeOrEvict(key, value);
-}
-
 export function deleteRaw(key: string): void {
   if (typeof window === "undefined") return;
   const existing = pendingWrites.get(key);
@@ -138,16 +125,4 @@ export function deleteRaw(key: string): void {
   } catch (e) {
     console.error("session-store delete failed:", key, e);
   }
-}
-
-// Useful for tests / hard reset; not used by normal flow.
-export function listKeys(prefix: string): string[] {
-  if (!hasLocalStorage()) return [];
-  const ls = window.localStorage;
-  const out: string[] = [];
-  for (let i = 0; i < ls.length; i++) {
-    const k = ls.key(i);
-    if (k && k.startsWith(prefix)) out.push(k);
-  }
-  return out;
 }

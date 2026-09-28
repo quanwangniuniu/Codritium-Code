@@ -170,42 +170,12 @@ type LocaleKey =
   | "login_account_label"
   | "login_password_placeholder_hint"
   | "login_footer_info"
-  // submission-form
-  | "subform_files_label"
-  | "subform_ai_tool_label"
-  | "subform_model_label"
-  | "subform_model_placeholder"
-  | "subform_num_prompts_label"
-  | "subform_prompt_history_label"
-  | "subform_prompt_history_blurb"
-  | "subform_prompt_history_placeholder"
-  | "subform_submitting"
-  | "subform_submit_btn"
-  | "subform_submission_failed_fallback"
-  | "ai_tool_claude_code"
-  | "ai_tool_cursor"
-  | "ai_tool_copilot"
-  | "ai_tool_chatgpt"
-  | "ai_tool_claude_app"
-  | "ai_tool_other"
   // problem-workspace tabs
   | "problem_tab_brief"
   | "problem_tab_hint"
   | "problem_tab_anti_patterns"
   | "problem_tab_discussion"
   | "problem_tab_solutions"
-  | "fuzzy_spec_label"
-  | "hint_heading"
-  | "no_hint_placeholder"
-  | "four_anti_patterns_grader"
-  | "anti_pattern_deduction_note"
-  | "no_problem_discussion_prefix"
-  | "forum_word"
-  | "per_problem_discussion_note_prefix"
-  | "global_forum_word"
-  | "no_published_solutions"
-  | "used_by_label"
-  | "solutions_sort_note"
   | "antipattern_hands_off_name"
   | "antipattern_hands_off_desc"
   | "antipattern_feature_marathon_name"
@@ -218,15 +188,6 @@ type LocaleKey =
   | "agent_placeholder_system"
   | "agent_placeholder_user"
   | "agent_placeholder_agent"
-  | "agent_header"
-  | "agent_prob_prefix"
-  | "agent_alert_v06"
-  | "agent_placeholder_input"
-  | "send_aria"
-  | "chat_drawer_close_label"
-  | "chat_drawer_open_label"
-  | "chat_drawer_close_text"
-  | "chat_drawer_agent_text"
   // u/[handle] public profile
   | "streak_current_label"
   | "streak_active_today"
@@ -602,40 +563,11 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     login_account_label: "Account",
     login_password_placeholder_hint: "any non-empty value",
     login_footer_info: "Local demo: passwords are not validated server-side. Cookie session lasts 30 days.",
-    subform_files_label: "Files (edit the starter to fix the bug)",
-    subform_ai_tool_label: "AI tool used",
-    subform_model_label: "Model",
-    subform_model_placeholder: "e.g. sonnet 4.6 / gpt-4o / gemini 2.5",
-    subform_num_prompts_label: "Number of prompts",
-    subform_prompt_history_label: "Prompt history",
-    subform_prompt_history_blurb: "Paste the conversation you had with your AI tool while solving the problem. Both your prompts and the AI's responses are graded for collaboration signals (nudges, course corrections, plan-first language).",
-    subform_prompt_history_placeholder: "Me: Looking at cart_total, I think the docstring contract is broken because...\n\nClaude: ...",
-    subform_submitting: "Grading...",
-    subform_submit_btn: "Submit for grading",
-    subform_submission_failed_fallback: "Submission failed.",
-    ai_tool_claude_code: "Claude Code",
-    ai_tool_cursor: "Cursor",
-    ai_tool_copilot: "GitHub Copilot",
-    ai_tool_chatgpt: "ChatGPT",
-    ai_tool_claude_app: "Claude (web)",
-    ai_tool_other: "Other",
     problem_tab_brief: "Brief",
     problem_tab_hint: "Hint",
     problem_tab_anti_patterns: "Anti-patterns",
     problem_tab_discussion: "Discussion",
     problem_tab_solutions: "Solutions",
-    fuzzy_spec_label: "Fuzzy spec — clarify before implementing",
-    hint_heading: "Hint",
-    no_hint_placeholder: "No hint for this problem.",
-    four_anti_patterns_grader: "Four anti-patterns the grader watches for",
-    anti_pattern_deduction_note: "Triggering any flag deducts from AI Collaboration. Clean submissions are rewarded.",
-    no_problem_discussion_prefix: "No problem-specific discussion yet. Start one in the global",
-    forum_word: "forum",
-    per_problem_discussion_note_prefix: "Per-problem discussion is bound to this problem. General Career / Compensation / Feedback / Interview discussion lives in the",
-    global_forum_word: "global forum",
-    no_published_solutions: "No published solutions yet. After your first 4+/5 Correctness submission you can publish your approach here.",
-    used_by_label: "used by",
-    solutions_sort_note: "Sorted by \"used by\" count — surfaces the most practical approach, not the most upvoted clever trick.",
     antipattern_hands_off_name: "Hands-off",
     antipattern_hands_off_desc: "Pasting an entire problem then accepting the first AI answer with no review.",
     antipattern_feature_marathon_name: "Feature marathon",
@@ -647,15 +579,6 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     agent_placeholder_system: "Agent scaffold: starter files, prompt history and grader feedback wired in v0.6+.",
     agent_placeholder_user: "Read cart.py and explain the floating-point bug in plain English.",
     agent_placeholder_agent: "cart_total accumulates `price * qty` in IEEE-754 doubles. Round-off propagates per item, so the final sum drifts off the 2-decimal expected value. Try rounding per line OR sum with Decimal then quantize.",
-    agent_header: "Agent",
-    agent_prob_prefix: "prob:",
-    agent_alert_v06: "Agent input lands in v0.6+. Draft kept locally.",
-    agent_placeholder_input: "Ask the agent (placeholder, v0.6+)…",
-    send_aria: "Send",
-    chat_drawer_close_label: "Close agent",
-    chat_drawer_open_label: "Open agent",
-    chat_drawer_close_text: "close",
-    chat_drawer_agent_text: "agent",
     streak_current_label: "Current streak",
     streak_active_today: "Active today.",
     streak_last_active_fmt: "Last active {days} day{s} ago.",
@@ -1010,40 +933,11 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     login_account_label: "",
     login_password_placeholder_hint: "",
     login_footer_info: "",
-    subform_files_label: "",
-    subform_ai_tool_label: "",
-    subform_model_label: "",
-    subform_model_placeholder: "",
-    subform_num_prompts_label: "",
-    subform_prompt_history_label: "",
-    subform_prompt_history_blurb: "",
-    subform_prompt_history_placeholder: "",
-    subform_submitting: "",
-    subform_submit_btn: "",
-    subform_submission_failed_fallback: "",
-    ai_tool_claude_code: "",
-    ai_tool_cursor: "",
-    ai_tool_copilot: "",
-    ai_tool_chatgpt: "",
-    ai_tool_claude_app: "",
-    ai_tool_other: "",
     problem_tab_brief: "",
     problem_tab_hint: "",
     problem_tab_anti_patterns: "",
     problem_tab_discussion: "",
     problem_tab_solutions: "",
-    fuzzy_spec_label: "",
-    hint_heading: "",
-    no_hint_placeholder: "",
-    four_anti_patterns_grader: "",
-    anti_pattern_deduction_note: "",
-    no_problem_discussion_prefix: "",
-    forum_word: "",
-    per_problem_discussion_note_prefix: "",
-    global_forum_word: "",
-    no_published_solutions: "",
-    used_by_label: "",
-    solutions_sort_note: "",
     antipattern_hands_off_name: "",
     antipattern_hands_off_desc: "",
     antipattern_feature_marathon_name: "",
@@ -1055,15 +949,6 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     agent_placeholder_system: "",
     agent_placeholder_user: "",
     agent_placeholder_agent: "",
-    agent_header: "",
-    agent_prob_prefix: "",
-    agent_alert_v06: "",
-    agent_placeholder_input: "",
-    send_aria: "",
-    chat_drawer_close_label: "",
-    chat_drawer_open_label: "",
-    chat_drawer_close_text: "",
-    chat_drawer_agent_text: "",
     streak_current_label: "",
     streak_active_today: "",
     streak_last_active_fmt: "",
@@ -1319,10 +1204,6 @@ export function setLocale(locale: Locale): void {
     }
   }
   subscribers.forEach((fn) => fn());
-}
-
-export function getLocale(): Locale {
-  return currentLocale;
 }
 
 // Pre-wired hydration helper. Not mounted by default per the MVP
