@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -66,7 +67,7 @@ func (a *Agent) RunTurn(ctx context.Context, sessionID uuid.UUID, turnIndex int,
 		maxIter = defaultMaxIterations
 	}
 
-	a.messages = append(a.messages, Message{
+	a.recordMessage(ctx, sessionID, Message{
 		Role:    "user",
 		Content: []ContentBlock{{Kind: "text", Text: userMsg}},
 	})
@@ -101,7 +102,7 @@ func (a *Agent) RunTurn(ctx context.Context, sessionID uuid.UUID, turnIndex int,
 			return a.completeAborted(ctx, sessionID, turnIndex, iter, usage, "drain: "+drainErr.Error())
 		}
 		usage = addUsage(usage, turnUsage)
-		a.messages = append(a.messages, assistantMsg)
+		a.recordMessage(ctx, sessionID, assistantMsg)
 
 		// 3) no tool_use → turn ends normally
 		if len(pending) == 0 {
@@ -117,6 +118,52 @@ func (a *Agent) RunTurn(ctx context.Context, sessionID uuid.UUID, turnIndex int,
 		}
 		// loop back: model will see new tool_result messages on next iteration
 	}
+}
+
+// recordMessage appends msg to the running history and persists it to the
+// session transcript (session_messages), which the grader reads at submit
+// time. A persistence failure is logged, not fatal: the turn keeps going
+// with the in-memory history intact.
+func (a *Agent) recordMessage(ctx context.Context, sessionID uuid.UUID, msg Message) {
+	a.messages = append(a.messages, msg)
+	if a.Events == nil {
+		return
+	}
+	content, err := json.Marshal(anthropicBlocks(msg.Content))
+	if err != nil {
+		log.Printf("chat_v2: marshal transcript message for %s: %v", sessionID, err)
+		return
+	}
+	if err := a.Events.AppendMessage(ctx, sessionID, msg.Role, content); err != nil {
+		log.Printf("chat_v2: persist transcript message for %s: %v", sessionID, err)
+	}
+}
+
+// anthropicBlocks renders content blocks in the Anthropic wire shape
+// session_messages.content is documented to hold.
+func anthropicBlocks(blocks []ContentBlock) []map[string]any {
+	out := make([]map[string]any, 0, len(blocks))
+	for _, b := range blocks {
+		switch {
+		case b.Kind == "text":
+			out = append(out, map[string]any{"type": "text", "text": b.Text})
+		case b.Kind == "tool_use" && b.ToolUse != nil:
+			out = append(out, map[string]any{
+				"type":  "tool_use",
+				"id":    b.ToolUse.ID,
+				"name":  b.ToolUse.Name,
+				"input": b.ToolUse.Input,
+			})
+		case b.Kind == "tool_result" && b.ToolResult != nil:
+			out = append(out, map[string]any{
+				"type":        "tool_result",
+				"tool_use_id": b.ToolResult.ToolUseID,
+				"content":     b.ToolResult.Output,
+				"is_error":    b.ToolResult.IsError,
+			})
+		}
+	}
+	return out
 }
 
 // PendingToolUse is what drainStream collects from one streamed completion.
@@ -212,7 +259,7 @@ func (a *Agent) handleToolUse(ctx context.Context, sessionID uuid.UUID, turnInde
 		content, cOK := tu.Input["content"].(string)
 		if pOK && cOK && a.Workspace != nil {
 			if existing, exists := a.Workspace.Files[path]; exists && existing == content {
-				a.messages = append(a.messages, Message{
+				a.recordMessage(ctx, sessionID, Message{
 					Role: "tool",
 					Content: []ContentBlock{{
 						Kind: "tool_result",
@@ -284,7 +331,7 @@ func (a *Agent) handleToolUse(ctx context.Context, sessionID uuid.UUID, turnInde
 	}
 
 	if decision.Kind == "reject" {
-		a.messages = append(a.messages, Message{
+		a.recordMessage(ctx, sessionID, Message{
 			Role: "tool",
 			Content: []ContentBlock{{
 				Kind: "tool_result",
@@ -332,7 +379,7 @@ func (a *Agent) handleToolUse(ctx context.Context, sessionID uuid.UUID, turnInde
 		DurationMs:    dur,
 	})
 
-	a.messages = append(a.messages, Message{
+	a.recordMessage(ctx, sessionID, Message{
 		Role: "tool",
 		Content: []ContentBlock{{
 			Kind: "tool_result",

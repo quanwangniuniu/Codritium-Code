@@ -16,6 +16,7 @@ import (
 	anthClient "codritium/backend/internal/anthropic"
 	"codritium/backend/internal/auth"
 	"codritium/backend/internal/grader"
+	"codritium/backend/internal/llm"
 )
 
 type SubmissionDeps struct {
@@ -24,6 +25,10 @@ type SubmissionDeps struct {
 	Gemini       *genai.Client
 	Ollama       *grader.OllamaClient
 	GraderEngine string
+
+	// Agents, when set, has the session's chat agent dropped on submit so
+	// its history and scratch directory don't outlive the session.
+	Agents *llm.AgentRegistry
 }
 
 type submitRequest struct {
@@ -189,6 +194,12 @@ func Submit(deps SubmissionDeps) http.HandlerFunc {
 				http.Error(w, "create submission: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
+		}
+
+		// The transcript is already in session_messages; the in-memory
+		// agent is no longer needed once the session is submitted.
+		if sessionID != nil && deps.Agents != nil {
+			deps.Agents.Drop(*sessionID)
 		}
 
 		// Spin grader off in background.

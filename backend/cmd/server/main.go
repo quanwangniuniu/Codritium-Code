@@ -134,6 +134,7 @@ func main() {
 		Gemini:       geminiClient,
 		Ollama:       ollamaClient,
 		GraderEngine: cfg.GraderEngine,
+		Agents:       agentRegistry,
 	}
 	commentsDeps := handlers.CommentsDeps{Pool: database.Pool}
 	notesDeps := handlers.NotesDeps{Pool: database.Pool}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -620,3 +621,101 @@ func contains(xs []string, want string) bool {
 
 // silence unused-import warnings on errors package without separate file
 var _ = errors.New
+
+func TestRunTurn_PersistsTranscript(t *testing.T) {
+	pool := newTestPool(t)
+	sid := newTestSession(t, pool)
+	store := events.NewStore(pool)
+
+	// user → assistant(tool_use FileRead, auto-approved) → tool_result →
+	// assistant text. Every history message must land in session_messages.
+	stream := &scriptedStream{
+		scripts: [][]NormalizedChunk{
+			{
+				{Kind: "tool_use_start", ToolUseID: "tu-read", ToolUseName: "FileRead"},
+				{Kind: "tool_use_input_delta", ToolUseID: "tu-read", InputJSONDelta: `{"path":"rate_limiter.py"}`},
+				{Kind: "tool_use_stop", ToolUseID: "tu-read"},
+				{Kind: "message_stop", StopReason: "tool_use"},
+			},
+			{
+				{Kind: "text_delta", Text: "I read the file."},
+				{Kind: "message_stop", StopReason: "end_turn"},
+			},
+		},
+	}
+
+	agent := &Agent{
+		Stream:    stream,
+		Events:    store,
+		Waiter:    NewDecisionWaiter(),
+		Tools:     NewDefaultRegistry(),
+		Workspace: &Workspace{Files: map[string]string{"rate_limiter.py": "print('hello')"}},
+	}
+
+	if _, err := agent.RunTurn(context.Background(), sid, 1, "read the file"); err != nil {
+		t.Fatalf("RunTurn: %v", err)
+	}
+
+	rows, err := pool.Query(context.Background(),
+		`SELECT role, content::text FROM session_messages WHERE session_id=$1 ORDER BY seq`, sid)
+	if err != nil {
+		t.Fatalf("query messages: %v", err)
+	}
+	defer rows.Close()
+	var roles, contents []string
+	for rows.Next() {
+		var role, content string
+		if err := rows.Scan(&role, &content); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		roles = append(roles, role)
+		contents = append(contents, content)
+	}
+
+	wantRoles := []string{"user", "assistant", "tool", "assistant"}
+	if fmt.Sprint(roles) != fmt.Sprint(wantRoles) {
+		t.Fatalf("roles=%v want %v", roles, wantRoles)
+	}
+	if !strings.Contains(contents[0], "read the file") {
+		t.Fatalf("user message not persisted: %s", contents[0])
+	}
+	if !strings.Contains(contents[1], `"tool_use"`) || !strings.Contains(contents[1], "FileRead") {
+		t.Fatalf("assistant tool_use not persisted: %s", contents[1])
+	}
+	if !strings.Contains(contents[3], "I read the file.") {
+		t.Fatalf("final assistant text not persisted: %s", contents[3])
+	}
+
+	// Transcript and event seqs come from one counter, so they never collide.
+	var dup int
+	if err := pool.QueryRow(context.Background(), `
+		SELECT count(*) FROM session_messages m
+		JOIN session_events e ON e.session_id = m.session_id AND e.seq = m.seq
+		WHERE m.session_id = $1`, sid).Scan(&dup); err != nil {
+		t.Fatalf("seq overlap query: %v", err)
+	}
+	if dup != 0 {
+		t.Fatalf("%d transcript rows share a seq with an event", dup)
+	}
+}
+
+func TestAnthropicBlocks(t *testing.T) {
+	got := anthropicBlocks([]ContentBlock{
+		{Kind: "text", Text: "hi"},
+		{Kind: "tool_use", ToolUse: &ContentToolUse{ID: "tu-1", Name: "FileRead", Input: map[string]any{"path": "a.py"}}},
+		{Kind: "tool_result", ToolResult: &ContentToolResult{ToolUseID: "tu-1", Output: "ok", IsError: true}},
+		{Kind: "tool_use"}, // missing payload: skipped
+	})
+	if len(got) != 3 {
+		t.Fatalf("len=%d want 3: %v", len(got), got)
+	}
+	if got[0]["type"] != "text" || got[0]["text"] != "hi" {
+		t.Fatalf("text block = %v", got[0])
+	}
+	if got[1]["type"] != "tool_use" || got[1]["name"] != "FileRead" || got[1]["id"] != "tu-1" {
+		t.Fatalf("tool_use block = %v", got[1])
+	}
+	if got[2]["type"] != "tool_result" || got[2]["tool_use_id"] != "tu-1" || got[2]["content"] != "ok" || got[2]["is_error"] != true {
+		t.Fatalf("tool_result block = %v", got[2])
+	}
+}
