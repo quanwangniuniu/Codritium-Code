@@ -98,14 +98,6 @@ export interface DailyChallenge {
   problem_id: string;
 }
 
-export interface StudyPlan {
-  slug: string;
-  name: string;
-  description_md: string;
-  is_pro_only: boolean;
-  problem_ids: string[];
-}
-
 export type ForumSection = "career" | "compensation" | "feedback" | "interview";
 
 export interface Discussion {

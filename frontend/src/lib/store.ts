@@ -8,7 +8,6 @@
 //     daily-challenge, forum, discussions, solutions, by-handle user lookup,
 //     submissions history) with empty results. Wiring those is I6 territory.
 import { apiJSON } from "@/lib/api-server";
-import { adaptUser, type BackendUser } from "@/lib/auth";
 import type {
   Company,
   DailyChallenge,
@@ -192,14 +191,6 @@ function adaptSubmission(s: BackendSubmission): Submission {
     test_results: {},
     session_id: s.session_id,
   };
-}
-
-// --- User -------------------------------------------------------------
-
-export async function getUser(id: string): Promise<User | null> {
-  if (id !== "me") return null;
-  const u = await apiJSON<BackendUser>("/api/me");
-  return u ? adaptUser(u) : null;
 }
 
 // --- Problems ---------------------------------------------------------

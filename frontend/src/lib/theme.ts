@@ -21,8 +21,3 @@ export async function setTheme(theme: Theme): Promise<void> {
     maxAge: 60 * 60 * 24 * 365,
   });
 }
-
-export const THEME_LABELS: Record<Theme, { label: string; tagline: string }> = {
-  default: { label: "Default", tagline: "Geist neutral, system-aware light/dark." },
-  bright: { label: "Bright", tagline: "White marble, violet accent, airy rhythm." },
-};
