@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Clock, BookOpen, HelpCircle, Play } from "lucide-react";
 import { CodritiumLogo } from "@/components/CodritiumLogo";
 import { ExitWorkspaceButton } from "@/components/ExitWorkspaceButton";
@@ -31,7 +32,7 @@ export function AppBar({
         color: "var(--text)",
       }}
     >
-      <a
+      <Link
         href="/"
         aria-label={t("brand_name")}
         style={{
@@ -42,7 +43,7 @@ export function AppBar({
         }}
       >
         <CodritiumLogo iconOnly height={18} />
-      </a>
+      </Link>
 
       <ExitWorkspaceButton />
 

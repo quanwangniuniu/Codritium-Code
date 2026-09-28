@@ -147,7 +147,8 @@ func main() {
 	oauthStateStore := auth.NewSQLOAuthStateStore(database.Pool)
 	magicLinkStore := auth.NewSQLMagicLinkTokenStore(database.Pool)
 	userStore := auth.NewSQLUserStore(database.Pool)
-	sessionMgr := auth.NewCookieSessionManager(cfg.CookieSecret)
+	cookieOpts := auth.CookieOptions{Domain: cfg.CookieDomain, Secure: cfg.CookieSecure}
+	sessionMgr := auth.NewCookieSessionManager(cfg.CookieSecret, cookieOpts)
 	googleAuth := auth.NewGoogleHandler(cfg.GoogleOAuthClientID, cfg.GoogleOAuthSecret, cfg.GoogleOAuthRedirectURL,
 		oauthStateStore, userStore, sessionMgr)
 	githubAuth := auth.NewGitHubHandler(cfg.GitHubOAuthClientID, cfg.GitHubOAuthSecret, cfg.GitHubOAuthRedirectURL,
@@ -159,8 +160,8 @@ func main() {
 	mux.HandleFunc("GET /api/health", handlers.Health())
 	mux.HandleFunc("GET /api/anthropic/ping", handlers.AnthropicPing(deps))
 	mux.HandleFunc("GET /api/e2b/ping", handlers.E2BPing(deps))
-	mux.HandleFunc("POST /api/auth/switch", devOnly(cfg.Env, auth.SwitchUser(database.Pool, cfg.CookieSecret)))
-	mux.HandleFunc("POST /api/auth/logout", auth.Logout())
+	mux.HandleFunc("POST /api/auth/switch", devOnly(cfg.Env, auth.SwitchUser(database.Pool, cfg.CookieSecret, cookieOpts)))
+	mux.HandleFunc("POST /api/auth/logout", auth.Logout(cookieOpts))
 
 	// Three-way login (Google + GitHub + email magic link).
 	mux.HandleFunc("POST /api/auth/google/start", googleAuth.Start)

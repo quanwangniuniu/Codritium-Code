@@ -58,7 +58,6 @@ func Load() (*Config, error) {
 		E2BAPIKey:              os.Getenv("E2B_API_KEY"),
 		CookieSecret:           os.Getenv("COOKIE_SECRET"),
 		CookieDomain:           os.Getenv("COOKIE_DOMAIN"),
-		CookieSecure:           getenvBool("COOKIE_SECURE", false),
 		GraderEngine:           getenv("GRADER_ENGINE", "gemini"),
 		ChatEngine:             getenv("CHAT_ENGINE", "gemini"),
 		OllamaBaseURL:          getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
@@ -78,6 +77,10 @@ func Load() (*Config, error) {
 		SMTPFrom:               os.Getenv("SMTP_FROM"),
 		PublicURL:              getenv("PUBLIC_URL", "http://localhost:3000"),
 	}
+
+	// The session cookie is Secure everywhere except local dev, which runs
+	// over plain HTTP. COOKIE_SECURE overrides in either direction.
+	c.CookieSecure = getenvBool("COOKIE_SECURE", c.Env != "dev")
 
 	switch c.Env {
 	case "dev", "staging", "prod":
