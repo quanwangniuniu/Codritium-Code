@@ -21,6 +21,9 @@ type Config struct {
 	CookieSecure           bool
 	GraderEngine           string
 	ChatEngine             string
+	OllamaBaseURL          string
+	OllamaModel            string
+	OllamaTimeoutSec       int
 	ClaudeFallbackEnabled  bool
 	GoogleOAuthClientID    string
 	GoogleOAuthSecret      string
@@ -58,6 +61,9 @@ func Load() (*Config, error) {
 		CookieSecure:           getenvBool("COOKIE_SECURE", false),
 		GraderEngine:           getenv("GRADER_ENGINE", "gemini"),
 		ChatEngine:             getenv("CHAT_ENGINE", "gemini"),
+		OllamaBaseURL:          getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+		OllamaModel:            getenv("OLLAMA_MODEL", "qwen3:8b"),
+		OllamaTimeoutSec:       getenvInt("OLLAMA_TIMEOUT_SEC", 180),
 		ClaudeFallbackEnabled:  getenvBool("CLAUDE_FALLBACK_ENABLED", false),
 		GoogleOAuthClientID:    os.Getenv("GOOGLE_OAUTH_CLIENT_ID"),
 		GoogleOAuthSecret:      os.Getenv("GOOGLE_OAUTH_SECRET"),
@@ -85,24 +91,46 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("COOKIE_SECRET is required (HMAC key for session cookies; set per environment)")
 	}
 
-	// GOOGLE_API_KEY is required: all default paths run on Gemini.
-	if c.GoogleAPIKey == "" {
-		return nil, fmt.Errorf("GOOGLE_API_KEY is required (default chat and grader engines are Gemini)")
-	}
 	if c.E2BAPIKey == "" {
 		return nil, fmt.Errorf("E2B_API_KEY is required")
 	}
 
 	// Engine enum validation.
 	switch c.GraderEngine {
-	case "gemini", "anthropic":
+	case "ollama", "gemini", "anthropic":
 	default:
-		return nil, fmt.Errorf("GRADER_ENGINE must be 'gemini' or 'anthropic', got %q", c.GraderEngine)
+		return nil, fmt.Errorf(
+			"GRADER_ENGINE must be 'ollama', 'gemini', or 'anthropic', got %q",
+			c.GraderEngine,
+		)
 	}
+
 	switch c.ChatEngine {
-	case "gemini", "anthropic":
+	case "disabled", "gemini", "anthropic":
 	default:
-		return nil, fmt.Errorf("CHAT_ENGINE must be 'gemini' or 'anthropic', got %q", c.ChatEngine)
+		return nil, fmt.Errorf(
+			"CHAT_ENGINE must be 'disabled', 'gemini', or 'anthropic', got %q",
+			c.ChatEngine,
+		)
+	}
+
+	if c.GraderEngine == "ollama" {
+		if c.OllamaBaseURL == "" {
+			return nil, fmt.Errorf("OLLAMA_BASE_URL is required for GRADER_ENGINE=ollama")
+		}
+		if c.OllamaModel == "" {
+			return nil, fmt.Errorf("OLLAMA_MODEL is required for GRADER_ENGINE=ollama")
+		}
+		if c.OllamaTimeoutSec <= 0 {
+			return nil, fmt.Errorf("OLLAMA_TIMEOUT_SEC must be greater than zero")
+		}
+	}
+
+	googleActive := c.ChatEngine == "gemini" || c.GraderEngine == "gemini"
+	if googleActive && c.GoogleAPIKey == "" {
+		return nil, fmt.Errorf(
+			"GOOGLE_API_KEY is required when Gemini chat or grading is enabled",
+		)
 	}
 
 	// Claude path is preserved but disabled by default. CHAT_ENGINE=anthropic

@@ -1,4 +1,4 @@
-import { AlertTriangle, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CircleHelp, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { t, type LocaleKey } from "@/lib/i18n";
 
@@ -11,37 +11,79 @@ const LABEL_KEYS: Record<string, LocaleKey> = {
 
 interface AntiPatternChipProps {
   name: keyof typeof LABEL_KEYS | string;
+  evaluated: boolean;
   triggered: boolean;
   evidence: string;
 }
 
-export function AntiPatternChip({ name, triggered, evidence }: AntiPatternChipProps) {
+export function AntiPatternChip({
+  name,
+  evaluated,
+  triggered,
+  evidence,
+}: AntiPatternChipProps) {
   const key = LABEL_KEYS[name];
   const label = key ? t(key) : name;
+
   return (
     <div
       className={cn(
         "rounded-lg border p-3 text-sm",
-        triggered
-          ? "border-danger/30 bg-danger-soft"
-          : "border-success/25 bg-success-soft",
+        !evaluated
+          ? "border-divider bg-surface"
+          : triggered
+            ? "border-danger/30 bg-danger-soft"
+            : "border-success/25 bg-success-soft",
       )}
     >
       <div className="flex items-center gap-2 font-medium">
-        {triggered ? (
+        {!evaluated ? (
+          <CircleHelp size={16} className="text-muted" />
+        ) : triggered ? (
           <AlertTriangle size={16} className="text-danger" />
         ) : (
           <ShieldCheck size={16} className="text-success" />
         )}
-        <span className={triggered ? "text-danger" : "text-success"}>{label}</span>
+
         <span
-          className={cn("ml-auto text-xs", triggered ? "text-danger/80" : "text-success/80")}
+          className={
+            !evaluated
+              ? "text-muted"
+              : triggered
+                ? "text-danger"
+                : "text-success"
+          }
         >
-          {triggered ? t("antipattern_flagged") : t("antipattern_clear")}
+          {label}
+        </span>
+
+        <span
+          className={cn(
+            "ml-auto text-xs",
+            !evaluated
+              ? "text-muted"
+              : triggered
+                ? "text-danger/80"
+                : "text-success/80",
+          )}
+        >
+          {!evaluated
+            ? t("antipattern_not_evaluated")
+            : triggered
+              ? t("antipattern_flagged")
+              : t("antipattern_clear")}
         </span>
       </div>
-      {triggered && evidence && (
-        <p className="mt-1.5 text-xs text-danger/90">{evidence}</p>
+
+      {(!evaluated || triggered) && evidence && (
+        <p
+          className={cn(
+            "mt-1.5 text-xs",
+            evaluated ? "text-danger/90" : "text-muted",
+          )}
+        >
+          {evidence}
+        </p>
       )}
     </div>
   );

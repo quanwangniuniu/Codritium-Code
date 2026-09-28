@@ -87,16 +87,34 @@ interface BackendSubmission {
   session_id?: string;
 }
 
+interface BackendAntiPatternFlag {
+  evaluated?: boolean;
+  triggered?: boolean;
+  evidence?: string;
+}
+
 interface BackendScores {
   dimension_scores?: Record<string, { score?: number | null; reasoning?: string }>;
   final_score?: number;
   weights?: Record<string, number>;
+  anti_patterns?: {
+    hands_off?: BackendAntiPatternFlag;
+    feature_marathon?: BackendAntiPatternFlag;
+    ai_showcase?: BackendAntiPatternFlag;
+    not_thinking?: BackendAntiPatternFlag;
+  };
+  judge_model?: string;
 }
 
 function adaptScores(raw: unknown): Submission["score"] {
   if (!raw || typeof raw !== "object") return null;
+
   const s = raw as BackendScores;
-  const ds = s.dimension_scores ?? {};
+  if (!s.dimension_scores || typeof s.final_score !== "number") {
+    return null;
+  }
+
+  const ds = s.dimension_scores;
   // Backend stores the verification dim under "verification"; demo2 UI uses
   // "verification_quality". Translate both keys in adapter.
   const dim = (key: string, fallback?: string) => ({
@@ -118,20 +136,25 @@ function adaptScores(raw: unknown): Submission["score"] {
     communication: dim("communication"),
     total: s.final_score ?? 0,
     weights_applied: weights,
-    judge_model: "",
+    judge_model: s.judge_model ?? "",
   };
 }
 
-function adaptAntiPatterns(): Submission["anti_patterns"] {
-  // Codritium grader does not produce demo2-shaped anti-pattern flags yet;
-  // give the UI a fully-false bundle so it can render without crashing on
-  // .triggered access.
-  const off = { triggered: false, evidence: "" };
+function adaptAntiPatterns(raw: unknown): Submission["anti_patterns"] {
+  if (!raw || typeof raw !== "object") return null;
+
+  const source = (raw as BackendScores).anti_patterns;
+  const flag = (value?: BackendAntiPatternFlag) => ({
+    evaluated: value?.evaluated ?? false,
+    triggered: value?.triggered ?? false,
+    evidence: value?.evidence ?? "",
+  });
+
   return {
-    hands_off: off,
-    feature_marathon: off,
-    ai_showcase: off,
-    not_thinking: off,
+    hands_off: flag(source?.hands_off),
+    feature_marathon: flag(source?.feature_marathon),
+    ai_showcase: flag(source?.ai_showcase),
+    not_thinking: flag(source?.not_thinking),
   };
 }
 
@@ -164,7 +187,7 @@ function adaptSubmission(s: BackendSubmission): Submission {
     submitted_at: s.submitted_at,
     graded_at: s.graded_at,
     score: adaptScores(s.scores),
-    anti_patterns: adaptAntiPatterns(),
+    anti_patterns: adaptAntiPatterns(s.scores),
     test_pass_rate: passRate,
     test_results: {},
     session_id: s.session_id,
@@ -299,15 +322,15 @@ function adaptListItem(s: BackendSubmissionListItem): Submission {
   // page goes through getSubmission, which has the full scores blob.
   const score = s.final_score != null
     ? {
-        correctness: { score: null, reasoning: "" },
-        problem_decomposition: { score: null, reasoning: "" },
-        ai_collaboration: { score: null, reasoning: "" },
-        verification_quality: { score: null, reasoning: "" },
-        communication: { score: null, reasoning: "" },
-        total: s.final_score,
-        weights_applied: {},
-        judge_model: "",
-      }
+      correctness: { score: null, reasoning: "" },
+      problem_decomposition: { score: null, reasoning: "" },
+      ai_collaboration: { score: null, reasoning: "" },
+      verification_quality: { score: null, reasoning: "" },
+      communication: { score: null, reasoning: "" },
+      total: s.final_score,
+      weights_applied: {},
+      judge_model: "",
+    }
     : null;
   return {
     id: s.id,

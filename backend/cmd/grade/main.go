@@ -62,7 +62,7 @@ func flattenStarter(all map[string]map[string]string) map[string]string {
 func main() {
 	var (
 		tier        = flag.String("tier", "", "tier name (poor|mid|good) — folder under -tier-dir")
-		engine      = flag.String("engine", "", "grader engine: anthropic|gemini (overrides GRADER_ENGINE)")
+		engine      = flag.String("engine", "", "grader engine: ollama|anthropic|gemini (overrides GRADER_ENGINE)")
 		problemPath = flag.String("problem", "../seed/problems/22-build-rate-limiter-middleware.json", "path to problem seed JSON")
 		tierDir     = flag.String("tier-dir", "/Users/johns3248/project/AICH/temp/22", "root dir containing poor/, mid/, good/")
 		skipSandbox = flag.Bool("skip-sandbox", false, "skip E2B sandbox run; test_results will be null")
@@ -81,8 +81,13 @@ func main() {
 	if *engine != "" {
 		cfg.GraderEngine = *engine
 	}
-	if cfg.GraderEngine != "anthropic" && cfg.GraderEngine != "gemini" {
-		log.Fatalf("invalid engine: %q (use anthropic|gemini)", cfg.GraderEngine)
+	if cfg.GraderEngine != "ollama" &&
+		cfg.GraderEngine != "anthropic" &&
+		cfg.GraderEngine != "gemini" {
+		log.Fatalf(
+			"invalid engine: %q (use ollama|anthropic|gemini)",
+			cfg.GraderEngine,
+		)
 	}
 	if cfg.GraderEngine == "gemini" && cfg.GoogleAPIKey == "" {
 		log.Fatal("GOOGLE_API_KEY required for engine=gemini")
@@ -140,24 +145,31 @@ func main() {
 	t0 := time.Now()
 	var result *grader.GraderResult
 	switch cfg.GraderEngine {
+	case "ollama":
+		client := grader.NewOllamaClient(
+			cfg.OllamaBaseURL,
+			cfg.OllamaModel,
+			time.Duration(cfg.OllamaTimeoutSec)*time.Second,
+		)
+		result, err = grader.RunOllama(ctx, client, input)
+
 	case "gemini":
-		client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		client, clientErr := genai.NewClient(ctx, &genai.ClientConfig{
 			APIKey:  cfg.GoogleAPIKey,
 			Backend: genai.BackendGeminiAPI,
 		})
-		if err != nil {
-			log.Fatalf("gemini client: %v", err)
+		if clientErr != nil {
+			log.Fatalf("gemini client: %v", clientErr)
 		}
 		result, err = grader.RunGemini(ctx, client, input)
-		if err != nil {
-			log.Fatalf("grader: %v", err)
-		}
-	default:
-		anth := anthropic.New(cfg.AnthropicAPIKey)
-		result, err = grader.Run(ctx, anth, input)
-		if err != nil {
-			log.Fatalf("grader: %v", err)
-		}
+
+	case "anthropic":
+		client := anthropic.New(cfg.AnthropicAPIKey)
+		result, err = grader.Run(ctx, client, input)
+	}
+
+	if err != nil {
+		log.Fatalf("grader: %v", err)
 	}
 	log.Printf("[grade] grader done in %.1fs: final_score=%.1f", time.Since(t0).Seconds(), result.FinalScore)
 

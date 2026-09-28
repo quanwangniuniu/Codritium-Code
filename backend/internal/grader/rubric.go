@@ -18,8 +18,8 @@ Anti-bias guards (apply to every dimension):
 If the requested signals are unavailable (e.g., empty prompt_history), set "score" to null and explain in "reasoning".`
 
 type DimensionSpec struct {
-	Name       string
-	Prompt     string
+	Name   string
+	Prompt string
 }
 
 var Dimensions = []DimensionSpec{
@@ -60,16 +60,15 @@ OUTPUT JSON SCHEMA:
 	},
 	{
 		Name: "problem_decomposition",
-		Prompt: `Evaluate PROBLEM DECOMPOSITION (only applies to Hard problems — return null for Easy/Medium).
+		Prompt: `Evaluate PROBLEM DECOMPOSITION.
 
 CRITERION: Did the candidate break the problem into sub-problems and form a plan BEFORE prompting the AI?
 
 EVALUATION STEPS:
-1. If prompt_history is empty/missing, return score: null with reasoning "cannot evaluate without prompt history".
-2. If difficulty is "easy" or "medium", return score: null with reasoning "dimension not applicable below Hard".
-3. Examine the first 3-5 prompts; classify intent (diagnose / explore / fix / implement).
-4. Check for any plan-file (AGENTS.md, scratch.md) created BEFORE first prompt.
-5. Did the candidate ask clarifying questions about ambiguous spec?
+1. If prompt_history is empty/missing, return score: null with reasoning "insufficient evidence: cannot evaluate without prompt history".
+2. Examine the first 3-5 prompts; classify intent (diagnose / explore / fix / implement).
+3. Check for any plan-file (AGENTS.md, scratch.md) created BEFORE first prompt.
+4. Did the candidate ask clarifying questions about ambiguous spec?
 
 SCORE SCALE:
 - 5 excellent: clear written plan + explicit sub-problems + correct priority + clarifying questions.
@@ -91,7 +90,7 @@ OUTPUT JSON SCHEMA:
 CRITERION: Did the candidate DIRECT the AI, or did the AI direct the candidate? The candidate should be the senior engineer; the AI is the fast-but-fallible junior pair.
 
 EVALUATION STEPS:
-1. If prompt_history is empty/missing, return score: null with reasoning "cannot evaluate without prompt history".
+1. If prompt_history is empty/missing, return score: null with reasoning "insufficient evidence: cannot evaluate without prompt history".
 2. Count "nudges" (small targeted corrections to AI output).
 3. Look for selective accept/reject (not just "ok thanks").
 4. Did the candidate push back when AI proposed off-plan?
@@ -147,16 +146,15 @@ OUTPUT JSON SCHEMA:
 	},
 	{
 		Name: "communication",
-		Prompt: `Evaluate COMMUNICATION (only applies to Hard problems — return null for Easy/Medium).
+		Prompt: `Evaluate COMMUNICATION.
 
 CRITERION: Did the candidate explain their thinking, decisions, and trade-offs before/while coding?
 
 EVALUATION STEPS:
-1. If difficulty is "easy" or "medium", return score: null.
-2. If prompt_history AND code_comments AND scratch_files are all empty, return null with reasoning "no narration channel".
-3. Look for "before-prompt narration": explaining what they're about to do BEFORE prompting.
-4. Look for "decision explanations" in comments/scratch.
-5. Trade-off discussion: weighing alternatives explicitly.
+1. If prompt_history AND code_comments AND scratch_files are all empty, return null with reasoning "insufficient evidence: no narration channel".
+2. Look for "before-prompt narration": explaining what they're about to do BEFORE prompting.
+3. Look for "decision explanations" in comments/scratch.
+4. Trade-off discussion: weighing alternatives explicitly.
 
 SCORE SCALE:
 - 5 excellent: clear narration before each major prompt + decisions explained + trade-offs.
@@ -174,36 +172,16 @@ OUTPUT JSON SCHEMA:
 	},
 }
 
-// DifficultyWeights returns the dimension weight per difficulty.
-// Easy: only Correctness + AI Collaboration.
-// Medium: + Verification.
-// Hard: full 5 dimensions.
-func DifficultyWeights(difficulty string) map[string]float64 {
-	switch difficulty {
-	case "easy":
-		return map[string]float64{
-			"correctness":      0.70,
-			"ai_collaboration": 0.30,
-		}
-	case "medium":
-		return map[string]float64{
-			"correctness":      0.50,
-			"ai_collaboration": 0.30,
-			"verification":     0.20,
-		}
-	case "hard":
-		return map[string]float64{
-			"correctness":           0.25,
-			"problem_decomposition": 0.25,
-			"ai_collaboration":      0.25,
-			"verification":          0.15,
-			"communication":         0.10,
-		}
-	default:
-		return map[string]float64{
-			"correctness":      0.50,
-			"ai_collaboration": 0.30,
-			"verification":     0.20,
-		}
+// DifficultyWeights returns the common five-dimension weights.
+// Every difficulty uses the former Hard weighting. Dimensions with
+// insufficient evidence return a null score; graders renormalize the
+// remaining non-null weights when calculating the final score.
+func DifficultyWeights(_ string) map[string]float64 {
+	return map[string]float64{
+		"correctness":           0.25,
+		"problem_decomposition": 0.25,
+		"ai_collaboration":      0.25,
+		"verification":          0.15,
+		"communication":         0.10,
 	}
 }

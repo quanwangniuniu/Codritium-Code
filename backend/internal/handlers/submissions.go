@@ -22,6 +22,7 @@ type SubmissionDeps struct {
 	Pool         *pgxpool.Pool
 	Anthropic    *anthClient.Client
 	Gemini       *genai.Client
+	Ollama       *grader.OllamaClient
 	GraderEngine string
 }
 
@@ -71,8 +72,8 @@ func Submit(deps SubmissionDeps) http.HandlerFunc {
 			).Scan(&recent); err == nil && recent >= submitRateLimitPerHour {
 				w.Header().Set("Retry-After", "3600")
 				writeJSON(w, http.StatusTooManyRequests, map[string]any{
-					"error": "submission rate limit exceeded",
-					"limit": submitRateLimitPerHour,
+					"error":  "submission rate limit exceeded",
+					"limit":  submitRateLimitPerHour,
 					"window": "1 hour",
 				})
 				return
@@ -244,14 +245,26 @@ func runGradingPipeline(deps SubmissionDeps, submissionID uuid.UUID,
 	}
 	var gres *grader.GraderResult
 	switch deps.GraderEngine {
+	case "ollama":
+		if deps.Ollama == nil {
+			err = fmt.Errorf("ollama engine selected but client not initialized")
+		} else {
+			gres, err = grader.RunOllama(ctx, deps.Ollama, graderInput)
+		}
 	case "gemini":
 		if deps.Gemini == nil {
 			err = fmt.Errorf("gemini engine selected but client not initialized")
 		} else {
 			gres, err = grader.RunGemini(ctx, deps.Gemini, graderInput)
 		}
+	case "anthropic":
+		if deps.Anthropic == nil {
+			err = fmt.Errorf("anthropic engine selected but client not initialized")
+		} else {
+			gres, err = grader.Run(ctx, deps.Anthropic, graderInput)
+		}
 	default:
-		gres, err = grader.Run(ctx, deps.Anthropic, graderInput)
+		err = fmt.Errorf("unsupported grader engine %q", deps.GraderEngine)
 	}
 	if err != nil {
 		log.Printf("[grade %s] rubric error: %v", submissionID, err)
@@ -483,7 +496,7 @@ func GetSubmission(deps SubmissionDeps) http.HandlerFunc {
 			return
 		}
 		var (
-			problemSlug, status, variant  string
+			problemSlug, status, variant   string
 			codeFiles, testResults, scores []byte
 			finalScore                     *float64
 			submittedAt, gradedAt          *time.Time
