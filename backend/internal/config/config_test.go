@@ -15,7 +15,7 @@ func setBaseTestEnv(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "")
 	t.Setenv("CLAUDE_FALLBACK_ENABLED", "false")
 	t.Setenv("GRADER_ENGINE", "ollama")
-	t.Setenv("CHAT_ENGINE", "disabled")
+	t.Setenv("CHAT_ENGINE", "ollama")
 	t.Setenv("OLLAMA_BASE_URL", "http://localhost:11434")
 	t.Setenv("OLLAMA_MODEL", "qwen3:8b")
 	t.Setenv("OLLAMA_TIMEOUT_SEC", "180")
@@ -32,8 +32,8 @@ func TestLoadOllamaWithoutCloudKeys(t *testing.T) {
 	if cfg.GraderEngine != "ollama" {
 		t.Fatalf("GraderEngine = %q, want ollama", cfg.GraderEngine)
 	}
-	if cfg.ChatEngine != "disabled" {
-		t.Fatalf("ChatEngine = %q, want disabled", cfg.ChatEngine)
+	if cfg.ChatEngine != "ollama" {
+		t.Fatalf("ChatEngine = %q, want ollama", cfg.ChatEngine)
 	}
 	if cfg.OllamaBaseURL != "http://localhost:11434" {
 		t.Fatalf("OllamaBaseURL = %q", cfg.OllamaBaseURL)
@@ -83,6 +83,41 @@ func TestLoadRejectsUnknownGraderEngine(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "GRADER_ENGINE") {
 		t.Fatalf("Load() error = %q, want GRADER_ENGINE error", err)
+	}
+}
+
+func TestLoadRejectsCloudChatEngine(t *testing.T) {
+	setBaseTestEnv(t)
+	t.Setenv("CHAT_ENGINE", "gemini")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want invalid chat engine error")
+	}
+	if !strings.Contains(err.Error(), "CHAT_ENGINE") {
+		t.Fatalf("Load() error = %q, want CHAT_ENGINE error", err)
+	}
+}
+
+func TestLoadAllowsConfigurableOllamaModel(t *testing.T) {
+	setBaseTestEnv(t)
+	t.Setenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+	t.Setenv("OLLAMA_MODEL", "qwen3:14b")
+	t.Setenv("OLLAMA_TIMEOUT_SEC", "240")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.OllamaBaseURL != "http://127.0.0.1:11434" {
+		t.Fatalf("OllamaBaseURL = %q", cfg.OllamaBaseURL)
+	}
+	if cfg.OllamaModel != "qwen3:14b" {
+		t.Fatalf("OllamaModel = %q, want qwen3:14b", cfg.OllamaModel)
+	}
+	if cfg.OllamaTimeoutSec != 240 {
+		t.Fatalf("OllamaTimeoutSec = %d, want 240", cfg.OllamaTimeoutSec)
 	}
 }
 

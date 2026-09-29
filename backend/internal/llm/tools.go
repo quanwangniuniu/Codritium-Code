@@ -161,19 +161,24 @@ func (fileEditTool) Spec() ToolSpec {
 				},
 				"content": map[string]any{
 					"type":        "string",
-					"description": "Full replacement contents of the file.",
+					"minLength":   1,
+					"description": "Complete non-empty replacement contents of the file. Never omit this value or send an empty string.",
 				},
 			},
-			"required": []string{"path", "content"},
+			"required":             []string{"path", "content"},
+			"additionalProperties": false,
 		},
 	}
 }
 
 func (fileEditTool) Execute(ctx context.Context, input map[string]any, deps ToolDeps) (string, bool, error) {
-	path, _ := input["path"].(string)
-	content, _ := input["content"].(string)
-	if path == "" {
+	path, pathOK := input["path"].(string)
+	content, contentOK := input["content"].(string)
+	if !pathOK || path == "" {
 		return `{"error":"path required"}`, true, nil
+	}
+	if !contentOK || content == "" {
+		return `{"error":"non-empty content required"}`, true, nil
 	}
 	if err := checkDeny("FileEdit", path, deps.Deny); err != nil {
 		return fmt.Sprintf(`{"error":%q}`, err.Error()), true, nil

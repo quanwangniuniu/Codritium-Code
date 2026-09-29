@@ -534,15 +534,28 @@ func GetSubmission(deps SubmissionDeps) http.HandlerFunc {
 			finalScore                     *float64
 			submittedAt, gradedAt          *time.Time
 			userID                         uuid.UUID
+			sessionID                      *uuid.UUID
 		)
 		err = deps.Pool.QueryRow(r.Context(), `
 			SELECT s.user_id, p.slug, s.status, s.variant, s.code_files::text,
-			       COALESCE(s.test_results::text,'null'), COALESCE(s.scores::text,'null'),
-			       s.final_score, s.submitted_at, s.graded_at
+                   COALESCE(s.test_results::text,'null'), COALESCE(s.scores::text,'null'),
+                   s.final_score, s.submitted_at, s.graded_at, s.session_id
 			FROM submissions s
 			JOIN problems p ON p.id = s.problem_id
 			WHERE s.id = $1 AND s.user_id = $2`, id, u.ID,
-		).Scan(&userID, &problemSlug, &status, &variant, &codeFiles, &testResults, &scores, &finalScore, &submittedAt, &gradedAt)
+		).Scan(
+			&userID,
+			&problemSlug,
+			&status,
+			&variant,
+			&codeFiles,
+			&testResults,
+			&scores,
+			&finalScore,
+			&submittedAt,
+			&gradedAt,
+			&sessionID,
+		)
 		if err != nil {
 			http.Error(w, "submission not found", http.StatusNotFound)
 			return
@@ -570,6 +583,7 @@ func GetSubmission(deps SubmissionDeps) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"id":           id,
 			"user_id":      userID,
+			"session_id":   sessionID,
 			"problem_slug": problemSlug,
 			"status":       status,
 			"variant":      variant,

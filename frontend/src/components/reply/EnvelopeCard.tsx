@@ -12,6 +12,8 @@ import {
   Clipboard,
   Flag,
   Undo2,
+  Bot,
+  UserRound,
 } from "lucide-react";
 import type { ReplyEnvelope, ReplyKind } from "@/types/reply";
 import { SURFACE_KINDS } from "@/types/reply";
@@ -19,7 +21,7 @@ import { t } from "@/lib/i18n";
 import { useLocale } from "@/lib/i18n-client";
 
 // EnvelopeCard renders a single replay step. It is the only place the UI
-// knows what each of the 13 surface kinds looks like; the StepController
+// knows what each of the 14 surface kinds looks like; the StepController
 // and the higher-level page only see "render(env)". Collapse kinds
 // (compact_triggered / first_message_classified / ai_output_read) return
 // null, which the transform layer would normally filter out before we
@@ -71,6 +73,105 @@ function pickKindPayload(env: ReplyEnvelope): {
   };
 }
 
+type TranscriptBlock = {
+  type?: string;
+  text?: string;
+  id?: string;
+  name?: string;
+  input?: unknown;
+  tool_use_id?: string;
+  content?: unknown;
+  is_error?: boolean;
+};
+
+function transcriptText(payload: Record<string, unknown>): string {
+  if (!Array.isArray(payload.content)) return "";
+
+  return payload.content
+    .map((value) => {
+      if (!value || typeof value !== "object") {
+        return stringifyTranscriptValue(value);
+      }
+
+      const block = value as TranscriptBlock;
+      switch (block.type) {
+        case "text":
+          return block.text ?? "";
+
+        case "tool_use": {
+          const name = block.name ?? "Tool";
+          const input = stringifyTranscriptValue(block.input ?? {});
+          return `${name}\n${input}`;
+        }
+
+        case "tool_result": {
+          const result = stringifyTranscriptValue(block.content ?? "");
+          return block.is_error ? `Error\n${result}` : result;
+        }
+
+        default:
+          return stringifyTranscriptValue(value);
+      }
+    })
+    .filter((value) => value.trim() !== "")
+    .join("\n\n");
+}
+
+function stringifyTranscriptValue(value: unknown): string {
+  if (typeof value === "string") return value;
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function TranscriptMessageCard({
+  payload,
+}: {
+  payload: Record<string, unknown>;
+}) {
+  const role =
+    typeof payload.role === "string" ? payload.role : "assistant";
+  const description = transcriptText(payload);
+
+  if (role === "user") {
+    return (
+      <SideBubble
+        layout={CANDIDATE_SIDE}
+        who={t("role_engineer")}
+        icon={<UserRound size={13} strokeWidth={2} />}
+        title={t("role_engineer")}
+        description={description}
+      />
+    );
+  }
+
+  if (role === "tool") {
+    return (
+      <SideBubble
+        layout={AI_SIDE}
+        who={t("ai_role")}
+        icon={<Wrench size={13} strokeWidth={2} />}
+        title={t("envelope_tool_result")}
+        description={description}
+        muted
+      />
+    );
+  }
+
+  return (
+    <SideBubble
+      layout={AI_SIDE}
+      who={t("ai_role")}
+      icon={<Bot size={13} strokeWidth={2} />}
+      title="Qwen"
+      description={description}
+    />
+  );
+}
+
 export function EnvelopeCard({ env }: { env: ReplyEnvelope }) {
   useLocale();
   if (!SURFACE_KINDS.has(env.kind)) return null;
@@ -86,6 +187,8 @@ function KindCard({
   payload: ReturnType<typeof pickKindPayload>;
 }) {
   switch (env.kind) {
+    case "chat_message":
+      return <TranscriptMessageCard payload={env.payload} />;
     case "session_started":
       return (
         <CenteredChip
@@ -229,11 +332,17 @@ function KindCard({
 function iconForTool(name: string | undefined): React.ReactNode {
   switch (name) {
     case "FileRead":
+    case "Grep":
+    case "Glob":
       return <FileSearch size={13} strokeWidth={2} />;
+
     case "FileEdit":
       return <Pencil size={13} strokeWidth={2} />;
+
     case "RunTests":
+    case "RunCommand":
       return <Terminal size={13} strokeWidth={2} />;
+
     default:
       return <Wrench size={13} strokeWidth={2} />;
   }
@@ -358,7 +467,15 @@ function SideBubble({
           </div>
         )}
         {description && (
-          <div style={{ fontSize: 12.5, color: "var(--ink)", lineHeight: 1.55 }}>
+          <div
+            style={{
+              fontSize: 12.5,
+              color: "var(--ink)",
+              lineHeight: 1.55,
+              whiteSpace: "pre-wrap",
+              overflowWrap: "anywhere",
+            }}
+          >
             {description}
           </div>
         )}

@@ -162,14 +162,32 @@ export default function ProblemWorkspacePage() {
           const toolUseId = String(env.payload.tool_use_id ?? "");
           const summary = String(env.payload.input_summary ?? "");
           const auto = env.payload.auto === true;
-          const path = parseEditPath(summary) ?? parseReadPath(summary);
+
+          const rawInput = env.payload.input;
+          const input =
+            rawInput && typeof rawInput === "object"
+              ? (rawInput as Record<string, unknown>)
+              : {};
+
+          const inputPath =
+            typeof input.path === "string" ? input.path : undefined;
+          const proposedContent =
+            typeof input.content === "string" ? input.content : undefined;
+
+          const path =
+            inputPath ?? parseEditPath(summary) ?? parseReadPath(summary);
           const patch: PendingPatch = {
             toolUseId,
             tool,
             inputSummary: summary,
             path: path ?? undefined,
             oldContent: path ? fileContents[path] : undefined,
-            newContent: path ? fileContents[path] : undefined,
+            newContent:
+              tool === "FileEdit"
+                ? proposedContent
+                : path
+                  ? fileContents[path]
+                  : undefined,
             auto,
           };
           if (!auto) {

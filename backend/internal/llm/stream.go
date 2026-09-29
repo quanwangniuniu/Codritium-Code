@@ -2,10 +2,9 @@ package llm
 
 import "context"
 
-// LLMStreamClient is the engine-neutral interface the v0.8 main loop
-// drives. Implementations wrap the underlying SDK (Anthropic / Gemini)
-// and translate their native streaming chunks into NormalizedChunk
-// values so chat_v2.go does not need a switch on engine.
+// LLMStreamClient is the engine-neutral interface used by the agent loop.
+// Implementations translate model responses into NormalizedChunk values
+// so chat_v2.go remains independent of the selected local model.
 type LLMStreamClient interface {
 	// StreamTurn opens a streaming completion for one turn and returns a
 	// reader the caller drains in order. Closing the reader (or ctx
@@ -13,9 +12,9 @@ type LLMStreamClient interface {
 	StreamTurn(ctx context.Context, req TurnRequest) (StreamReader, error)
 }
 
-// TurnRequest is what the main loop hands the stream client per turn.
-// History is the running message list (Anthropic-style content blocks).
-// Tools is the set of tools we want the model to be able to call this turn.
+// TurnRequest is what the agent loop hands to the stream client per turn.
+// Messages contains the running conversation history. Tools contains the
+// functions the model may call during this turn.
 type TurnRequest struct {
 	SystemPrompt string
 	Messages     []Message
@@ -66,7 +65,7 @@ type ToolSpec struct {
 type StreamReader interface {
 	// Next advances. Returns ok=false at end of stream.
 	Next(ctx context.Context) (chunk NormalizedChunk, ok bool, err error)
-	// Close releases any underlying HTTP / SDK resources.
+	// Close releases any underlying HTTP resources.
 	Close() error
 }
 
@@ -77,8 +76,8 @@ type NormalizedChunk struct {
 	// text_delta
 	Text string
 	// tool_use_start
-	ToolUseID    string
-	ToolUseName  string
+	ToolUseID   string
+	ToolUseName string
 	// tool_use_input_delta: partial JSON for ToolUseID
 	InputJSONDelta string
 	// message_stop

@@ -533,6 +533,87 @@ func TestRunTurn_NoOpFileEditBypassed(t *testing.T) {
 	}
 }
 
+func TestRunTurn_EmptyFileEditBypassed(t *testing.T) {
+	pool := newTestPool(t)
+	sid := newTestSession(t, pool)
+	store := events.NewStore(pool)
+	waiter := NewDecisionWaiter()
+
+	stream := &scriptedStream{
+		scripts: [][]NormalizedChunk{
+			{
+				{Kind: "tool_use_start", ToolUseID: "tu-empty", ToolUseName: "FileEdit"},
+				{
+					Kind:           "tool_use_input_delta",
+					ToolUseID:      "tu-empty",
+					InputJSONDelta: `{"path":"rate_limiter.py","content":""}`,
+				},
+				{Kind: "tool_use_stop", ToolUseID: "tu-empty"},
+				{Kind: "message_stop", StopReason: "tool_use"},
+			},
+			{
+				{Kind: "text_delta", Text: "I will retry with non-empty content."},
+				{Kind: "message_stop", StopReason: "end_turn"},
+			},
+		},
+	}
+
+	agent := &Agent{
+		Stream: stream,
+		Events: store,
+		Waiter: waiter,
+		Tools:  NewDefaultRegistry(),
+		Workspace: &Workspace{Files: map[string]string{
+			"rate_limiter.py": "starter",
+		}},
+	}
+
+	go func() {
+		for i := 0; i < 60; i++ {
+			if waiter.Pending("tu-empty") {
+				t.Errorf("empty FileEdit entered the approval flow")
+				waiter.Notify("tu-empty", Decision{Kind: "reject"})
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
+
+	res, err := agent.RunTurn(
+		context.Background(),
+		sid,
+		1,
+		"edit rate_limiter.py",
+	)
+	if err != nil {
+		t.Fatalf("RunTurn: %v", err)
+	}
+	if res.Reason != "normal" {
+		t.Fatalf("reason=%q want normal", res.Reason)
+	}
+	if res.Iterations != 2 {
+		t.Fatalf("iterations=%d want 2", res.Iterations)
+	}
+	if got := agent.Workspace.Files["rate_limiter.py"]; got != "starter" {
+		t.Fatalf("workspace changed after empty edit; got %q", got)
+	}
+
+	kinds := collectEvents(t, pool, sid)
+	for _, banned := range []string{
+		"tool_use_proposed",
+		"candidate_approved",
+		"candidate_rejected",
+	} {
+		if contains(kinds, banned) {
+			t.Fatalf(
+				"event %q must not fire for empty FileEdit; got %v",
+				banned,
+				kinds,
+			)
+		}
+	}
+}
+
 func TestRunTurn_FileReadAutoApproved(t *testing.T) {
 	pool := newTestPool(t)
 	sid := newTestSession(t, pool)

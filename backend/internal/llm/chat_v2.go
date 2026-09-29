@@ -291,9 +291,25 @@ type pendingBuilder struct {
 // to the running history so the model can react on the next iteration.
 func (a *Agent) handleToolUse(ctx context.Context, sessionID uuid.UUID, turnIndex int, tu pendingToolUse) error {
 	if tu.Name == "FileEdit" {
-		path, pOK := tu.Input["path"].(string)
-		content, cOK := tu.Input["content"].(string)
-		if pOK && cOK && a.Workspace != nil {
+		path, pathOK := tu.Input["path"].(string)
+		content, contentOK := tu.Input["content"].(string)
+
+		if !pathOK || path == "" || !contentOK || content == "" {
+			a.recordMessage(ctx, sessionID, Message{
+				Role: "tool",
+				Content: []ContentBlock{{
+					Kind: "tool_result",
+					ToolResult: &ContentToolResult{
+						ToolUseID: tu.ID,
+						Output:    `{"error":"invalid FileEdit","detail":"path and non-empty content are required; call FileEdit again with the complete replacement file contents"}`,
+						IsError:   true,
+					},
+				}},
+			})
+			return nil
+		}
+
+		if a.Workspace != nil {
 			if existing, exists := a.Workspace.Files[path]; exists && existing == content {
 				a.recordMessage(ctx, sessionID, Message{
 					Role: "tool",
@@ -318,6 +334,7 @@ func (a *Agent) handleToolUse(ctx context.Context, sessionID uuid.UUID, turnInde
 	if _, err := a.Events.Append(ctx, sessionID, events.ToolUseProposed{
 		ToolUseID:    tu.ID,
 		Tool:         tu.Name,
+		Input:        tu.Input,
 		InputSummary: summary,
 		InputHash:    inputHash,
 		TurnIndex:    turnIndex,

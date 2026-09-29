@@ -1,13 +1,10 @@
-// Reply schema mirrors the session_events shape so the same UI can replay
-// either an authored official walkthrough (solutions_replies row) or the
-// candidate's own session (session_events rows transformed to this shape).
-//
-// Source of truth for the 16 kinds is backend/internal/events/event.go.
-// Surface kinds render as visible cards. Collapse kinds are stripped by
-// the transform layer — they are useful for grading but noisy for replay.
+// ReplyEnvelope is the shared replay shape used by official walkthroughs
+// and candidate sessions. Candidate replays combine transcript messages
+// from session_messages with structured events from session_events.
 
 export type ReplyKind =
-  // surface — decision-rich, visible cards
+  // surface — visible replay cards
+  | "chat_message"
   | "session_started"
   | "turn_completed"
   | "session_submitted"
@@ -21,7 +18,7 @@ export type ReplyKind =
   | "test_executed"
   | "self_check_artifact"
   | "candidate_reverted_edit"
-  // collapse — transient / internal, hidden in the replay UI
+  // collapse — internal events hidden from replay
   | "compact_triggered"
   | "first_message_classified"
   | "ai_output_read";
@@ -49,10 +46,9 @@ export interface Reply {
   envelopes: ReplyEnvelope[];
 }
 
-// SURFACE_KINDS is the allowlist of kinds the replay UI renders. Anything
-// outside this set is dropped during transform. Lift this to a constant so
-// EnvelopeCard and any generator validators share the same vocabulary.
+// SURFACE_KINDS contains the replay steps displayed to the candidate.
 export const SURFACE_KINDS: ReadonlySet<ReplyKind> = new Set<ReplyKind>([
+  "chat_message",
   "session_started",
   "turn_completed",
   "session_submitted",
@@ -72,11 +68,11 @@ export function isSurfaceKind(kind: ReplyKind): boolean {
   return SURFACE_KINDS.has(kind);
 }
 
-// transformForReplay drops collapse kinds and stable-sorts by seq so the
-// envelopes feed StepController in the order the session actually emitted.
-// Callers that already trust the source ordering can skip the sort, but the
-// extra cost is negligible against a few dozen rows.
-export function transformForReplay(envelopes: ReplyEnvelope[]): ReplyEnvelope[] {
+// transformForReplay removes internal events and restores the original
+// ordering shared by transcript messages and structured events.
+export function transformForReplay(
+  envelopes: ReplyEnvelope[],
+): ReplyEnvelope[] {
   return envelopes
     .filter((env) => isSurfaceKind(env.kind))
     .slice()

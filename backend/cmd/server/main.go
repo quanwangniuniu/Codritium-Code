@@ -89,26 +89,19 @@ func main() {
 	sessionsDeps := handlers.SessionsDeps{Pool: database.Pool}
 	streamDeps := handlers.StreamDeps{Pool: database.Pool, Events: eventStore, Text: textBroadcaster}
 
-	// Active chat engine: Gemini by default. CHAT_ENGINE=anthropic activates
-	// the preserved Claude path and requires CLAUDE_FALLBACK_ENABLED=true
-	// (enforced in config.Load).
-	chatEngine := cfg.ChatEngine
 	var streamClient llm.LLMStreamClient
 
-	switch chatEngine {
+	switch cfg.ChatEngine {
 	case "disabled":
-		log.Printf("chat engine disabled")
-	case "anthropic":
-		streamClient = llm.NewClaudeStream(anthClient)
-		log.Printf("chat engine: anthropic (claude_stream)")
-	case "gemini":
-		if geminiClient == nil {
-			log.Fatalf("CHAT_ENGINE=gemini but GOOGLE_API_KEY not set")
-		}
-		streamClient = llm.NewGeminiStream(geminiClient)
-		log.Printf("chat engine: gemini (gemini_stream)")
+		log.Printf("IDE assistant disabled")
+	case "ollama":
+		streamClient = llm.NewOllamaStream(
+			cfg.OllamaBaseURL,
+			cfg.OllamaModel,
+			time.Duration(cfg.OllamaTimeoutSec)*time.Second,
+		)
+		log.Printf("IDE assistant: ollama model=%s", cfg.OllamaModel)
 	}
-
 	agentFactory := buildAgentFactory(database, streamClient, eventStore, textBroadcaster, decisionWaiter)
 	agentRegistry := llm.NewAgentRegistry(agentFactory)
 	chatJailbreak := llm.NewChatJailbreakClassifier()
@@ -120,12 +113,15 @@ func main() {
 
 	var tipsAgent *tips.Agent
 	tipsFilter := tips.NewDefaultFilter()
-	if geminiClient != nil {
-		tipsAgent = tips.New(geminiClient, "")
-		tipsFilter.Classifier = tips.NewGeminiClassifier(geminiClient, "")
-		log.Printf("tips agent enabled (gemini); multiturn filter active with classifier")
+	if streamClient != nil {
+		tipsAgent = tips.New(streamClient, cfg.OllamaModel)
+		tipsFilter.Classifier = tips.NewOllamaClassifier(streamClient)
+		log.Printf(
+			"tutor enabled: ollama model=%s",
+			cfg.OllamaModel,
+		)
 	} else {
-		log.Printf("tips agent disabled — GOOGLE_API_KEY not set")
+		log.Printf("tutor disabled with IDE assistant")
 	}
 	tipsDeps := handlers.TipsDeps{Pool: database.Pool, Agent: tipsAgent, Filter: tipsFilter}
 	subDeps := handlers.SubmissionDeps{
@@ -174,6 +170,10 @@ func main() {
 	mux.Handle("GET /api/problems/{slug}", authMiddleware(http.HandlerFunc(handlers.GetProblem(probDeps))))
 	mux.Handle("GET /api/challenges/{slug}/official-reply", authMiddleware(handlers.GetOfficialReply(replyDeps)))
 	mux.Handle("GET /api/me/replays/{slug}", authMiddleware(handlers.GetMyReplay(replyDeps)))
+	mux.Handle(
+		"GET /api/sessions/{id}/reply",
+		authMiddleware(handlers.GetSessionReplay(replyDeps)),
+	)
 
 	// Authed routes — wrap each with authMiddleware so r.Context() carries the user.
 	meHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -390,7 +390,9 @@ func buildSystemPrompt(readme string, files map[string]string, hiddenTest string
 	}
 	return "You are the candidate-agent inside Codritium. The user is a software engineering candidate" +
 		" working on the following problem. Follow their lead — do not auto-execute changes. Every FileEdit" +
-		" you propose must be reviewed by the candidate before it lands.\n\n" +
+		" you propose must be reviewed by the candidate before it lands. Every FileEdit call must include" +
+		" a valid path and the complete non-empty replacement file contents. Never call FileEdit with" +
+		" missing or empty content.\n\n" +
 		"Problem README:\n" + readme + "\n\n" +
 		"Workspace files (visible):\n" + fileList + "\n" +
 		"There is no pre-supplied test file. To verify your changes you (or the candidate) must create a pytest" +
