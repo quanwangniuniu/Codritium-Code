@@ -1,0 +1,27 @@
+import { redirect } from "next/navigation";
+import { currentUser } from "@/lib/auth";
+import { listProblems } from "@/lib/store";
+import { t } from "@/lib/i18n";
+import { FORUM_SECTIONS, type ForumSection } from "@/lib/forum";
+import { ForumPostEditor } from "@/components/forum/ForumPostEditor";
+
+interface NewForumPostProps {
+  searchParams: Promise<{ section?: string }>;
+}
+
+export default async function NewForumPostPage({ searchParams }: NewForumPostProps) {
+  const user = await currentUser();
+  if (!user) redirect("/login?next=%2Fforums%2Fnew");
+  const { section } = await searchParams;
+  const problems = await listProblems();
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-6 px-4 py-6 sm:px-6 lg:py-8">
+      <h1 className="text-xl font-semibold">{t("forum_new_post_title")}</h1>
+      <ForumPostEditor
+        defaultSection={FORUM_SECTIONS.includes(section as ForumSection) ? (section as ForumSection) : undefined}
+        problems={problems.map((p) => ({ slug: p.id, title: p.title }))}
+      />
+    </div>
+  );
+}

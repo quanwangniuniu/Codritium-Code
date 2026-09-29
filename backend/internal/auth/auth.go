@@ -158,33 +158,6 @@ func loadUserByID(ctx context.Context, pool *pgxpool.Pool, id uuid.UUID) (*User,
 	return scanUser(pool.QueryRow(ctx, `SELECT `+userColumns+` FROM users WHERE id = $1`, id))
 }
 
-func loadUserByHandle(ctx context.Context, pool *pgxpool.Pool, handle string) (*User, error) {
-	return scanUser(pool.QueryRow(ctx, `SELECT `+userColumns+` FROM users WHERE handle = $1`, handle))
-}
-
-// SwitchUser is the dev-only mock login. It writes a signed cookie for any
-// handle present in users — useful for /api/auth/switch?handle=alice during
-// local development. Production logins go through GoogleHandler /
-// GitHubHandler / EmailHandler in google.go / github.go / email.go; those
-// handlers always upsert from a verified provider identity before signing
-// a session.
-func SwitchUser(pool *pgxpool.Pool, cookieSecret string, opts CookieOptions) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		handle := r.URL.Query().Get("handle")
-		if handle == "" {
-			http.Error(w, "handle query param required", http.StatusBadRequest)
-			return
-		}
-		u, err := loadUserByHandle(r.Context(), pool, handle)
-		if err != nil {
-			http.Error(w, "unknown handle", http.StatusUnauthorized)
-			return
-		}
-		SetSessionCookie(w, u.ID, cookieSecret, opts)
-		w.WriteHeader(http.StatusNoContent)
-	}
-}
-
 // Logout clears the session cookie. POST /api/auth/logout
 func Logout(opts CookieOptions) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

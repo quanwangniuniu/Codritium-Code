@@ -98,33 +98,6 @@ export interface DailyChallenge {
   problem_id: string;
 }
 
-export type ForumSection = "career" | "compensation" | "feedback" | "interview";
-
-export interface Discussion {
-  id: string;
-  author_id: string;
-  section: ForumSection;
-  problem_id: string | null;
-  title: string;
-  body_md: string;
-  tags: string[];
-  created_at: string;
-  updated_at: string;
-  upvote_count: number;
-  reply_count: number;
-  view_count: number;
-  is_pinned: boolean;
-}
-
-export interface DiscussionReply {
-  id: string;
-  discussion_id: string;
-  author_id: string;
-  body_md: string;
-  created_at: string;
-  upvote_count: number;
-}
-
 export interface PublicSolution {
   id: string;
   author_id: string;
