@@ -320,14 +320,19 @@ type LocaleKey =
   | "breadcrumb_problems"
   | "back_to_problems"
   | "problem_intro_blurb"
-  | "problem_brief_card_title"
-  | "problem_brief_card_desc"
-  | "problem_solutions_title"
-  | "badge_locked"
+  | "problem_tab_description"
+  | "problem_tab_submissions"
+  | "problem_solutions_unlocked_desc"
+  | "problem_solutions_view_btn"
+  | "problem_submissions_empty"
+  | "problem_submission_status_pending"
+  | "problem_submission_status_grading"
+  | "problem_submission_status_failed"
+  | "problem_start_title"
+  | "problem_start_point_files"
+  | "problem_start_point_ai"
+  | "problem_start_point_timer"
   | "problem_solutions_desc"
-  | "problem_discussion_title"
-  | "badge_soon"
-  | "problem_discussion_desc"
   // submission detail
   | "dim_label_correctness"
   | "dim_label_decomposition"
@@ -713,14 +718,19 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     breadcrumb_problems: "Problems",
     back_to_problems: "Back to problems",
     problem_intro_blurb: "Open the workspace to read the full task, edit files, talk to the AI assistant, and submit. Your in-progress edits are saved per-user across reload.",
-    problem_brief_card_title: "Problem brief",
-    problem_brief_card_desc: "Scenario, constraints, and what you'll need to deliver. Starter files are revealed inside the workspace.",
-    problem_solutions_title: "Solutions",
-    badge_locked: "locked",
+    problem_tab_description: "Description",
+    problem_tab_submissions: "Submissions",
+    problem_solutions_unlocked_desc: "You've solved this problem. Compare your approach with the official walkthrough and community solutions.",
+    problem_solutions_view_btn: "View solutions",
+    problem_submissions_empty: "You haven't submitted this problem yet.",
+    problem_submission_status_pending: "Pending",
+    problem_submission_status_grading: "Grading",
+    problem_submission_status_failed: "Grading failed",
+    problem_start_title: "Ready to solve?",
+    problem_start_point_files: "A multi-file workspace with the starter code",
+    problem_start_point_ai: "An AI assistant and Codritium Tips beside the editor",
+    problem_start_point_timer: "The timer starts when you open the workspace",
     problem_solutions_desc: "Top-rated community solutions unlock after you submit your own.",
-    problem_discussion_title: "Discussion",
-    badge_soon: "soon",
-    problem_discussion_desc: "Per-problem discussion will appear here once community launches.",
     dim_label_correctness: "Correctness",
     dim_label_decomposition: "Problem Decomposition",
     dim_label_ai_collab: "AI Collaboration",
@@ -1097,14 +1107,19 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     breadcrumb_problems: "",
     back_to_problems: "",
     problem_intro_blurb: "",
-    problem_brief_card_title: "",
-    problem_brief_card_desc: "",
-    problem_solutions_title: "",
-    badge_locked: "",
+    problem_tab_description: "",
+    problem_tab_submissions: "",
+    problem_solutions_unlocked_desc: "",
+    problem_solutions_view_btn: "",
+    problem_submissions_empty: "",
+    problem_submission_status_pending: "",
+    problem_submission_status_grading: "",
+    problem_submission_status_failed: "",
+    problem_start_title: "",
+    problem_start_point_files: "",
+    problem_start_point_ai: "",
+    problem_start_point_timer: "",
     problem_solutions_desc: "",
-    problem_discussion_title: "",
-    badge_soon: "",
-    problem_discussion_desc: "",
     dim_label_correctness: "",
     dim_label_decomposition: "",
     dim_label_ai_collab: "",

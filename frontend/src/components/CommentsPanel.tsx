@@ -14,11 +14,15 @@ import { t } from "@/lib/i18n";
 export function CommentsPanel({
   problemSlug,
   currentUserId,
+  embedded = false,
 }: {
   problemSlug: string;
   currentUserId: string;
+  // Embedded: rendered inside a host tab that already titles it, so skip the
+  // collapsible header and page padding and load immediately.
+  embedded?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(embedded);
   const [items, setItems] = useState<Comment[]>([]);
   const [cursor, setCursor] = useState("");
   const [hasMore, setHasMore] = useState(false);
@@ -104,21 +108,23 @@ export function CommentsPanel({
   };
 
   return (
-    <div className="mx-auto max-w-[1600px] px-6 py-6 border-t border-divider">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 text-base font-semibold hover:text-ink"
-      >
-        {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        {t("comments_title")}
-        {items.length > 0 && (
-          <span className="text-xs text-muted">({items.length})</span>
-        )}
-      </button>
+    <div className={embedded ? undefined : "mx-auto max-w-[1600px] px-6 py-6 border-t border-divider"}>
+      {!embedded && (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex items-center gap-2 text-base font-semibold hover:text-ink"
+        >
+          {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          {t("comments_title")}
+          {items.length > 0 && (
+            <span className="text-xs text-muted">({items.length})</span>
+          )}
+        </button>
+      )}
 
       {open && (
-        <div className="mt-4 space-y-4">
+        <div className={embedded ? "space-y-4" : "mt-4 space-y-4"}>
           {gateError && <p className="text-sm text-muted">{gateError}</p>}
 
           {!gateError && (
