@@ -5,15 +5,12 @@
 //   - Adapts Codritium response shapes into the demo2 UI shapes already
 //     consumed by pages (so the pages compile unchanged).
 //   - Stubs endpoints the backend does not implement yet (companies,
-//     daily-challenge, forum, discussions, solutions, by-handle user lookup,
+//     daily-challenge, solutions, by-handle user lookup,
 //     submissions history) with empty results. Wiring those is I6 territory.
 import { apiJSON } from "@/lib/api-server";
 import type {
   Company,
   DailyChallenge,
-  Discussion,
-  DiscussionReply,
-  ForumSection,
   Problem,
   PublicSolution,
   Submission,
@@ -372,20 +369,6 @@ export async function listAllUsers(): Promise<User[]> {
 }
 
 export async function getUserByHandle(_handle: string): Promise<User | null> {
-  return null;
-}
-
-export async function listForumSection(_section: ForumSection): Promise<Discussion[]> {
-  return [];
-}
-
-export async function listProblemDiscussions(_problemId: string): Promise<Discussion[]> {
-  return [];
-}
-
-export async function getDiscussion(
-  _id: string,
-): Promise<{ discussion: Discussion; replies: DiscussionReply[] } | null> {
   return null;
 }
 

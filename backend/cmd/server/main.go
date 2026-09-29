@@ -137,6 +137,7 @@ func main() {
 		Agents:       agentRegistry,
 	}
 	commentsDeps := handlers.CommentsDeps{Pool: database.Pool}
+	forumDeps := handlers.ForumDeps{Pool: database.Pool}
 	notesDeps := handlers.NotesDeps{Pool: database.Pool}
 	replyDeps := handlers.ReplyDeps{Pool: database.Pool}
 
@@ -214,6 +215,22 @@ func main() {
 	mux.Handle("POST /api/comments/{id}/vote", authMiddleware(handlers.VoteComment(commentsDeps)))
 	mux.Handle("DELETE /api/comments/{id}", authMiddleware(handlers.DeleteComment(commentsDeps)))
 
+	// Community forum. Reads are public (the middleware leaves signed-out
+	// users nil); writes require a session, enforced in the handlers.
+	mux.Handle("GET /api/forum/posts", authMiddleware(handlers.ListForumPosts(forumDeps)))
+	mux.Handle("GET /api/forum/pinned", authMiddleware(handlers.ListPinnedForumPosts(forumDeps)))
+	mux.Handle("GET /api/forum/trending", authMiddleware(handlers.ListTrendingForumPosts(forumDeps)))
+	mux.Handle("POST /api/forum/posts", authMiddleware(handlers.CreateForumPost(forumDeps)))
+	mux.Handle("GET /api/forum/posts/{id}", authMiddleware(handlers.GetForumPost(forumDeps)))
+	mux.Handle("PUT /api/forum/posts/{id}", authMiddleware(handlers.UpdateForumPost(forumDeps)))
+	mux.Handle("DELETE /api/forum/posts/{id}", authMiddleware(handlers.DeleteForumPost(forumDeps)))
+	mux.Handle("POST /api/forum/posts/{id}/vote", authMiddleware(handlers.VoteForumPost(forumDeps)))
+	mux.Handle("POST /api/forum/posts/{id}/pin", authMiddleware(handlers.PinForumPost(forumDeps)))
+	mux.Handle("GET /api/forum/posts/{id}/comments", authMiddleware(handlers.ListForumComments(forumDeps)))
+	mux.Handle("POST /api/forum/posts/{id}/comments", authMiddleware(handlers.CreateForumComment(forumDeps)))
+	mux.Handle("POST /api/forum/comments/{id}/vote", authMiddleware(handlers.VoteForumComment(forumDeps)))
+	mux.Handle("DELETE /api/forum/comments/{id}", authMiddleware(handlers.DeleteForumComment(forumDeps)))
+
 	// Candidate notes (private to the session owner; share publishes a comment).
 	mux.Handle("GET /api/sessions/{id}/notes", authMiddleware(handlers.ListNotes(notesDeps)))
 	mux.Handle("POST /api/sessions/{id}/notes", authMiddleware(handlers.CreateNote(notesDeps)))
@@ -259,7 +276,7 @@ func withCORS(h http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 		}
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		if r.Method == "OPTIONS" {
