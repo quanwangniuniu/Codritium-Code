@@ -302,7 +302,13 @@ type LocaleKey =
   | "problems_no_match"
   | "problems_clear_filters"
   | "problems_pro_lock_tooltip"
-  | "problems_filter_done"
+  | "problems_filter_status"
+  | "problems_status_todo"
+  | "problems_status_attempted"
+  | "problems_status_solved"
+  | "problems_col_title"
+  | "problems_search_placeholder"
+  | "problems_solved_count_fmt"
   | "problems_page_indicator_fmt"
   | "problems_page_prev"
   | "problems_page_next"
@@ -690,7 +696,13 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     problems_no_match: "No problems match the current filters.",
     problems_clear_filters: "Clear filters",
     problems_pro_lock_tooltip: "Requires Pro tier",
-    problems_filter_done: "Done",
+    problems_filter_status: "Status",
+    problems_status_todo: "Todo",
+    problems_status_attempted: "Attempted",
+    problems_status_solved: "Solved",
+    problems_col_title: "Title",
+    problems_search_placeholder: "Search problems",
+    problems_solved_count_fmt: "{count} solved",
     problems_page_indicator_fmt: "Page {page} of {total}",
     problems_page_prev: "Prev",
     problems_page_next: "Next",
@@ -1068,7 +1080,13 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     problems_no_match: "",
     problems_clear_filters: "",
     problems_pro_lock_tooltip: "",
-    problems_filter_done: "",
+    problems_filter_status: "",
+    problems_status_todo: "",
+    problems_status_attempted: "",
+    problems_status_solved: "",
+    problems_col_title: "",
+    problems_search_placeholder: "",
+    problems_solved_count_fmt: "",
     problems_page_indicator_fmt: "",
     problems_page_prev: "",
     problems_page_next: "",
