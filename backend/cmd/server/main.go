@@ -155,12 +155,14 @@ func main() {
 		oauthStateStore, userStore, sessionMgr)
 	emailAuth := auth.NewEmailHandler(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPFrom,
 		cfg.PublicURL, magicLinkStore, userStore, sessionMgr)
+	passwordAuth := auth.NewPasswordAuthHandler(database.Pool, cfg.CookieSecret, cookieOpts)
 
 	// Public (no auth)
 	mux.HandleFunc("GET /api/health", handlers.Health())
 	mux.HandleFunc("GET /api/anthropic/ping", handlers.AnthropicPing(deps))
 	mux.HandleFunc("GET /api/e2b/ping", handlers.E2BPing(deps))
-	mux.HandleFunc("POST /api/auth/switch", devOnly(cfg.Env, auth.SwitchUser(database.Pool, cfg.CookieSecret, cookieOpts)))
+	mux.HandleFunc("POST /api/auth/register", passwordAuth.Register)
+	mux.HandleFunc("POST /api/auth/login", passwordAuth.Login)
 	mux.HandleFunc("POST /api/auth/logout", auth.Logout(cookieOpts))
 
 	// Three-way login (Google + GitHub + email magic link).
@@ -274,19 +276,6 @@ func withLogging(h http.Handler) http.Handler {
 		h.ServeHTTP(w, r)
 		log.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
 	})
-}
-
-// devOnly returns 404 unless ENV=dev. Use to gate handlers that exist for
-// local iteration (mock login, fixture resetters) and must never be callable
-// in staging or prod, regardless of CORS or auth posture.
-func devOnly(env string, h http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if env != "dev" {
-			http.NotFound(w, r)
-			return
-		}
-		h(w, r)
-	}
 }
 
 // graderSandboxRunner adapts grader.RunPytest to llm.SandboxRunner so the

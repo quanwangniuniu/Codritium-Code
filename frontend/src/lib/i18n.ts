@@ -61,14 +61,22 @@ type LocaleKey =
   | "submit_disabled_no_grader"
   // auth
   | "login_title"
-  | "login_subtitle"
-  | "pick_demo_user"
   | "password_placeholder"
   | "password_required"
   | "sign_in"
   | "sign_out"
   | "signing_in"
   | "login_failed"
+  | "register_card_title"
+  | "register_card_desc"
+  | "register_password_hint"
+  | "create_account"
+  | "register_prompt"
+  | "login_prompt"
+  | "auth_email_exists"
+  | "auth_invalid_credentials"
+  | "auth_invalid_input"
+  | "auth_request_failed"
   // session
   | "session_quota_exceeded_oldest_evicted"
   // apply
@@ -464,14 +472,22 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     gemini_unavailable_progress_saved: "Grader is unavailable. Your progress has been saved locally.",
     submit_disabled_no_grader: "Submit is disabled — grader is unavailable.",
     login_title: "Sign in to Codritium",
-    login_subtitle: "Mock authentication for the demo. Pick an account and enter any password.",
-    pick_demo_user: "Pick a demo account",
     password_placeholder: "Password",
     password_required: "Password cannot be empty.",
     sign_in: "Sign in",
     sign_out: "Sign out",
     signing_in: "Signing in…",
     login_failed: "Could not sign in. Please try again.",
+    register_card_title: "Create your account",
+    register_card_desc: "Register with your email and a password to get started.",
+    register_password_hint: "At least 8 characters",
+    create_account: "Create account",
+    register_prompt: "New to Codritium?",
+    login_prompt: "Already have an account?",
+    auth_email_exists: "An account with that email already exists. Sign in instead.",
+    auth_invalid_credentials: "Email or password is incorrect.",
+    auth_invalid_input: "Enter a valid email and a password of at least 8 characters.",
+    auth_request_failed: "Could not reach the authentication service. Please try again.",
     session_quota_exceeded_oldest_evicted: "Local storage is full; the oldest saved session was removed.",
     apply_failed: "Could not apply the change. Please try again.",
     apply_in_progress: "Applying…",
@@ -559,10 +575,10 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     patch_runcommand_warn: "Shell command — review before approving",
     pending_label: "Pending",
     login_card_title: "Sign in",
-    login_card_desc: "Demo authentication: pick a mock user and enter any non-empty password. Real GitHub/Google OAuth comes later.",
-    login_account_label: "Account",
-    login_password_placeholder_hint: "any non-empty value",
-    login_footer_info: "Local demo: passwords are not validated server-side. Cookie session lasts 30 days.",
+    login_card_desc: "Sign in with the email address and password you registered with.",
+    login_account_label: "Email",
+    login_password_placeholder_hint: "Password",
+    login_footer_info: "Passwords are securely hashed. Your session lasts 30 days.",
     problem_tab_brief: "Brief",
     problem_tab_hint: "Hint",
     problem_tab_anti_patterns: "Anti-patterns",
@@ -834,14 +850,22 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     gemini_unavailable_progress_saved: "",
     submit_disabled_no_grader: "",
     login_title: "",
-    login_subtitle: "",
-    pick_demo_user: "",
     password_placeholder: "",
     password_required: "",
     sign_in: "",
     sign_out: "",
     signing_in: "",
     login_failed: "",
+    register_card_title: "",
+    register_card_desc: "",
+    register_password_hint: "",
+    create_account: "",
+    register_prompt: "",
+    login_prompt: "",
+    auth_email_exists: "",
+    auth_invalid_credentials: "",
+    auth_invalid_input: "",
+    auth_request_failed: "",
     session_quota_exceeded_oldest_evicted: "",
     apply_failed: "",
     apply_in_progress: "",
