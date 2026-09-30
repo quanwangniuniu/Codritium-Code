@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronDown, UserRound, Settings, CreditCard, LogOut } from "lucide-react";
 import { Backend } from "@/lib/api";
+import { initialOf } from "@/shared/format";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/lib/i18n-client";
 
@@ -45,7 +46,7 @@ export function NavUserMenu({ displayName, avatarUrl }: NavUserMenuProps) {
     router.refresh();
   }
 
-  const initial = (displayName || "?").trim().charAt(0).toUpperCase();
+  const initial = initialOf(displayName);
 
   const items = [
     { label: t("nav_profile"), href: "/profile", icon: UserRound },

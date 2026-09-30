@@ -1,4 +1,4 @@
-import { apiJSON } from "@/lib/api-server";
+import { apiJSON } from "@/shared/api/server";
 import type { User } from "@/lib/types";
 
 // Codritium backend returns a minimal user shape: {id, handle, display_name}.

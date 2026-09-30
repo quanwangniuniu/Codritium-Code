@@ -4,7 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { Check, Code2, Copy, SquareArrowOutUpRight } from "lucide-react";
 import { IDEPane } from "@/components/ide/IDEPane";
-import { langFor, useMonacoTheme } from "@/components/ide/editor-utils";
+import { useMonacoTheme } from "@/components/ide/editor-utils";
+import { languageForFile } from "@/shared/lib/language";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { ArrowLink } from "./ArrowLink";
@@ -93,7 +94,7 @@ export function CodeShowcase({ tracks }: { tracks: ShowcaseTrack[] }) {
         <div className="h-[380px] sm:h-[440px] bg-surface">
           <IDEPane
             path={`showcase/${problem.slug}/${problem.file}`}
-            language={langFor(problem.file)}
+            language={languageForFile(problem.file)}
             value={problem.code}
             readOnly
             theme={monacoTheme}

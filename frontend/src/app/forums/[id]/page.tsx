@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { compactCount } from "@/shared/format";
 import { ArrowLeft, Code2, Eye, MessageCircle, Pin } from "lucide-react";
 import { currentUser } from "@/lib/auth";
 import { t } from "@/lib/i18n";
 import {
-  compactCount,
   forumTimeAgo,
   FORUM_ANON_SECTIONS,
   FORUM_SECTION_LABEL_KEY,

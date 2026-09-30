@@ -16,6 +16,7 @@ import {
 import { Backend, type DecisionKind } from "@/lib/api";
 import { unifiedDiff, diffStats, type DiffLine } from "@/lib/diff";
 import { toast } from "@/lib/toast";
+import { languageForFile } from "@/shared/lib/language";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/lib/i18n-client";
 
@@ -37,16 +38,6 @@ function DiffEditorSkeleton() {
       Loading diff…
     </div>
   );
-}
-
-function langForPath(path: string | undefined): string {
-  if (!path) return "plaintext";
-  if (path.endsWith(".py")) return "python";
-  if (path.endsWith(".ts") || path.endsWith(".tsx")) return "typescript";
-  if (path.endsWith(".js") || path.endsWith(".jsx")) return "javascript";
-  if (path.endsWith(".go")) return "go";
-  if (path.endsWith(".md")) return "markdown";
-  return "plaintext";
 }
 
 // PendingPatch is the shape SideBar / PendingPatchesPanel hand to the
@@ -165,7 +156,7 @@ export function PatchPreview({
         <div style={{ height: 240 }}>
           <Editor
             height="100%"
-            language={langForPath(pending.path)}
+            language={languageForFile(pending.path)}
             theme="vs-dark"
             value={modifiedContent}
             onChange={(v) => setModifiedContent(v ?? "")}
@@ -219,7 +210,7 @@ function ToolBody({ pending }: { pending: PendingPatch }) {
           <DiffEditor
             height="100%"
             width="100%"
-            language={langForPath(pending.path)}
+            language={languageForFile(pending.path)}
             original={pending.oldContent ?? ""}
             modified={pending.newContent ?? ""}
             theme="vs-dark"

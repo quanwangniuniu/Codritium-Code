@@ -1,4 +1,4 @@
-import { apiJSON } from "@/lib/api-server";
+import { apiJSON } from "@/shared/api/server";
 import {
   feedSearchParams,
   type ForumFeedPage,

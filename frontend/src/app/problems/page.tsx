@@ -5,6 +5,13 @@ import { ProblemsPagination } from "@/components/ProblemsPagination";
 import { ProblemsFilterSelect } from "@/components/ProblemsFilterSelect";
 import { t, type LocaleKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import {
+  CATEGORIES,
+  CATEGORY_LABEL_KEY,
+  DIFFICULTIES,
+  DIFFICULTY_LABEL_KEY,
+  DIFFICULTY_TEXT_CLASS,
+} from "@/shared/labels";
 import type { Category, Difficulty } from "@/lib/types";
 
 type CategoryFilter = "all" | Category;
@@ -14,18 +21,12 @@ type FilterKey = "category" | "difficulty" | "status" | "company" | "q";
 
 const CATEGORY_FILTERS: { value: CategoryFilter; labelKey: LocaleKey }[] = [
   { value: "all", labelKey: "problems_filter_all" },
-  { value: "debugging", labelKey: "profile_category_debugging" },
-  { value: "feature_build", labelKey: "profile_category_feature_build" },
-  { value: "refactoring", labelKey: "profile_category_refactoring" },
-  { value: "security", labelKey: "profile_category_security" },
-  { value: "company_premium", labelKey: "profile_category_company_premium" },
+  ...CATEGORIES.map((c) => ({ value: c, labelKey: CATEGORY_LABEL_KEY[c] })),
 ];
 
 const DIFFICULTY_FILTERS: { value: "all" | Difficulty; labelKey: LocaleKey }[] = [
   { value: "all", labelKey: "problems_filter_all" },
-  { value: "easy", labelKey: "problems_difficulty_easy" },
-  { value: "medium", labelKey: "problems_difficulty_medium" },
-  { value: "hard", labelKey: "problems_difficulty_hard" },
+  ...DIFFICULTIES.map((d) => ({ value: d, labelKey: DIFFICULTY_LABEL_KEY[d] })),
 ];
 
 const STATUS_FILTERS: { value: StatusFilter; labelKey: LocaleKey }[] = [
@@ -34,26 +35,6 @@ const STATUS_FILTERS: { value: StatusFilter; labelKey: LocaleKey }[] = [
   { value: "attempted", labelKey: "problems_status_attempted" },
   { value: "solved", labelKey: "problems_status_solved" },
 ];
-
-const CATEGORY_LABEL_KEY: Record<Category, LocaleKey> = {
-  debugging: "profile_category_debugging",
-  feature_build: "profile_category_feature_build",
-  refactoring: "profile_category_refactoring",
-  security: "profile_category_security",
-  company_premium: "profile_category_company_premium",
-};
-
-const DIFFICULTY_LABEL_KEY: Record<Difficulty, LocaleKey> = {
-  easy: "problems_difficulty_easy",
-  medium: "problems_difficulty_medium",
-  hard: "problems_difficulty_hard",
-};
-
-const DIFFICULTY_TEXT: Record<Difficulty, string> = {
-  easy: "text-success",
-  medium: "text-warning",
-  hard: "text-danger",
-};
 
 const PAGE_SIZE = 50;
 const VALID_CATEGORY_VALUES = new Set<string>(CATEGORY_FILTERS.map((f) => f.value));
@@ -267,7 +248,7 @@ export default async function ProblemsPage({ searchParams }: ProblemsPageProps) 
                       <span className="hidden truncate text-muted sm:block">
                         {t(CATEGORY_LABEL_KEY[p.category])}
                       </span>
-                      <span className={cn("font-medium", DIFFICULTY_TEXT[p.difficulty])}>
+                      <span className={cn("font-medium", DIFFICULTY_TEXT_CLASS[p.difficulty])}>
                         {t(DIFFICULTY_LABEL_KEY[p.difficulty])}
                       </span>
                     </Link>

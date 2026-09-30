@@ -7,7 +7,8 @@ import { t } from "@/lib/i18n";
 import { useLocale } from "@/lib/i18n-client";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
-import { compactCount, forumApi, forumErrorMessage } from "@/lib/forum";
+import { forumApi, forumErrorMessage } from "@/lib/forum";
+import { compactCount } from "@/shared/format";
 
 interface ForumVoteProps {
   kind: "post" | "comment";

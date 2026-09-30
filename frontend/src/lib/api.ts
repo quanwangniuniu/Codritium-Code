@@ -1,20 +1,7 @@
-// Backend API client. All requests include credentials so the
-// codritium_user cookie travels between frontend (:3000) and backend (:8080).
+// Browser-side endpoint wrappers for the workspace / problems / profile
+// surfaces. Transport (credentials, JSON, ApiError) lives in shared/api.
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8080";
-
-export async function api<T = unknown>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
-    ...init,
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`API ${path} ${res.status}: ${text}`);
-  }
-  return res.json() as Promise<T>;
-}
+import { API_BASE, apiFetch, apiRequest } from "@/shared/api/client";
 
 export type Me = {
   id: string;
@@ -103,122 +90,106 @@ export type TipsStreamCallbacks = {
 };
 
 export const Backend = {
-  me: () => api<Me>("/api/me"),
-  logout: () =>
-    fetch(`${API_BASE}/api/auth/logout`, {
-      method: "POST",
-      credentials: "include",
-    }),
+  me: () => apiRequest<Me>("/api/me"),
+  logout: () => apiFetch("/api/auth/logout", { method: "POST" }),
   getProblem: (slug: string, variant: "as-is" | "stripped" = "as-is") =>
-    api<ProblemDetail>(`/api/problems/${slug}?variant=${variant}`),
-  deleteSubmission: async (id: string): Promise<void> => {
-    const res = await fetch(
-      `${API_BASE}/api/submissions/${encodeURIComponent(id)}`,
-      { method: "DELETE", credentials: "include" },
-    );
-    if (!res.ok && res.status !== 404) {
-      const text = await res.text();
-      throw new Error(`DELETE submission ${id} ${res.status}: ${text}`);
-    }
-  },
-  createSession: (challengeSlug: string, forceNew = false): Promise<SessionResp> =>
-    api<SessionResp>("/api/sessions", {
-      method: "POST",
-      body: JSON.stringify({ challenge_slug: challengeSlug, force_new: forceNew }),
+    apiRequest<ProblemDetail>(`/api/problems/${slug}?variant=${variant}`),
+  deleteSubmission: (id: string): Promise<void> =>
+    apiRequest<void>(`/api/submissions/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      allowNotFound: true,
     }),
+  createSession: (challengeSlug: string, forceNew = false): Promise<SessionResp> =>
+    apiRequest<SessionResp>("/api/sessions", {
+      method: "POST",
+      json: { challenge_slug: challengeSlug, force_new: forceNew },
+    }),
+  createSubmission: (input: {
+    problemSlug: string;
+    variant: string;
+    codeFiles: Record<string, string>;
+    sessionId: string | null;
+  }): Promise<{ id: string }> =>
+    apiRequest<{ id: string }>("/api/submissions", {
+      method: "POST",
+      json: {
+        problem_slug: input.problemSlug,
+        variant: input.variant,
+        code_files: input.codeFiles,
+        session_id: input.sessionId,
+      },
+    }),
+  updateMe: (input: { display_name: string; bio: string; region: string }): Promise<unknown> =>
+    apiRequest("/api/me", { method: "PATCH", json: input }),
   chat: (
     sessionId: string,
     message: string,
     files?: Record<string, string>,
   ): Promise<{ turn_index: number; accepted: boolean; session_id: string }> =>
-    api("/api/chat/v2", {
+    apiRequest("/api/chat/v2", {
       method: "POST",
-      body: JSON.stringify({ session_id: sessionId, message, files: files ?? {} }),
+      json: { session_id: sessionId, message, files: files ?? {} },
     }),
-  decision: async (
+  decision: (
     sessionId: string,
     toolUseId: string,
     decision: DecisionKind,
     opts?: { modifiedInput?: string; reason?: string; comment?: string },
-  ): Promise<void> => {
-    const res = await fetch(`${API_BASE}/api/decision`, {
+  ): Promise<void> =>
+    apiRequest<void>("/api/decision", {
       method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      json: {
         session_id: sessionId,
         tool_use_id: toolUseId,
         decision,
         modified_input: opts?.modifiedInput ?? "",
         reason: opts?.reason ?? "",
         comment: opts?.comment ?? "",
-      }),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`POST decision ${res.status}: ${text}`);
-    }
-  },
+      },
+    }),
   streamURL: (sessionId: string) =>
     `${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/stream`,
   listComments: (slug: string, cursor?: string, limit = 20): Promise<CommentPage> => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (cursor) params.set("cursor", cursor);
-    return api<CommentPage>(`/api/problems/${encodeURIComponent(slug)}/comments?${params}`);
+    return apiRequest<CommentPage>(`/api/problems/${encodeURIComponent(slug)}/comments?${params}`);
   },
   createComment: (slug: string, body: string, parentId?: string): Promise<{ id: string; created_at: string }> =>
-    api(`/api/problems/${encodeURIComponent(slug)}/comments`, {
+    apiRequest(`/api/problems/${encodeURIComponent(slug)}/comments`, {
       method: "POST",
-      body: JSON.stringify({ body, parent_id: parentId }),
+      json: { body, parent_id: parentId },
     }),
   voteComment: (id: string, value: -1 | 0 | 1): Promise<{ upvotes: number; downvotes: number; my_vote: number }> =>
-    api(`/api/comments/${encodeURIComponent(id)}/vote`, {
+    apiRequest(`/api/comments/${encodeURIComponent(id)}/vote`, {
       method: "POST",
-      body: JSON.stringify({ value }),
+      json: { value },
     }),
-  deleteComment: async (id: string): Promise<void> => {
-    const res = await fetch(`${API_BASE}/api/comments/${encodeURIComponent(id)}`, {
+  deleteComment: (id: string): Promise<void> =>
+    apiRequest<void>(`/api/comments/${encodeURIComponent(id)}`, {
       method: "DELETE",
-      credentials: "include",
-    });
-    if (!res.ok && res.status !== 404) {
-      const text = await res.text();
-      throw new Error(`DELETE comment ${id} ${res.status}: ${text}`);
-    }
-  },
+      allowNotFound: true,
+    }),
   listNotes: (sessionId: string): Promise<Note[]> =>
-    api<Note[]>(`/api/sessions/${encodeURIComponent(sessionId)}/notes`),
+    apiRequest<Note[]>(`/api/sessions/${encodeURIComponent(sessionId)}/notes`),
   createNote: (sessionId: string, body: string): Promise<{ id: string; session_id: string; created_at: string }> =>
-    api(`/api/sessions/${encodeURIComponent(sessionId)}/notes`, {
+    apiRequest(`/api/sessions/${encodeURIComponent(sessionId)}/notes`, {
       method: "POST",
-      body: JSON.stringify({ body }),
+      json: { body },
     }),
-  updateNote: async (id: string, body: string): Promise<void> => {
-    const res = await fetch(`${API_BASE}/api/notes/${encodeURIComponent(id)}`, {
+  updateNote: (id: string, body: string): Promise<void> =>
+    apiRequest<void>(`/api/notes/${encodeURIComponent(id)}`, {
       method: "PUT",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body }),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`PUT note ${res.status}: ${text}`);
-    }
-  },
-  deleteNote: async (id: string): Promise<void> => {
-    const res = await fetch(`${API_BASE}/api/notes/${encodeURIComponent(id)}`, {
+      json: { body },
+    }),
+  deleteNote: (id: string): Promise<void> =>
+    apiRequest<void>(`/api/notes/${encodeURIComponent(id)}`, {
       method: "DELETE",
-      credentials: "include",
-    });
-    if (!res.ok && res.status !== 404) {
-      const text = await res.text();
-      throw new Error(`DELETE note ${id} ${res.status}: ${text}`);
-    }
-  },
+      allowNotFound: true,
+    }),
   shareNote: (id: string): Promise<{ comment_id: string; challenge_slug: string }> =>
-    api(`/api/notes/${encodeURIComponent(id)}/share`, { method: "POST" }),
+    apiRequest(`/api/notes/${encodeURIComponent(id)}/share`, { method: "POST" }),
   tipsMessages: (sessionId: string) =>
-    api<{ messages: TipsMessage[] }>(
+    apiRequest<{ messages: TipsMessage[] }>(
       `/api/tips/messages?session_id=${encodeURIComponent(sessionId)}`,
     ),
   tipsStream: async (
@@ -228,15 +199,13 @@ export const Backend = {
     callbacks: TipsStreamCallbacks,
     signal?: AbortSignal,
   ): Promise<void> => {
-    const res = await fetch(`${API_BASE}/api/tips`, {
+    const res = await apiFetch("/api/tips", {
       method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      json: {
         session_id: sessionId,
         message,
         file_contents: fileContents,
-      }),
+      },
       signal,
     });
     if (!res.ok || !res.body) {

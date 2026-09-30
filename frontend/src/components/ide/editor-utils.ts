@@ -2,15 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-export function langFor(filename: string): string {
-  if (filename.endsWith(".py")) return "python";
-  if (filename.endsWith(".ts") || filename.endsWith(".tsx")) return "typescript";
-  if (filename.endsWith(".js") || filename.endsWith(".jsx")) return "javascript";
-  if (filename.endsWith(".go")) return "go";
-  if (filename.endsWith(".md")) return "markdown";
-  return "plaintext";
-}
-
 function resolveMonacoTheme(): "vs" | "vs-dark" {
   if (typeof document === "undefined") return "vs-dark";
   const dt = document.documentElement.getAttribute("data-theme");

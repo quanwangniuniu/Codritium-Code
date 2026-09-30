@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { Eye, Flame, Pin, Search, SquarePen, Sparkles, TrendingUp, X } from "lucide-react";
+import { compactCount } from "@/shared/format";
 import { currentUser } from "@/lib/auth";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import {
-  compactCount,
   FORUM_SECTIONS,
   FORUM_SECTION_LABEL_KEY,
   type ForumFeedQuery,

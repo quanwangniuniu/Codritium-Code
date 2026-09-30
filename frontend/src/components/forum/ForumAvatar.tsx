@@ -1,6 +1,7 @@
 import { BadgeCheck, UserRound } from "lucide-react";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { initialOf } from "@/shared/format";
 import type { ForumAuthor } from "@/lib/forum";
 
 const FALLBACK_COLORS = ["#7dd3fc", "#a7f3d0", "#fcd34d", "#f9a8d4", "#c4b5fd", "#fdba74"];
@@ -41,7 +42,7 @@ export function ForumAvatar({
       className="grid shrink-0 place-items-center rounded-full text-xs font-semibold text-[#0b1220]"
       aria-hidden
     >
-      {(author.display_name || author.handle)[0]?.toUpperCase()}
+      {initialOf(author.display_name, author.handle)}
     </span>
   );
 }

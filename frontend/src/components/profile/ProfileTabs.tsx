@@ -11,8 +11,10 @@ import {
 } from "lucide-react";
 import { SubmissionsList } from "@/components/SubmissionsList";
 import { t, type LocaleKey } from "@/lib/i18n";
-import type { Difficulty, Problem, ProfileData, Submission } from "@/lib/types";
+import type { Problem, ProfileData, Submission } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { DIFFICULTY_HOME_TEXT_CLASS, DIFFICULTY_LABEL_KEY } from "@/shared/labels";
+import { formatRelativeTime } from "@/shared/format";
 
 export type ProfileTab = "recent" | "solved" | "posts" | "all";
 
@@ -22,36 +24,6 @@ export const PROFILE_TABS: { id: ProfileTab; icon: LucideIcon; labelKey: LocaleK
   { id: "posts", icon: MessageSquare, labelKey: "prof_tab_posts" },
   { id: "all", icon: FileText, labelKey: "prof_tab_all" },
 ];
-
-const DIFF_TEXT: Record<Difficulty, string> = {
-  easy: "text-home-teal",
-  medium: "text-home-amber",
-  hard: "text-home-rose",
-};
-
-const DIFF_KEY: Record<Difficulty, LocaleKey> = {
-  easy: "problems_difficulty_easy",
-  medium: "problems_difficulty_medium",
-  hard: "problems_difficulty_hard",
-};
-
-const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-
-function ago(iso: string) {
-  const diff = Math.min(0, (new Date(iso).getTime() - Date.now()) / 1000);
-  const steps: [Intl.RelativeTimeFormatUnit, number][] = [
-    ["year", 31_536_000],
-    ["month", 2_592_000],
-    ["week", 604_800],
-    ["day", 86_400],
-    ["hour", 3_600],
-    ["minute", 60],
-  ];
-  for (const [unit, secs] of steps) {
-    if (Math.abs(diff) >= secs) return rtf.format(Math.round(diff / secs), unit);
-  }
-  return rtf.format(0, "minute");
-}
 
 interface ProfileTabsProps {
   tab: ProfileTab;
@@ -134,9 +106,9 @@ function RecentList({ items }: { items: ProfileData["recent_submissions"] }) {
         return (
           <Row key={s.id} href={`/submissions/${s.id}`}>
             <span className="min-w-0 flex-1 truncate font-medium">{s.problem_title}</span>
-            <span className={cn("hidden sm:inline text-xs", DIFF_TEXT[s.difficulty])}>{t(DIFF_KEY[s.difficulty])}</span>
+            <span className={cn("hidden sm:inline text-xs", DIFFICULTY_HOME_TEXT_CLASS[s.difficulty])}>{t(DIFFICULTY_LABEL_KEY[s.difficulty])}</span>
             <ScorePill status={s.status} score={s.final_score} passed={passed} />
-            <span className="shrink-0 whitespace-nowrap text-right text-xs text-faint sm:w-24">{ago(s.submitted_at)}</span>
+            <span className="shrink-0 whitespace-nowrap text-right text-xs text-faint sm:w-24">{formatRelativeTime(s.submitted_at)}</span>
           </Row>
         );
       })}
@@ -169,11 +141,11 @@ function SolvedList({ items }: { items: ProfileData["solved_problems"] }) {
         <Row key={p.slug} href={`/problems/${p.slug}`}>
           <CircleCheck size={16} className="shrink-0 text-home-green" />
           <span className="min-w-0 flex-1 truncate font-medium">{p.title}</span>
-          <span className={cn("hidden sm:inline text-xs", DIFF_TEXT[p.difficulty])}>{t(DIFF_KEY[p.difficulty])}</span>
+          <span className={cn("hidden sm:inline text-xs", DIFFICULTY_HOME_TEXT_CLASS[p.difficulty])}>{t(DIFFICULTY_LABEL_KEY[p.difficulty])}</span>
           <span className="text-xs text-muted tabular-nums">
             {t("prof_best_score", { params: { n: Math.round(p.best_score) } })}
           </span>
-          <span className="shrink-0 whitespace-nowrap text-right text-xs text-faint sm:w-24">{ago(p.solved_at)}</span>
+          <span className="shrink-0 whitespace-nowrap text-right text-xs text-faint sm:w-24">{formatRelativeTime(p.solved_at)}</span>
         </Row>
       ))}
     </ul>
@@ -193,7 +165,7 @@ function PostsList({ items }: { items: ProfileData["recent_posts"] }) {
           <span className="hidden sm:inline-flex items-center gap-1 text-xs text-muted tabular-nums">
             <MessageSquare size={13} /> {p.comment_count}
           </span>
-          <span className="shrink-0 whitespace-nowrap text-right text-xs text-faint sm:w-24">{ago(p.created_at)}</span>
+          <span className="shrink-0 whitespace-nowrap text-right text-xs text-faint sm:w-24">{formatRelativeTime(p.created_at)}</span>
         </Row>
       ))}
     </ul>

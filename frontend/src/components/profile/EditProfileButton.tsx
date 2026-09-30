@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Backend } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { toast } from "@/lib/toast";
 
@@ -42,12 +43,7 @@ export function EditProfileButton({ displayName, bio, region }: EditProfileButto
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch("/api/me", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      if (!res.ok) throw new Error(String(res.status));
+      await Backend.updateMe(form);
       close();
       toast.success(t("prof_edit_saved"));
       router.refresh();

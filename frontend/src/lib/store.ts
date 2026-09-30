@@ -7,7 +7,7 @@
 //   - Stubs endpoints the backend does not implement yet (companies,
 //     daily-challenge, solutions, by-handle user lookup,
 //     submissions history) with empty results. Wiring those is I6 territory.
-import { apiJSON } from "@/lib/api-server";
+import { apiJSON } from "@/shared/api/server";
 import type {
   Company,
   DailyChallenge,
@@ -68,6 +68,20 @@ function adaptProblemFull(p: BackendProblemFull): Problem {
 }
 
 // --- Submission adapter -------------------------------------------------
+
+// Backend submission status -> UI status. Shared by the detail and list
+// adapters; anything unknown renders as pending.
+const SUBMISSION_STATUS: Record<string, Submission["status"]> = {
+  pending: "pending",
+  grading: "grading",
+  graded: "completed",
+  completed: "completed",
+  failed: "failed",
+};
+
+function adaptStatus(status: string): Submission["status"] {
+  return SUBMISSION_STATUS[status] ?? "pending";
+}
 
 interface BackendSubmission {
   id: string;
@@ -156,13 +170,6 @@ function adaptAntiPatterns(raw: unknown): Submission["anti_patterns"] {
 }
 
 function adaptSubmission(s: BackendSubmission): Submission {
-  const statusMap: Record<string, Submission["status"]> = {
-    pending: "pending",
-    grading: "grading",
-    graded: "completed",
-    completed: "completed",
-    failed: "failed",
-  };
   // Pull a simple pass-rate from backend test_results shape: {tests: [{name, passed}, ...]}
   let passRate = 0;
   const tr = s.test_results as { tests?: { passed?: boolean }[] } | null;
@@ -174,7 +181,7 @@ function adaptSubmission(s: BackendSubmission): Submission {
     id: s.id,
     user_id: s.user_id,
     problem_id: s.problem_slug,
-    status: statusMap[s.status] ?? "pending",
+    status: adaptStatus(s.status),
     submitted_files: s.code_files ?? {},
     prompt_history: "",
     ai_tool_used: "other",
@@ -300,12 +307,6 @@ interface BackendSubmissionListItem {
 }
 
 function adaptListItem(s: BackendSubmissionListItem): Submission {
-  const statusMap: Record<string, Submission["status"]> = {
-    pending: "pending",
-    grading: "grading",
-    graded: "completed",
-    failed: "failed",
-  };
   // Profile / submission lists only need `score?.total` and status — so the
   // minimum ScoreBreakdown shape carries the final_score in `total`. Detail
   // page goes through getSubmission, which has the full scores blob.
@@ -325,7 +326,7 @@ function adaptListItem(s: BackendSubmissionListItem): Submission {
     id: s.id,
     user_id: "",
     problem_id: s.problem_slug,
-    status: statusMap[s.status] ?? "pending",
+    status: adaptStatus(s.status),
     submitted_files: {},
     prompt_history: "",
     ai_tool_used: "other",

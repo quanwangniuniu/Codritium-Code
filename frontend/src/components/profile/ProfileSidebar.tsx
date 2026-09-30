@@ -2,23 +2,9 @@ import { MapPin, MessageSquare, MessagesSquare, ThumbsUp } from "lucide-react";
 import { t, type LocaleKey } from "@/lib/i18n";
 import type { ProfileData } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { categoryLabel, dimensionLabel } from "@/shared/labels";
+import { formatMonthYear, initialOf } from "@/shared/format";
 import { EditProfileButton } from "./EditProfileButton";
-
-const CATEGORY_KEY: Record<string, LocaleKey> = {
-  debugging: "profile_category_debugging",
-  security: "profile_category_security",
-  refactoring: "profile_category_refactoring",
-  feature_build: "profile_category_feature_build",
-  company_premium: "profile_category_company_premium",
-};
-
-const DIMENSION_KEY: Record<string, LocaleKey> = {
-  correctness: "dim_label_correctness",
-  problem_decomposition: "dim_label_decomposition",
-  ai_collaboration: "dim_label_ai_collab",
-  verification: "dim_label_verification",
-  communication: "dim_label_communication",
-};
 
 // Rubric averages (1-5) bucketed like LeetCode's Advanced / Intermediate /
 // Fundamental skill groups.
@@ -30,11 +16,8 @@ const STRENGTH_TIERS: { labelKey: LocaleKey; dot: string; min: number; max: numb
 
 export function ProfileSidebar({ profile }: { profile: ProfileData }) {
   const { user, community, solved, dimensions } = profile;
-  const initial = (user.display_name || "?").trim().charAt(0).toUpperCase();
-  const memberSince = new Date(user.member_since).toLocaleDateString("en", {
-    month: "short",
-    year: "numeric",
-  });
+  const initial = initialOf(user.display_name);
+  const memberSince = formatMonthYear(user.member_since);
   const tierKey: LocaleKey = user.tier === "pro" || user.tier === "max" ? "tier_pro" : "tier_free";
   const scored = dimensions.filter((d) => d.average !== null);
 
@@ -107,7 +90,7 @@ export function ProfileSidebar({ profile }: { profile: ProfileData }) {
           {solved.by_category.map((c) => (
             <li key={c.key} className="text-sm">
               <div className="flex justify-between">
-                <span>{CATEGORY_KEY[c.key] ? t(CATEGORY_KEY[c.key]) : c.key}</span>
+                <span>{categoryLabel(c.key)}</span>
                 <span className="text-muted tabular-nums">
                   {c.solved}
                   <span className="text-faint">/{c.total}</span>
@@ -147,7 +130,7 @@ export function ProfileSidebar({ profile }: { profile: ProfileData }) {
                           className="rounded-full bg-surface-2 px-2.5 py-1 text-xs text-muted"
                           title={t("prof_strength_samples", { params: { n: d.samples } })}
                         >
-                          {DIMENSION_KEY[d.dimension] ? t(DIMENSION_KEY[d.dimension]) : d.dimension}
+                          {dimensionLabel(d.dimension)}
                           <span className="ml-1.5 text-ink tabular-nums">{d.average!.toFixed(1)}</span>
                         </span>
                       ))}

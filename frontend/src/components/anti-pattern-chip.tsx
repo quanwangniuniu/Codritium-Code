@@ -1,16 +1,10 @@
 import { AlertTriangle, CircleHelp, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { t, type LocaleKey } from "@/lib/i18n";
-
-const LABEL_KEYS: Record<string, LocaleKey> = {
-  hands_off: "antipattern_label_hands_off",
-  feature_marathon: "antipattern_label_feature_marathon",
-  ai_showcase: "antipattern_label_ai_showcase",
-  not_thinking: "antipattern_label_not_thinking",
-};
+import { t } from "@/lib/i18n";
+import { antiPatternLabel } from "@/shared/labels";
 
 interface AntiPatternChipProps {
-  name: keyof typeof LABEL_KEYS | string;
+  name: string;
   evaluated: boolean;
   triggered: boolean;
   evidence: string;
@@ -22,8 +16,7 @@ export function AntiPatternChip({
   triggered,
   evidence,
 }: AntiPatternChipProps) {
-  const key = LABEL_KEYS[name];
-  const label = key ? t(key) : name;
+  const label = antiPatternLabel(name);
 
   return (
     <div

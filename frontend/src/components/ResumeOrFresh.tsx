@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Play, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Backend } from "@/lib/api";
+import { formatDateTime, formatRelativeTime } from "@/shared/format";
 import { deleteSession, peekSessionMeta } from "@/lib/problem-session-store";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/lib/i18n-client";
@@ -13,26 +14,6 @@ import { useLocale } from "@/lib/i18n-client";
 interface Info {
   hasReal: boolean;
   lastUpdatedAt: number | null;
-}
-
-function formatRelative(ms: number): string {
-  const seconds = Math.floor((Date.now() - ms) / 1000);
-  if (seconds < 45) return t("resume_just_now");
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 2) return t("resume_minute_ago");
-  if (minutes < 60) return t("resume_minutes_ago_fmt", { params: { n: minutes } });
-  const hours = Math.floor(minutes / 60);
-  if (hours < 2) return t("resume_hour_ago");
-  if (hours < 24) return t("resume_hours_ago_fmt", { params: { n: hours } });
-  const days = Math.floor(hours / 24);
-  if (days < 2) return t("resume_day_ago");
-  if (days < 30) return t("resume_days_ago_fmt", { params: { n: days } });
-  return new Date(ms).toLocaleDateString();
-}
-
-function formatAbsolute(ms: number): string {
-  const d = new Date(ms);
-  return d.toLocaleString();
 }
 
 export function ResumeOrFresh({
@@ -122,9 +103,9 @@ export function ResumeOrFresh({
       {info.lastUpdatedAt && (
         <div
           className="text-xs text-muted"
-          title={formatAbsolute(info.lastUpdatedAt)}
+          title={formatDateTime(info.lastUpdatedAt)}
         >
-          {t("resume_last_edited_fmt", { params: { when: formatRelative(info.lastUpdatedAt) } })}
+          {t("resume_last_edited_fmt", { params: { when: formatRelativeTime(info.lastUpdatedAt) } })}
         </div>
       )}
     </div>

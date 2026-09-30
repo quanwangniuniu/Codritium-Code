@@ -11,6 +11,9 @@ import { t, type LocaleKey } from "@/lib/i18n";
 import { getProblem, listProblems } from "@/lib/store";
 import type { Category, Difficulty, Problem } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { DIFFICULTIES, DIFFICULTY_LABEL_KEY } from "@/shared/labels";
+
+const DIFFICULTY_OPTIONS = DIFFICULTIES.map((value) => ({ value, labelKey: DIFFICULTY_LABEL_KEY[value] }));
 
 const TRACKS: { category: Category; labelKey: LocaleKey; accent: HomeAccent }[] = [
   { category: "debugging", labelKey: "profile_category_debugging", accent: "blue" },
@@ -18,12 +21,6 @@ const TRACKS: { category: Category; labelKey: LocaleKey; accent: HomeAccent }[] 
   { category: "refactoring", labelKey: "profile_category_refactoring", accent: "teal" },
   { category: "feature_build", labelKey: "profile_category_feature_build", accent: "green" },
   { category: "company_premium", labelKey: "profile_category_company_premium", accent: "amber" },
-];
-
-const DIFFICULTIES: { value: Difficulty; labelKey: LocaleKey }[] = [
-  { value: "easy", labelKey: "problems_difficulty_easy" },
-  { value: "medium", labelKey: "problems_difficulty_medium" },
-  { value: "hard", labelKey: "problems_difficulty_hard" },
 ];
 
 const SHOWCASE_PER_TRACK = 3;
@@ -70,7 +67,7 @@ export default async function Home() {
     accent: tr.accent,
     count: problems.filter((p) => p.category === tr.category).length,
   })).filter((c) => c.count > 0);
-  const difficulties = DIFFICULTIES.map((d) => ({
+  const difficulties = DIFFICULTY_OPTIONS.map((d) => ({
     labelKey: d.labelKey,
     count: problems.filter((p) => p.difficulty === d.value).length,
   }));

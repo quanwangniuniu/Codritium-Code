@@ -19,6 +19,8 @@ import { usePaneLimit } from "@/hooks/usePaneLimit";
 import type { PendingPatch } from "@/components/PatchPreview";
 import type { OpenTab } from "@/lib/types";
 import { toast } from "@/lib/toast";
+import { formatDuration } from "@/shared/format";
+import { languageForFile } from "@/shared/lib/language";
 import { t as tr } from "@/lib/i18n";
 import { useProblemSession } from "@/hooks/useProblemSession";
 import { useSessionStream, type StreamEnvelope } from "@/hooks/useSessionStream";
@@ -26,15 +28,6 @@ import { clearRestoredFlag, deleteSession, getSession } from "@/lib/problem-sess
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 
 void ChatPanel;
-
-function langFor(filename: string): string {
-  if (filename.endsWith(".py")) return "python";
-  if (filename.endsWith(".ts") || filename.endsWith(".tsx")) return "typescript";
-  if (filename.endsWith(".js") || filename.endsWith(".jsx")) return "javascript";
-  if (filename.endsWith(".go")) return "go";
-  if (filename.endsWith(".md")) return "markdown";
-  return "plaintext";
-}
 
 function legacyToPanes(openTabs: OpenTab[], activeTab: string | null): EditorPaneState[] {
   return [{ id: "main", tabs: openTabs, activeTab }];
@@ -440,23 +433,12 @@ export default function ProblemWorkspacePage() {
   const handleSubmit = async () => {
     if (!problem) return;
     try {
-      const res = await fetch(`${Backend.apiBase}/api/submissions`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          problem_slug: slug,
-          variant: problem.variant,
-          code_files: fileContents,
-          session_id: sessionId,
-        }),
+      const data = await Backend.createSubmission({
+        problemSlug: slug,
+        variant: problem.variant,
+        codeFiles: fileContents,
+        sessionId,
       });
-      if (!res.ok) {
-        console.error("submit failed:", res.status, await res.text());
-        toast.error(tr("submit_failed"));
-        return;
-      }
-      const data = await res.json();
       if (handle) deleteSession(handle, slug);
       window.location.href = `/submissions/${data.id}`;
     } catch (e) {
@@ -465,9 +447,7 @@ export default function ProblemWorkspacePage() {
     }
   };
 
-  const timerStr = `${String(Math.floor(elapsed / 3600)).padStart(2, "0")}:${String(
-    Math.floor((elapsed % 3600) / 60),
-  ).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}`;
+  const timerStr = formatDuration(elapsed);
 
   if (!me) return null;
 
@@ -543,7 +523,7 @@ export default function ProblemWorkspacePage() {
       <StatusBar
         me={me}
         problemSlug={slug}
-        language={focusPaneActive ? langFor(focusPaneActive) : "—"}
+        language={focusPaneActive ? languageForFile(focusPaneActive) : "—"}
         cursorLine={1}
         cursorCol={1}
       />

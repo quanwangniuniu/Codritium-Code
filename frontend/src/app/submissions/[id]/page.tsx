@@ -21,27 +21,13 @@ import { ScoreBar } from "@/components/score-bar";
 import { AntiPatternChip } from "@/components/anti-pattern-chip";
 import { SubmissionTabs } from "@/components/SubmissionTabs";
 import { cn } from "@/lib/utils";
-import { t, type LocaleKey } from "@/lib/i18n";
+import { t } from "@/lib/i18n";
+import { DIMENSION_ORDER, dimensionLabel } from "@/shared/labels";
+import { formatDate, formatDateTime } from "@/shared/format";
 
 interface SubmissionPageProps {
   params: Promise<{ id: string }>;
 }
-
-const DIM_LABEL_KEYS: Record<string, LocaleKey> = {
-  correctness: "dim_label_correctness",
-  problem_decomposition: "dim_label_decomposition",
-  ai_collaboration: "dim_label_ai_collab",
-  verification_quality: "dim_label_verification",
-  communication: "dim_label_communication",
-};
-
-const DIM_ORDER = [
-  "correctness",
-  "problem_decomposition",
-  "ai_collaboration",
-  "verification_quality",
-  "communication",
-] as const;
 
 export default async function SubmissionPage({ params }: SubmissionPageProps) {
   const { id } = await params;
@@ -164,7 +150,7 @@ export default async function SubmissionPage({ params }: SubmissionPageProps) {
                         #{iterations.length - i}
                       </div>
                       <div className="text-[10px] text-faint truncate">
-                        {new Date(s.submitted_at).toLocaleDateString()}
+                        {formatDate(s.submitted_at)}
                       </div>
                     </div>
                     {delta !== null && (
@@ -228,8 +214,8 @@ export default async function SubmissionPage({ params }: SubmissionPageProps) {
               <p className="text-sm text-muted">
                 {t("submission_meta_submitted_fmt", {
                   params: {
-                    submitted: new Date(submission.submitted_at).toLocaleString(),
-                    graded: submission.graded_at ? new Date(submission.graded_at).toLocaleString() : "—",
+                    submitted: formatDateTime(submission.submitted_at),
+                    graded: submission.graded_at ? formatDateTime(submission.graded_at) : "—",
                   },
                 })}
               </p>
@@ -246,17 +232,16 @@ export default async function SubmissionPage({ params }: SubmissionPageProps) {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-5">
-                  {DIM_ORDER.map((dim) => {
+                  {DIMENSION_ORDER.map((dim) => {
                     const weight = score.weights_applied[dim];
                     if (weight === undefined) return null;
 
                     const dimScore = score[dim];
-                    const key = DIM_LABEL_KEYS[dim];
-
+                    
                     return (
                       <ScoreBar
                         key={dim}
-                        label={key ? t(key) : dim}
+                        label={dimensionLabel(dim)}
                         score={dimScore.score}
                         weight={weight}
                         reasoning={dimScore.reasoning}

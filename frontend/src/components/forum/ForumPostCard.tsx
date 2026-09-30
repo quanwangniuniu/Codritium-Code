@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { ArrowBigUp, Eye, MessageCircle, Pin } from "lucide-react";
+import { compactCount } from "@/shared/format";
 import { t } from "@/lib/i18n";
 import {
-  compactCount,
   forumTimeAgo,
   FORUM_SECTION_LABEL_KEY,
   type ForumPost,

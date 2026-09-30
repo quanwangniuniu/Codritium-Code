@@ -18,33 +18,15 @@ import { currentUser } from "@/lib/auth";
 import { t, type LocaleKey } from "@/lib/i18n";
 import { splitProblemReadme } from "@/lib/problem-readme";
 import { cn } from "@/lib/utils";
+import { CATEGORY_LABEL_KEY, DIFFICULTY_LABEL_KEY, DIFFICULTY_TONE } from "@/shared/labels";
+import { formatDateTime } from "@/shared/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/markdown";
 import { ResumeOrFresh } from "@/components/ResumeOrFresh";
 import { CommentsPanel } from "@/components/CommentsPanel";
 import { ProblemSplitView } from "@/components/ProblemSplitView";
-import type { Category, Difficulty, Submission } from "@/lib/types";
-
-const CATEGORY_LABEL_KEY: Record<Category, LocaleKey> = {
-  debugging: "profile_category_debugging",
-  feature_build: "profile_category_feature_build",
-  refactoring: "profile_category_refactoring",
-  security: "profile_category_security",
-  company_premium: "profile_category_company_premium",
-};
-
-const DIFFICULTY_LABEL_KEY: Record<Difficulty, LocaleKey> = {
-  easy: "problems_difficulty_easy",
-  medium: "problems_difficulty_medium",
-  hard: "problems_difficulty_hard",
-};
-
-const DIFFICULTY_TONE: Record<Difficulty, "success" | "warning" | "danger"> = {
-  easy: "success",
-  medium: "warning",
-  hard: "danger",
-};
+import type { Submission } from "@/lib/types";
 
 const SUBMISSION_STATUS_KEY: Record<Exclude<Submission["status"], "completed">, LocaleKey> = {
   pending: "problem_submission_status_pending",
@@ -152,7 +134,7 @@ export default async function ProblemIntroPage({ params }: ProblemIntroProps) {
                 </span>
               )}
               <time dateTime={s.submitted_at} className="text-xs text-muted tabular-nums">
-                {new Date(s.submitted_at).toLocaleString()}
+                {formatDateTime(s.submitted_at)}
               </time>
             </Link>
           </li>

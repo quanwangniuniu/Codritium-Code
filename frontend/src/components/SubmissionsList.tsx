@@ -11,6 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Backend } from "@/lib/api";
+import { formatDateTime } from "@/shared/format";
 import { toast } from "@/lib/toast";
 import { t as tr } from "@/lib/i18n";
 import { useLocale } from "@/lib/i18n-client";
@@ -234,7 +235,7 @@ function SubmissionRow({
           <div className="flex-1 min-w-0">
             <CardTitle className="text-sm truncate">{title}</CardTitle>
             <p className="text-xs text-muted mt-0.5">
-              {new Date(submission.submitted_at).toLocaleString()}
+              {formatDateTime(submission.submitted_at)}
               {submission.status !== "completed" && (
                 <span className="ml-1">· {submission.status}</span>
               )}

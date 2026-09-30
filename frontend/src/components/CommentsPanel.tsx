@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Backend, type Comment } from "@/lib/api";
+import { hasErrorCode } from "@/shared/api/errors";
+import { formatDateTime, initialOf } from "@/shared/format";
 import { toast } from "@/lib/toast";
 import { t } from "@/lib/i18n";
 
@@ -45,7 +47,7 @@ export function CommentsPanel({
         setGateError(null);
       } catch (e) {
         const msg = (e as Error).message ?? "";
-        if (msg.includes("403") && msg.includes("must_complete_problem")) {
+        if (hasErrorCode(e, "must_complete_problem", 403)) {
           setGateError(t("comments_must_complete"));
         } else {
           toast.error(msg || "Failed to load comments");
@@ -198,7 +200,7 @@ function CommentRow({
         className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-card text-xs font-semibold text-ink"
         aria-hidden
       >
-        {comment.user_display_name[0]?.toUpperCase()}
+        {initialOf(comment.user_display_name)}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 text-xs text-muted">
@@ -213,7 +215,7 @@ function CommentRow({
           )}
           <span className="text-faint">·</span>
           <span className="text-faint">
-            {new Date(comment.created_at).toLocaleString()}
+            {formatDateTime(comment.created_at)}
           </span>
         </div>
         <p className="mt-1 whitespace-pre-wrap text-sm text-ink">

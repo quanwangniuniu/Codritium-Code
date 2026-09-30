@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, Edit3, Save, Share2, Trash2, X } from "lucide-react";
 import { Backend, type Note } from "@/lib/api";
+import { hasErrorCode } from "@/shared/api/errors";
+import { formatDateTime } from "@/shared/format";
 import { toast } from "@/lib/toast";
 import { t } from "@/lib/i18n";
 
@@ -95,8 +97,7 @@ export function NotesPanel({
       toast.success(t("notes_share_success"));
       await reload();
     } catch (e) {
-      const msg = (e as Error).message ?? "";
-      if (msg.includes("409") && msg.includes("already_shared")) {
+      if (hasErrorCode(e, "already_shared", 409)) {
         toast.info(t("notes_share_success"));
       } else {
         toast.error(t("notes_share_failed"));
@@ -164,7 +165,7 @@ export function NotesPanel({
                     </p>
                     <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
                       <span className="text-faint">
-                        {new Date(n.updated_at).toLocaleString()}
+                        {formatDateTime(n.updated_at)}
                       </span>
                       {n.shared_to_comment_id && (
                         <span className="rounded bg-accent-soft px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-accent">

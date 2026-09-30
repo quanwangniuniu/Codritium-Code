@@ -2,7 +2,8 @@
 
 import { Code2, SplitSquareHorizontal, X, XSquare } from "lucide-react";
 import { IDEPane } from "./IDEPane";
-import { langFor, useMonacoTheme } from "./editor-utils";
+import { useMonacoTheme } from "./editor-utils";
+import { languageForFile } from "@/shared/lib/language";
 import { ReadmeTab } from "../ReadmeTab";
 import type { OpenTab } from "@/lib/types";
 
@@ -205,7 +206,7 @@ export function EditorPane({
         ) : hasActive ? (
           <IDEPane
             path={activeTab}
-            language={langFor(activeTab)}
+            language={languageForFile(activeTab)}
             value={activeContent}
             onChange={(v) => onContentChange(activeTab, v)}
             theme={monacoTheme}
