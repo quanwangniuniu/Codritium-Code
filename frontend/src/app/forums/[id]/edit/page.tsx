@@ -1,9 +1,9 @@
 import { notFound, redirect } from "next/navigation";
-import { currentUser } from "@/lib/auth";
-import { listProblems } from "@/lib/store";
+import { currentUser } from "@/features/auth/server";
+import { listProblems } from "@/features/problems/server";
 import { t } from "@/shared/i18n";
-import { getForumPost } from "@/lib/forum-server";
-import { ForumPostEditor } from "@/components/forum/ForumPostEditor";
+import { getForumPost } from "@/features/forum/server";
+import { ForumPostEditor } from "@/features/forum/components/ForumPostEditor";
 
 interface EditForumPostProps {
   params: Promise<{ id: string }>;

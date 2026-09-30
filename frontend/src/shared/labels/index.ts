@@ -4,7 +4,9 @@
 // new backend enum never renders as an empty string.
 
 import { t, type LocaleKey } from "@/shared/i18n";
-import type { Category, Difficulty } from "@/lib/types";
+// Domain enums shared by every surface that lists problems.
+export type Difficulty = "easy" | "medium" | "hard";
+export type Category = "debugging" | "refactoring" | "feature_build" | "security" | "company_premium";
 
 export const CATEGORIES: Category[] = [
   "debugging",
