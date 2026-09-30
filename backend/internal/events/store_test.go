@@ -2,11 +2,12 @@ package events
 
 import (
 	"context"
-	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"codritium/backend/internal/platform/testutil"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,31 +19,19 @@ import (
 
 func setupPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		dsn = "postgres://codritium:codritium@localhost:5434/codritium?sslmode=disable"
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Skipf("no postgres reachable at %s: %v", dsn, err)
-	}
-	if err := pool.Ping(ctx); err != nil {
-		t.Skipf("postgres ping failed: %v", err)
-	}
-	return pool
+	return testutil.Pool(t)
 }
 
 // makeSession creates a candidate_sessions row and registers cleanup.
 func makeSession(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	t.Helper()
 	var id uuid.UUID
+	owner := testutil.NewUser(t, pool, "user")
 	err := pool.QueryRow(context.Background(), `
-		INSERT INTO candidate_sessions (candidate_id, challenge_id, difficulty, candidate_role)
+		INSERT INTO candidate_sessions (user_id, challenge_id, difficulty, candidate_role)
 		VALUES ($1, $2, 'medium', 'senior_backend')
 		RETURNING session_id`,
-		"test-"+uuid.NewString(),
+		owner.ID,
 		"22-build-rate-limiter-middleware",
 	).Scan(&id)
 	if err != nil {
@@ -129,7 +118,7 @@ func TestStore_RejectsUnknownKind(t *testing.T) {
 
 type fakeEvent struct{}
 
-func (fakeEvent) Kind() string  { return "bogus_kind_does_not_exist" }
+func (fakeEvent) Kind() string   { return "bogus_kind_does_not_exist" }
 func (f fakeEvent) Payload() any { return f }
 
 func TestStore_BootstrapFromExistingMax(t *testing.T) {

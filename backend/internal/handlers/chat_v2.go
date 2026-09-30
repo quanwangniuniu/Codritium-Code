@@ -6,8 +6,10 @@ import (
 	"errors"
 	"net/http"
 
+	"codritium/backend/internal/platform/httpx"
+	"codritium/backend/internal/sessions"
+
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"codritium/backend/internal/auth"
@@ -77,16 +79,18 @@ func PostChatV2(deps ChatV2Deps) http.HandlerFunc {
 			return
 		}
 
-		challengeSlug, turnIndex, err := lookupSessionForChat(r.Context(), deps.Pool, u.Handle, sessionID)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				// Don't leak whether the session belongs to someone else.
-				http.Error(w, "session not found", http.StatusNotFound)
-				return
-			}
-			http.Error(w, "lookup: "+err.Error(), http.StatusInternalServerError)
+		store := sessions.Store{Pool: deps.Pool}
+		sess, err := store.GetOwned(r.Context(), sessionID, u)
+		if errors.Is(err, sessions.ErrNotFound) {
+			// Don't leak whether the session belongs to someone else.
+			http.Error(w, "session not found", http.StatusNotFound)
 			return
 		}
+		if err != nil {
+			httpx.Internal(w, r, err)
+			return
+		}
+		challengeSlug := sess.ChallengeSlug
 
 		agent, err := deps.Registry.GetOrCreate(r.Context(), sessionID, challengeSlug)
 		if err != nil {
@@ -101,14 +105,11 @@ func PostChatV2(deps ChatV2Deps) http.HandlerFunc {
 			agent.Workspace.Merge(req.Files)
 		}
 
-		// Bump turn counter on the session row up-front so concurrent chats
+		// Bump the turn counter up-front (atomically) so concurrent chats
 		// see a monotonic turn_index even if RunTurn is still running.
-		nextTurn := turnIndex + 1
-		if _, err := deps.Pool.Exec(r.Context(),
-			`UPDATE candidate_sessions SET total_turns = $2 WHERE session_id = $1`,
-			sessionID, nextTurn,
-		); err != nil {
-			http.Error(w, "bump turns: "+err.Error(), http.StatusInternalServerError)
+		nextTurn, err := store.NextTurn(r.Context(), sessionID)
+		if err != nil {
+			httpx.Internal(w, r, err)
 			return
 		}
 
@@ -125,25 +126,4 @@ func PostChatV2(deps ChatV2Deps) http.HandlerFunc {
 			SessionID: sessionID.String(),
 		})
 	}
-}
-
-// lookupSessionForChat returns (challenge_slug, current_total_turns) when
-// sessionID exists and belongs to the candidate identified by handle.
-// pgx.ErrNoRows otherwise — handler returns 404 in both cases (no leak).
-func lookupSessionForChat(ctx context.Context, pool *pgxpool.Pool, handle string, sessionID uuid.UUID) (string, int, error) {
-	var challenge string
-	var totalTurns int
-	var candidateID string
-	err := pool.QueryRow(ctx, `
-		SELECT candidate_id, challenge_id, total_turns
-		FROM candidate_sessions WHERE session_id = $1`,
-		sessionID,
-	).Scan(&candidateID, &challenge, &totalTurns)
-	if err != nil {
-		return "", 0, err
-	}
-	if candidateID != handle {
-		return "", 0, pgx.ErrNoRows
-	}
-	return challenge, totalTurns, nil
 }

@@ -1,9 +1,13 @@
-package problems
+// Package seed upserts the problem catalog from seed/problems/*.json.
+// It is separate from package problems so test helpers can seed a
+// database without importing the module they test.
+package seed
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,12 +31,12 @@ type problemRecord struct {
 	SampleTestContent  string                       `json:"sample_test_content,omitempty"`
 }
 
-// SeedFromDir loads every *.json file in dir and upserts a problem row.
+// FromDir loads every *.json file in dir and upserts a problem row.
 // hidden_test_content is stored alongside the problem and MUST be filtered
 // out of the candidate-facing API (see handlers/problems.go). status is
 // intentionally not part of the upsert payload — it is operator-managed via
 // scripts/admin_sql.md and would otherwise reset on every boot.
-func SeedFromDir(ctx context.Context, pool *pgxpool.Pool, dir string) error {
+func FromDir(ctx context.Context, pool *pgxpool.Pool, dir string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -41,6 +45,7 @@ func SeedFromDir(ctx context.Context, pool *pgxpool.Pool, dir string) error {
 		return fmt.Errorf("read seed dir: %w", err)
 	}
 
+	seeded := 0
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
@@ -65,7 +70,7 @@ func SeedFromDir(ctx context.Context, pool *pgxpool.Pool, dir string) error {
 		}
 
 		if _, leaked := rec.StarterFiles[rec.HiddenTestFilename]; leaked {
-			fmt.Printf("WARN: %s — hidden_test_filename %q present in starter_files, stripping to prevent leak\n",
+			log.Printf("seed: %s — hidden_test_filename %q present in starter_files, stripping to prevent leak",
 				rec.Slug, rec.HiddenTestFilename)
 			delete(rec.StarterFiles, rec.HiddenTestFilename)
 		}
@@ -101,8 +106,9 @@ func SeedFromDir(ctx context.Context, pool *pgxpool.Pool, dir string) error {
 		if err != nil {
 			return fmt.Errorf("upsert %s: %w", rec.Slug, err)
 		}
-		fmt.Printf("seeded problem: %s (%s/%s)\n", rec.Slug, rec.Category, rec.Difficulty)
+		seeded++
 	}
+	log.Printf("seed: upserted %d problems from %s", seeded, dir)
 	return nil
 }
 

@@ -133,11 +133,11 @@ func TestProfile_Aggregates(t *testing.T) {
 	insert(ids[0], "graded", f(85), now.AddDate(0, 0, -1), dims)
 	insert(ids[1], "graded", f(59.5), now, `{}`)
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO candidate_sessions (candidate_id, challenge_id, difficulty) VALUES ($1, $2, 'easy')`, u.Handle, slugs[2]); err != nil {
+		`INSERT INTO candidate_sessions (user_id, challenge_id, difficulty) VALUES ($1, $2, 'easy')`, u.ID, slugs[2]); err != nil {
 		t.Fatalf("insert session: %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = pool.Exec(ctx, `DELETE FROM candidate_sessions WHERE candidate_id = $1`, u.Handle)
+		_, _ = pool.Exec(ctx, `DELETE FROM candidate_sessions WHERE user_id = $1`, u.ID)
 	})
 
 	// One public post (upvoted) and one anonymous post that must not count.

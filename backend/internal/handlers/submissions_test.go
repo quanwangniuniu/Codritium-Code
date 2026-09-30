@@ -18,17 +18,8 @@ func TestSubmit_RejectsSessionOwnedBySomeoneElse(t *testing.T) {
 	pool := testutil.Pool(t)
 	ctx := context.Background()
 
-	owner := "owner-" + uuid.NewString()
-	var sid uuid.UUID
-	if err := pool.QueryRow(ctx, `
-		INSERT INTO candidate_sessions (candidate_id, challenge_id, difficulty)
-		VALUES ($1, '22-build-rate-limiter-middleware', 'medium')
-		RETURNING session_id`, owner).Scan(&sid); err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-	t.Cleanup(func() {
-		_, _ = pool.Exec(ctx, `DELETE FROM candidate_sessions WHERE session_id = $1`, sid)
-	})
+	owner := testutil.NewUser(t, pool, "user")
+	sid := testutil.NewSession(t, pool, owner, "22-build-rate-limiter-middleware", "medium")
 
 	var builds int
 	reg := llm.NewAgentRegistry(func(context.Context, uuid.UUID, string) (*llm.Agent, error) {
@@ -41,7 +32,7 @@ func TestSubmit_RejectsSessionOwnedBySomeoneElse(t *testing.T) {
 
 	body := `{"problem_slug":"22-build-rate-limiter-middleware","session_id":"` + sid.String() + `"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/submissions", strings.NewReader(body))
-	intruder := &auth.User{ID: uuid.New(), Handle: "intruder-" + uuid.NewString()}
+	intruder := testutil.NewUser(t, pool, "user")
 	req = req.WithContext(auth.WithUser(req.Context(), intruder))
 	rr := httptest.NewRecorder()
 	Submit(SubmissionDeps{Pool: pool, Agents: reg}).ServeHTTP(rr, req)

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"codritium/backend/internal/sessions"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -285,16 +287,6 @@ func ShareNote(deps NotesDeps) http.HandlerFunc {
 }
 
 func requireSessionOwner(r *http.Request, pool *pgxpool.Pool, u *auth.User, sessionID uuid.UUID) error {
-	var candidate string
-	err := pool.QueryRow(r.Context(),
-		`SELECT candidate_id FROM candidate_sessions WHERE session_id = $1`,
-		sessionID,
-	).Scan(&candidate)
-	if err != nil {
-		return err
-	}
-	if candidate != u.Handle {
-		return errors.New("not owner")
-	}
-	return nil
+	_, err := sessions.Store{Pool: pool}.GetOwned(r.Context(), sessionID, u)
+	return err
 }

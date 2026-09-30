@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"codritium/backend/internal/sessions"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -150,15 +152,8 @@ func GetMyReplay(deps ReplyDeps) http.HandlerFunc {
 			sessionID uuid.UUID
 			startedAt time.Time
 		)
-		err := deps.Pool.QueryRow(r.Context(), `
-			SELECT session_id, started_at
-			FROM candidate_sessions
-			WHERE candidate_id = $1 AND challenge_id = $2
-			ORDER BY started_at DESC
-			LIMIT 1`,
-			u.Handle, slug,
-		).Scan(&sessionID, &startedAt)
-		if errors.Is(err, pgx.ErrNoRows) {
+		sessionID, startedAt, err := sessions.Store{Pool: deps.Pool}.Latest(r.Context(), u.ID, slug)
+		if errors.Is(err, sessions.ErrNotFound) {
 			http.Error(w, "no session for this challenge yet", http.StatusNotFound)
 			return
 		}

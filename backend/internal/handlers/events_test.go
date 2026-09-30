@@ -15,29 +15,14 @@ import (
 	"codritium/backend/internal/platform/testutil"
 )
 
-func createSessionFor(t *testing.T, pool *pgxpool.Pool, handle string) uuid.UUID {
+func createSessionFor(t *testing.T, pool *pgxpool.Pool, u *auth.User) uuid.UUID {
 	t.Helper()
-	var id uuid.UUID
-	err := pool.QueryRow(context.Background(), `
-		INSERT INTO candidate_sessions (candidate_id, challenge_id, difficulty)
-		VALUES ($1, $2, 'medium')
-		RETURNING session_id`,
-		handle, "22-build-rate-limiter-middleware",
-	).Scan(&id)
-	if err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-	t.Cleanup(func() {
-		_, _ = pool.Exec(context.Background(),
-			`DELETE FROM candidate_sessions WHERE session_id = $1`, id)
-	})
-	return id
+	return testutil.NewSession(t, pool, u, "22-build-rate-limiter-middleware", "medium")
 }
 
-func sendEvent(t *testing.T, deps EventsDeps, handle, body string) *httptest.ResponseRecorder {
+func sendEvent(t *testing.T, deps EventsDeps, u *auth.User, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/api/events", strings.NewReader(body))
-	u := &auth.User{ID: uuid.New(), Handle: handle, DisplayName: handle}
 	req = req.WithContext(auth.WithUser(req.Context(), u))
 	rr := httptest.NewRecorder()
 	PostEvent(deps).ServeHTTP(rr, req)
@@ -56,8 +41,9 @@ func TestPostEvent_Unauthorized(t *testing.T) {
 
 func TestPostEvent_BadJSON(t *testing.T) {
 	pool := testutil.Pool(t)
+	alice := testutil.NewUser(t, pool, "user")
 	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
-	rr := sendEvent(t, deps, "alice", `{not json`)
+	rr := sendEvent(t, deps, alice, `{not json`)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d want 400", rr.Code)
 	}
@@ -65,8 +51,9 @@ func TestPostEvent_BadJSON(t *testing.T) {
 
 func TestPostEvent_BadSessionID(t *testing.T) {
 	pool := testutil.Pool(t)
+	alice := testutil.NewUser(t, pool, "user")
 	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
-	rr := sendEvent(t, deps, "alice", `{"session_id":"not-uuid","kind":"ai_output_read","payload":{}}`)
+	rr := sendEvent(t, deps, alice, `{"session_id":"not-uuid","kind":"ai_output_read","payload":{}}`)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d want 400", rr.Code)
 	}
@@ -74,10 +61,11 @@ func TestPostEvent_BadSessionID(t *testing.T) {
 
 func TestPostEvent_BackendKindRejected(t *testing.T) {
 	pool := testutil.Pool(t)
-	sid := createSessionFor(t, pool, "alice")
+	alice := testutil.NewUser(t, pool, "user")
+	sid := createSessionFor(t, pool, alice)
 	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
 	body := `{"session_id":"` + sid.String() + `","kind":"tool_use_proposed","payload":{}}`
-	rr := sendEvent(t, deps, "alice", body)
+	rr := sendEvent(t, deps, alice, body)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d want 400 for backend-only kind", rr.Code)
 	}
@@ -88,9 +76,10 @@ func TestPostEvent_BackendKindRejected(t *testing.T) {
 
 func TestPostEvent_UnknownSession(t *testing.T) {
 	pool := testutil.Pool(t)
+	alice := testutil.NewUser(t, pool, "user")
 	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
 	body := `{"session_id":"` + uuid.NewString() + `","kind":"ai_output_read","payload":{"message_id":"m1","pause_duration_sec":3,"scroll_depth_percent":80,"next_action_kind":"new_prompt"}}`
-	rr := sendEvent(t, deps, "alice", body)
+	rr := sendEvent(t, deps, alice, body)
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("status=%d want 404", rr.Code)
 	}
@@ -98,11 +87,13 @@ func TestPostEvent_UnknownSession(t *testing.T) {
 
 func TestPostEvent_CrossUserReturns404(t *testing.T) {
 	pool := testutil.Pool(t)
-	sid := createSessionFor(t, pool, "alice")
+	alice := testutil.NewUser(t, pool, "user")
+	bob := testutil.NewUser(t, pool, "user")
+	sid := createSessionFor(t, pool, alice)
 	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
 	// bob tries to emit on alice's session
 	body := `{"session_id":"` + sid.String() + `","kind":"ai_output_read","payload":{"message_id":"m1","pause_duration_sec":3,"scroll_depth_percent":80,"next_action_kind":"new_prompt"}}`
-	rr := sendEvent(t, deps, "bob", body)
+	rr := sendEvent(t, deps, bob, body)
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("status=%d want 404 (no existence leak)", rr.Code)
 	}
@@ -110,7 +101,8 @@ func TestPostEvent_CrossUserReturns404(t *testing.T) {
 
 func TestPostEvent_AIOutputReadHappy(t *testing.T) {
 	pool := testutil.Pool(t)
-	sid := createSessionFor(t, pool, "alice")
+	alice := testutil.NewUser(t, pool, "user")
+	sid := createSessionFor(t, pool, alice)
 	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
 	body := `{
 		"session_id":"` + sid.String() + `",
@@ -122,7 +114,7 @@ func TestPostEvent_AIOutputReadHappy(t *testing.T) {
 			"next_action_kind":"new_prompt"
 		}
 	}`
-	rr := sendEvent(t, deps, "alice", body)
+	rr := sendEvent(t, deps, alice, body)
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("status=%d want 204; body=%s", rr.Code, rr.Body.String())
 	}
@@ -143,7 +135,8 @@ func TestPostEvent_AIOutputReadHappy(t *testing.T) {
 
 func TestPostEvent_CandidateRevertedEditHappy(t *testing.T) {
 	pool := testutil.Pool(t)
-	sid := createSessionFor(t, pool, "alice")
+	alice := testutil.NewUser(t, pool, "user")
+	sid := createSessionFor(t, pool, alice)
 	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
 	body := `{
 		"session_id":"` + sid.String() + `",
@@ -155,7 +148,7 @@ func TestPostEvent_CandidateRevertedEditHappy(t *testing.T) {
 			"next_action_kind":"new_prompt"
 		}
 	}`
-	rr := sendEvent(t, deps, "alice", body)
+	rr := sendEvent(t, deps, alice, body)
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("status=%d want 204; body=%s", rr.Code, rr.Body.String())
 	}
@@ -163,7 +156,8 @@ func TestPostEvent_CandidateRevertedEditHappy(t *testing.T) {
 
 func TestPostEvent_UnknownPayloadFieldRejected(t *testing.T) {
 	pool := testutil.Pool(t)
-	sid := createSessionFor(t, pool, "alice")
+	alice := testutil.NewUser(t, pool, "user")
+	sid := createSessionFor(t, pool, alice)
 	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
 	body := `{
 		"session_id":"` + sid.String() + `",
@@ -176,7 +170,7 @@ func TestPostEvent_UnknownPayloadFieldRejected(t *testing.T) {
 			"smuggled_field":"oops"
 		}
 	}`
-	rr := sendEvent(t, deps, "alice", body)
+	rr := sendEvent(t, deps, alice, body)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d want 400 for unknown field", rr.Code)
 	}

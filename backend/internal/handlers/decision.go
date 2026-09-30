@@ -3,12 +3,9 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"codritium/backend/internal/auth"
 	"codritium/backend/internal/llm"
@@ -17,24 +14,6 @@ import (
 // SessionOwner answers whether a candidate session belongs to a user.
 type SessionOwner interface {
 	SessionOwnedBy(ctx context.Context, sessionID uuid.UUID, u *auth.User) (bool, error)
-}
-
-// PGSessionOwner checks ownership against candidate_sessions, which keys
-// candidates by handle (see migration 0002).
-type PGSessionOwner struct{ Pool *pgxpool.Pool }
-
-func (o PGSessionOwner) SessionOwnedBy(ctx context.Context, sessionID uuid.UUID, u *auth.User) (bool, error) {
-	var candidate string
-	err := o.Pool.QueryRow(ctx,
-		`SELECT candidate_id FROM candidate_sessions WHERE session_id = $1`, sessionID,
-	).Scan(&candidate)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	return candidate == u.Handle, nil
 }
 
 type DecisionDeps struct {

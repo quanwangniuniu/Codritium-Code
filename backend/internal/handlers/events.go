@@ -3,12 +3,13 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 
+	"codritium/backend/internal/platform/httpx"
+	"codritium/backend/internal/sessions"
+
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"codritium/backend/internal/auth"
@@ -66,22 +67,12 @@ func PostEvent(deps EventsDeps) http.HandlerFunc {
 			http.Error(w, "kind not allowed from frontend", http.StatusBadRequest)
 			return
 		}
-		// Ownership check: candidate_id is stored as the user's handle
-		// (decision_log D3). Look it up and compare.
-		var candidateID string
-		err = deps.Pool.QueryRow(r.Context(),
-			`SELECT candidate_id FROM candidate_sessions WHERE session_id = $1`,
-			sessionID,
-		).Scan(&candidateID)
-		if errors.Is(err, pgx.ErrNoRows) {
-			http.Error(w, "session not found", http.StatusNotFound)
-			return
-		}
+		owned, err := (sessions.Store{Pool: deps.Pool}).SessionOwnedBy(r.Context(), sessionID, u)
 		if err != nil {
-			http.Error(w, "lookup: "+err.Error(), http.StatusInternalServerError)
+			httpx.Internal(w, r, err)
 			return
 		}
-		if candidateID != u.Handle {
+		if !owned {
 			// Don't leak whether the session exists vs belongs to someone else.
 			http.Error(w, "session not found", http.StatusNotFound)
 			return

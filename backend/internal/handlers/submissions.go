@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"codritium/backend/internal/sessions"
+
 	"codritium/backend/internal/problems"
 
 	"github.com/google/uuid"
@@ -93,10 +95,7 @@ func Submit(deps SubmissionDeps) http.HandlerFunc {
 			if id, err := uuid.Parse(req.SessionID); err == nil {
 				// The session's transcript feeds grading and submit tears
 				// down its agent, so only the owner may attach it.
-				var owner string
-				if err := deps.Pool.QueryRow(ctx,
-					`SELECT candidate_id FROM candidate_sessions WHERE session_id = $1`, id,
-				).Scan(&owner); err != nil || owner != u.Handle {
+				if owned, err := (sessions.Store{Pool: deps.Pool}).SessionOwnedBy(ctx, id, u); err != nil || !owned {
 					http.Error(w, "session not found", http.StatusNotFound)
 					return
 				}
@@ -201,9 +200,7 @@ func Submit(deps SubmissionDeps) http.HandlerFunc {
 		// and history are about to go), and the in-memory agent is no
 		// longer needed — the transcript is already in session_messages.
 		if sessionID != nil {
-			if _, err := deps.Pool.Exec(ctx, `
-				UPDATE candidate_sessions SET submitted_at = now()
-				WHERE session_id = $1 AND submitted_at IS NULL`, *sessionID); err != nil {
+			if err := (sessions.Store{Pool: deps.Pool}).MarkSubmitted(ctx, *sessionID); err != nil {
 				log.Printf("[submit %s] mark session %s submitted: %v", submissionID, *sessionID, err)
 			}
 			if deps.Agents != nil {

@@ -82,7 +82,7 @@ func PostTips(deps TipsDeps) http.HandlerFunc {
 			return
 		}
 
-		sc, err := loadAndAuthorizeTipsSession(r, w, deps, sessionID, u.Handle)
+		sc, err := loadAndAuthorizeTipsSession(r, w, deps, sessionID, u.ID)
 		if err != nil {
 			return
 		}
@@ -185,7 +185,7 @@ func GetTipsMessages(deps TipsDeps) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		if _, err := loadAndAuthorizeTipsSession(r, w, deps, sessionID, u.Handle); err != nil {
+		if _, err := loadAndAuthorizeTipsSession(r, w, deps, sessionID, u.ID); err != nil {
 			return
 		}
 		history, err := tips.LoadTipsHistory(r.Context(), deps.Pool, sessionID)
@@ -220,7 +220,7 @@ func resolveTipsSession(w http.ResponseWriter, raw string) (uuid.UUID, bool) {
 	return id, true
 }
 
-func loadAndAuthorizeTipsSession(r *http.Request, w http.ResponseWriter, deps TipsDeps, sessionID uuid.UUID, candidate string) (tips.SessionContext, error) {
+func loadAndAuthorizeTipsSession(r *http.Request, w http.ResponseWriter, deps TipsDeps, sessionID uuid.UUID, candidate uuid.UUID) (tips.SessionContext, error) {
 	sc, err := tips.LoadSessionContext(r.Context(), deps.Pool, sessionID)
 	if errors.Is(err, tips.ErrSessionNotFound) {
 		http.Error(w, "session not found", http.StatusNotFound)
@@ -230,8 +230,9 @@ func loadAndAuthorizeTipsSession(r *http.Request, w http.ResponseWriter, deps Ti
 		http.Error(w, "load session: "+err.Error(), http.StatusInternalServerError)
 		return tips.SessionContext{}, err
 	}
-	if sc.CandidateID != candidate {
-		http.Error(w, "session belongs to another candidate", http.StatusForbidden)
+	if sc.UserID != candidate {
+		// Same answer as a missing session: never reveal someone else's.
+		http.Error(w, "session not found", http.StatusNotFound)
 		return tips.SessionContext{}, fmt.Errorf("ownership mismatch")
 	}
 	if sc.Mode != tips.ModePractice {

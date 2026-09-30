@@ -2,12 +2,13 @@ package handlers
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 
+	"codritium/backend/internal/platform/httpx"
+	"codritium/backend/internal/sessions"
+
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"codritium/backend/internal/auth"
@@ -45,17 +46,13 @@ func SessionStream(deps StreamDeps) http.HandlerFunc {
 			return
 		}
 
-		var candidateID string
-		err = deps.Pool.QueryRow(r.Context(),
-			`SELECT candidate_id FROM candidate_sessions WHERE session_id = $1`,
-			sessionID,
-		).Scan(&candidateID)
-		if errors.Is(err, pgx.ErrNoRows) || (err == nil && candidateID != u.Handle) {
-			http.Error(w, "session not found", http.StatusNotFound)
+		owned, err := (sessions.Store{Pool: deps.Pool}).SessionOwnedBy(r.Context(), sessionID, u)
+		if err != nil {
+			httpx.Internal(w, r, err)
 			return
 		}
-		if err != nil {
-			http.Error(w, "lookup: "+err.Error(), http.StatusInternalServerError)
+		if !owned {
+			http.Error(w, "session not found", http.StatusNotFound)
 			return
 		}
 

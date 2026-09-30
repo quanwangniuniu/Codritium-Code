@@ -10,6 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	"codritium/backend/internal/problems/seed"
+
+	"codritium/backend/internal/sessions"
+
 	"codritium/backend/internal/platform/httpx"
 
 	"github.com/google/uuid"
@@ -51,7 +55,7 @@ func main() {
 		log.Fatalf("migrate: %v", err)
 	}
 
-	if err := problems.SeedFromDir(ctx, database.Pool, cfg.Paths.ProblemsSeed); err != nil {
+	if err := seed.FromDir(ctx, database.Pool, cfg.Paths.ProblemsSeed); err != nil {
 		log.Fatalf("seed problems: %v", err)
 	}
 
@@ -82,11 +86,10 @@ func main() {
 		E2B:       e2bClient,
 	}
 	decisionWaiter := llm.NewDecisionWaiter()
-	decisionDeps := handlers.DecisionDeps{Waiter: decisionWaiter, Sessions: handlers.PGSessionOwner{Pool: database.Pool}}
+	decisionDeps := handlers.DecisionDeps{Waiter: decisionWaiter, Sessions: sessions.Store{Pool: database.Pool}}
 	eventStore := events.NewStore(database.Pool)
 	eventsDeps := handlers.EventsDeps{Pool: database.Pool, Events: eventStore}
 	textBroadcaster := llm.NewTextBroadcaster()
-	sessionsDeps := handlers.SessionsDeps{Pool: database.Pool}
 	streamDeps := handlers.StreamDeps{Pool: database.Pool, Events: eventStore, Text: textBroadcaster}
 
 	// Active chat engine: Gemini by default. CHAT_ENGINE=anthropic activates
@@ -179,6 +182,7 @@ func main() {
 	rt := httpx.NewRouter(mux, authMiddleware)
 	for _, m := range []httpx.Module{
 		problems.Handler{Store: problemStore},
+		sessions.Handler{Store: sessions.Store{Pool: database.Pool}, Problems: problemStore},
 	} {
 		m.Routes(rt)
 	}
@@ -200,8 +204,6 @@ func main() {
 	mux.Handle("GET /api/me/submissions", authMiddleware(handlers.ListMySubmissions(subDeps)))
 	mux.Handle("POST /api/decision", authMiddleware(handlers.PostDecision(decisionDeps)))
 	mux.Handle("POST /api/events", authMiddleware(handlers.PostEvent(eventsDeps)))
-	mux.Handle("POST /api/sessions", authMiddleware(handlers.PostSession(sessionsDeps)))
-	mux.Handle("GET /api/me/attempted", authMiddleware(handlers.ListMyAttempted(sessionsDeps)))
 	if cfg.ChatEngine == "disabled" {
 		mux.Handle(
 			"POST /api/chat/v2",

@@ -245,12 +245,11 @@ func loadSolved(ctx context.Context, pool *pgxpool.Pool, u *auth.User, p *profil
 	}
 
 	// Attempting: problems opened in the workspace or submitted, not yet solved.
-	// candidate_sessions keys candidates by handle (see migration 0002).
 	rows, err = pool.Query(ctx, `
-		SELECT challenge_id FROM candidate_sessions WHERE candidate_id = $1
+		SELECT challenge_id FROM candidate_sessions WHERE user_id = $1
 		UNION
-		SELECT pr.slug FROM submissions s JOIN problems pr ON pr.id = s.problem_id WHERE s.user_id = $2`,
-		u.Handle, u.ID)
+		SELECT pr.slug FROM submissions s JOIN problems pr ON pr.id = s.problem_id WHERE s.user_id = $1`,
+		u.ID)
 	if err != nil {
 		return err
 	}
