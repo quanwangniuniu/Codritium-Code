@@ -228,6 +228,40 @@ body {
   --bad: #cd3131;
 }
 
+/* IDE tokens as Tailwind colours (bg-ide-side, text-ide-text-muted,
+   border-ide-border, …). `ide-` prefixed so they never collide with the
+   app-chrome palette above. Values stay theme-aware via the variables. */
+@theme inline {
+  --color-ide-app: var(--bg-app);
+  --color-ide-editor: var(--bg-editor);
+  --color-ide-side: var(--bg-side);
+  --color-ide-side-header: var(--bg-side-header);
+  --color-ide-activity: var(--bg-activity);
+  --color-ide-chat: var(--bg-chat);
+  --color-ide-tab: var(--bg-tab);
+  --color-ide-tab-active: var(--bg-tab-active);
+  --color-ide-tab-hover: var(--bg-tab-hover);
+  --color-ide-row-active: var(--bg-row-active);
+  --color-ide-row-hover: var(--bg-row-hover);
+  --color-ide-statusbar: var(--bg-statusbar);
+  --color-ide-border: var(--border);
+  --color-ide-border-soft: var(--border-soft);
+  --color-ide-border-strong: var(--border-strong);
+  --color-ide-text: var(--text);
+  --color-ide-text-strong: var(--text-strong);
+  --color-ide-text-dim: var(--text-dim);
+  --color-ide-text-muted: var(--text-muted);
+  --color-ide-accent: var(--accent);
+  --color-ide-accent-hover: var(--accent-hover);
+  --color-ide-good: var(--good);
+  --color-ide-warn: var(--warn);
+  --color-ide-bad: var(--bad);
+  --color-ide-syntax-blue: var(--syntax-blue);
+  --color-ide-syntax-yellow: var(--syntax-yellow);
+  --color-ide-syntax-orange: var(--syntax-orange);
+  --color-ide-syntax-green: var(--syntax-green);
+}
+
 /* Mono font helper used inside IDE chrome. */
 .mono {
   font-family: var(--font-jetbrains-mono), ui-monospace, "SF Mono", Menlo, monospace;

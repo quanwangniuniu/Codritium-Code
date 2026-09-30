@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { Nav } from "@/components/nav";
-import { NavSlot } from "@/components/NavSlot";
-import { getTheme } from "@/lib/theme";
-import { Banner } from "@/components/Banner";
-import { ToastContainer } from "@/components/ToastContainer";
+import { Nav } from "@/shared/layout/Nav";
+import { NavSlot } from "@/shared/layout/NavSlot";
+import { getTheme } from "@/shared/lib/theme";
+import { Banner } from "@/shared/layout/Banner";
+import { ToastContainer } from "@/shared/layout/ToastContainer";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });

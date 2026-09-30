@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
-import { currentUser } from "@/lib/auth";
-import { listProblems } from "@/lib/store";
-import { t } from "@/lib/i18n";
-import { FORUM_SECTIONS, type ForumSection } from "@/lib/forum";
-import { ForumPostEditor } from "@/components/forum/ForumPostEditor";
+import { currentUser } from "@/features/auth/server";
+import { listProblems } from "@/features/problems/server";
+import { t } from "@/shared/i18n";
+import { FORUM_SECTIONS, type ForumSection } from "@/features/forum/api";
+import { ForumPostEditor } from "@/features/forum/components/ForumPostEditor";
 
 interface NewForumPostProps {
   searchParams: Promise<{ section?: string }>;
