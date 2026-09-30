@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"time"
 
+	geminillm "codritium/backend/internal/llm/gemini"
+
 	"github.com/google/uuid"
 	"google.golang.org/genai"
 
@@ -119,7 +121,12 @@ func (a *App) build(ctx context.Context) error {
 		if gemini == nil {
 			return fmt.Errorf("CHAT_ENGINE=gemini needs GOOGLE_API_KEY")
 		}
-		agents = llm.NewAgentRegistry(agent.NewFactory(problemStore, llm.NewGeminiStream(gemini), eventStore, text, waiter, sandbox))
+		tools := llm.NewDefaultRegistry()
+		if cfg.AgentHostCommands {
+			log.Printf("WARNING: AGENT_HOST_COMMANDS=true — the agent can run shell commands on this host")
+			tools = tools.WithHostCommands()
+		}
+		agents = llm.NewAgentRegistry(agent.NewFactory(problemStore, geminillm.New(gemini), eventStore, text, waiter, sandbox, tools))
 	}
 
 	// The tutor needs Gemini; without it the tips endpoints answer 503.

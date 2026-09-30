@@ -39,6 +39,9 @@ type Config struct {
 	SMTPFrom               string
 	PublicURL              string
 	CORSOrigins            []string
+	// AgentHostCommands enables the agent's RunCommand tool, which executes
+	// shell commands on this host. Off by default: see llm.WithHostCommands.
+	AgentHostCommands bool
 	Paths                  Paths
 }
 
@@ -82,6 +85,7 @@ func Load() (*Config, error) {
 		SMTPFrom:               os.Getenv("SMTP_FROM"),
 		PublicURL:              getenv("PUBLIC_URL", "http://localhost:3000"),
 		Paths:                  paths,
+		AgentHostCommands:      getenvBool("AGENT_HOST_COMMANDS", false),
 	}
 
 	// The session cookie is Secure by default in prod. dev and staging may

@@ -14,12 +14,10 @@ import (
 	"time"
 )
 
-// Tool is the engine-neutral contract for one V0 tool. The main loop
+// Tool is the engine-neutral contract for one agent tool. The main loop
 // looks tools up by Name, advertises Spec() to the model, and routes
-// approved tool_use blocks to Execute().
-//
-// V0 ships exactly three tools: FileRead, FileEdit, RunTests. Bash and
-// WebFetch are intentionally excluded (HANDOFF §4 + agent_design.md §8.1).
+// approved tool_use blocks to Execute(). See NewDefaultRegistry for the
+// set; host shell access is opt-in (Registry.WithHostCommands).
 type Tool interface {
 	Name() string
 	Spec() ToolSpec
@@ -125,13 +123,23 @@ type Registry map[string]Tool
 // a per-session shell.
 func NewDefaultRegistry() Registry {
 	return Registry{
-		"FileRead":   fileReadTool{},
-		"FileEdit":   fileEditTool{},
-		"RunTests":   runTestsTool{},
-		"Grep":       grepTool{},
-		"Glob":       globTool{},
-		"RunCommand": runCommandTool{},
+		"FileRead": fileReadTool{},
+		"FileEdit": fileEditTool{},
+		"RunTests": runTestsTool{},
+		"Grep":     grepTool{},
+		"Glob":     globTool{},
 	}
+}
+
+// WithHostCommands adds RunCommand, which runs model-proposed shell
+// commands on the backend host (only its working directory is confined).
+// The candidate who approves the call is the same person asking for it, so
+// on a shared server this is remote code execution: enable it only for
+// trusted single-user setups (AGENT_HOST_COMMANDS=true) until it runs in
+// the E2B sandbox instead.
+func (r Registry) WithHostCommands() Registry {
+	r["RunCommand"] = runCommandTool{}
+	return r
 }
 
 // ErrDenied is returned by Execute when a deny rule matches. The main loop

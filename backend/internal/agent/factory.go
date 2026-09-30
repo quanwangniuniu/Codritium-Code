@@ -55,7 +55,7 @@ func (g graderSandboxRunner) RunPytest(ctx context.Context, files map[string]str
 // NewFactory builds the AgentRegistry factory: a fresh Agent per session,
 // with the problem's starter files as its workspace and the hidden test
 // protected by deny rules.
-func NewFactory(problemStore problems.Store, stream llm.LLMStreamClient, store *events.Store, text *llm.TextBroadcaster, waiter *llm.DecisionWaiter, sandbox grader.Sandbox) llm.AgentFactory {
+func NewFactory(problemStore problems.Store, stream llm.LLMStreamClient, store *events.Store, text *llm.TextBroadcaster, waiter *llm.DecisionWaiter, sandbox grader.Sandbox, tools llm.Registry) llm.AgentFactory {
 	return func(ctx context.Context, sessionID uuid.UUID, slug string) (*llm.Agent, error) {
 		prob, err := problemStore.Get(ctx, slug)
 		if err != nil {
@@ -79,7 +79,7 @@ func NewFactory(problemStore problems.Store, stream llm.LLMStreamClient, store *
 			Events:       store,
 			Text:         text,
 			Waiter:       waiter,
-			Tools:        llm.NewDefaultRegistry(),
+			Tools:        tools,
 			Workspace:    &llm.Workspace{Files: files},
 			Sandbox:      graderSandboxRunner{sandbox: sandbox},
 			TmpFS:        tmpFS,

@@ -1,11 +1,15 @@
-package llm
+// Package gemini adapts the Gemini SDK to llm.LLMStreamClient.
+package gemini
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
 	"iter"
+
+	"github.com/google/uuid"
+
+	"codritium/backend/internal/llm"
 
 	"google.golang.org/genai"
 )
@@ -13,27 +17,27 @@ import (
 const defaultGeminiChatModel = "gemini-2.5-flash"
 
 // GeminiStream adapts the google.golang.org/genai SDK streaming API to
-// the engine-neutral LLMStreamClient contract that chat_v2.go consumes.
+// the engine-neutral llm.LLMStreamClient contract that chat_v2.go consumes.
 //
 // Gemini's streaming surface is one chunk per Part: a text Part becomes
 // a text_delta; a FunctionCall Part becomes a tool_use_start +
 // tool_use_input_delta (full JSON of Args) + tool_use_stop triple, so
 // drainStream's incremental decoder works uniformly with Claude's
 // genuinely-streamed tool_use input.
-type GeminiStream struct {
+type Stream struct {
 	Client *genai.Client
 	Model  string // empty → "gemini-2.5-flash"
 }
 
-// NewGeminiStream wires up the SDK client and applies engine defaults
+// New wires up the SDK client and applies engine defaults
 // for the v0.8 candidate-agent. The model name follows config.GraderEngine
 // semantics: gemini-2.5-flash for chat; the Pro fallback is left to the
 // outer error policy, not built into the stream layer.
-func NewGeminiStream(client *genai.Client) *GeminiStream {
-	return &GeminiStream{Client: client, Model: defaultGeminiChatModel}
+func New(client *genai.Client) *Stream {
+	return &Stream{Client: client, Model: defaultGeminiChatModel}
 }
 
-func (g *GeminiStream) StreamTurn(ctx context.Context, req TurnRequest) (StreamReader, error) {
+func (g *Stream) StreamTurn(ctx context.Context, req llm.TurnRequest) (llm.StreamReader, error) {
 	if g.Client == nil {
 		return nil, fmt.Errorf("gemini stream: client not configured")
 	}
@@ -93,33 +97,33 @@ type geminiPullItem struct {
 type geminiReader struct {
 	seq        iter.Seq2[*genai.GenerateContentResponse, error]
 	pull       chan geminiPullItem
-	queue      []NormalizedChunk
+	queue      []llm.NormalizedChunk
 	usageSent  bool
 	stopSent   bool
 	functionID int // counter for synthesised tool_use_ids (Gemini doesn't issue ids)
 }
 
-func (r *geminiReader) Next(ctx context.Context) (NormalizedChunk, bool, error) {
+func (r *geminiReader) Next(ctx context.Context) (llm.NormalizedChunk, bool, error) {
 	for len(r.queue) == 0 {
 		select {
 		case <-ctx.Done():
-			return NormalizedChunk{}, false, ctx.Err()
+			return llm.NormalizedChunk{}, false, ctx.Err()
 		case item, ok := <-r.pull:
 			if !ok {
 				// stream ended: flush any final usage / message_stop
 				if !r.usageSent {
 					r.usageSent = true
-					r.queue = append(r.queue, NormalizedChunk{Kind: "usage"})
+					r.queue = append(r.queue, llm.NormalizedChunk{Kind: "usage"})
 				}
 				if !r.stopSent {
 					r.stopSent = true
-					r.queue = append(r.queue, NormalizedChunk{Kind: "message_stop", StopReason: "end_turn"})
+					r.queue = append(r.queue, llm.NormalizedChunk{Kind: "message_stop", StopReason: "end_turn"})
 					continue
 				}
-				return NormalizedChunk{}, false, nil
+				return llm.NormalizedChunk{}, false, nil
 			}
 			if item.Err != nil {
-				return NormalizedChunk{}, false, item.Err
+				return llm.NormalizedChunk{}, false, item.Err
 			}
 			r.enqueueFromResponse(item.Resp)
 		}
@@ -140,30 +144,30 @@ func (r *geminiReader) enqueueFromResponse(resp *genai.GenerateContentResponse) 
 		for _, p := range cand.Content.Parts {
 			switch {
 			case p.Text != "":
-				r.queue = append(r.queue, NormalizedChunk{Kind: "text_delta", Text: p.Text})
+				r.queue = append(r.queue, llm.NormalizedChunk{Kind: "text_delta", Text: p.Text})
 			case p.FunctionCall != nil:
 				r.functionID++
 				id := fmt.Sprintf("tu-gem-%d-%s", r.functionID, uuid.NewString()[:8])
 				args := p.FunctionCall.Args
 				inputJSON, _ := json.Marshal(args)
 				r.queue = append(r.queue,
-					NormalizedChunk{Kind: "tool_use_start", ToolUseID: id, ToolUseName: p.FunctionCall.Name},
-					NormalizedChunk{Kind: "tool_use_input_delta", ToolUseID: id, InputJSONDelta: string(inputJSON)},
-					NormalizedChunk{Kind: "tool_use_stop", ToolUseID: id},
+					llm.NormalizedChunk{Kind: "tool_use_start", ToolUseID: id, ToolUseName: p.FunctionCall.Name},
+					llm.NormalizedChunk{Kind: "tool_use_input_delta", ToolUseID: id, InputJSONDelta: string(inputJSON)},
+					llm.NormalizedChunk{Kind: "tool_use_stop", ToolUseID: id},
 				)
 			}
 		}
 	}
 	if cand.FinishReason != "" && !r.stopSent {
 		r.stopSent = true
-		r.queue = append(r.queue, NormalizedChunk{
+		r.queue = append(r.queue, llm.NormalizedChunk{
 			Kind:       "message_stop",
 			StopReason: string(cand.FinishReason),
 		})
 	}
 	if resp.UsageMetadata != nil && !r.usageSent {
 		r.usageSent = true
-		r.queue = append(r.queue, NormalizedChunk{
+		r.queue = append(r.queue, llm.NormalizedChunk{
 			Kind:            "usage",
 			InputTokens:     int(resp.UsageMetadata.PromptTokenCount),
 			OutputTokens:    int(resp.UsageMetadata.CandidatesTokenCount),
@@ -174,7 +178,7 @@ func (r *geminiReader) enqueueFromResponse(resp *genai.GenerateContentResponse) 
 
 // ─── encoders ───────────────────────────────────────────────────────────
 
-func toGenAIContents(msgs []Message) ([]*genai.Content, error) {
+func toGenAIContents(msgs []llm.Message) ([]*genai.Content, error) {
 	out := make([]*genai.Content, 0, len(msgs))
 	for _, m := range msgs {
 		role := genai.RoleUser
@@ -227,7 +231,7 @@ func toGenAIContents(msgs []Message) ([]*genai.Content, error) {
 	return out, nil
 }
 
-func toFunctionDecls(tools []ToolSpec) []*genai.FunctionDeclaration {
+func toFunctionDecls(tools []llm.ToolSpec) []*genai.FunctionDeclaration {
 	out := make([]*genai.FunctionDeclaration, 0, len(tools))
 	for _, t := range tools {
 		out = append(out, &genai.FunctionDeclaration{
