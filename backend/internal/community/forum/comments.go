@@ -1,0 +1,302 @@
+package forum
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strings"
+	"unicode/utf8"
+
+	"codritium/backend/internal/community/votes"
+	"codritium/backend/internal/platform/httpx"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"codritium/backend/internal/auth"
+)
+
+const forumCommentColumns = `
+	c.id, c.post_id, c.parent_id, c.user_id, c.body, c.is_anonymous,
+	c.upvotes, c.downvotes, c.created_at,
+	u.handle, u.display_name, COALESCE(u.avatar_url,''), COALESCE(u.avatar_color,''),
+	COALESCE(u.role,''), COALESCE(v.value, 0)`
+
+const forumCommentFrom = `
+	FROM forum_comments c
+	JOIN users u ON u.id = c.user_id
+	LEFT JOIN forum_comment_votes v ON v.comment_id = c.id AND v.user_id = $1`
+
+func scanForumComment(row pgx.Row, viewer *auth.User, postAuthor uuid.UUID) (forumComment, error) {
+	var (
+		c        forumComment
+		authorID uuid.UUID
+		a        forumAuthor
+		role     string
+	)
+	if err := row.Scan(&c.ID, &c.PostID, &c.ParentID, &authorID, &c.Body, &c.IsAnonymous,
+		&c.Upvotes, &c.Downvotes, &c.CreatedAt,
+		&a.Handle, &a.DisplayName, &a.AvatarURL, &a.AvatarColor, &role, &c.MyVote); err != nil {
+		return forumComment{}, err
+	}
+	c.Score = c.Upvotes - c.Downvotes
+	c.IsMine = viewer != nil && viewer.ID == authorID
+	c.IsOP = authorID == postAuthor
+	if canSeeAuthor(viewer, authorID, c.IsAnonymous) {
+		a.ID = authorID
+		a.Verified = role == "admin"
+		c.Author = &a
+	}
+	return c, nil
+}
+
+type forumPostMeta struct {
+	authorID uuid.UUID
+	section  string
+}
+
+func loadForumPostMeta(ctx context.Context, q interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}, id uuid.UUID) (forumPostMeta, error) {
+	var m forumPostMeta
+	err := q.QueryRow(ctx,
+		`SELECT user_id, section FROM forum_posts WHERE id = $1 AND deleted_at IS NULL`, id,
+	).Scan(&m.authorID, &m.section)
+	return m, err
+}
+
+// ListForumComments returns a page of top-level comments (sort=best|newest)
+// with all of their replies, oldest reply first.
+func (h Handler) listForumComments(w http.ResponseWriter, r *http.Request) {
+	postID, ok := httpx.PathUUID(w, r, "id")
+	if !ok {
+		return
+	}
+	viewer := auth.FromContext(r.Context())
+	meta, err := loadForumPostMeta(r.Context(), h.Pool, postID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		forumError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	if err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	page := httpx.ParsePage(r, forumPageDefault, forumPageMax, forumOffsetMax)
+	limit, offset := page.Limit, page.Offset
+	order := "(c.upvotes - c.downvotes) DESC, c.created_at DESC, c.id DESC"
+	switch r.URL.Query().Get("sort") {
+	case "", "best":
+	case "newest":
+		order = "c.created_at DESC, c.id DESC"
+	default:
+		forumError(w, http.StatusBadRequest, "invalid_sort")
+		return
+	}
+
+	rows, err := h.Pool.Query(r.Context(), `SELECT `+forumCommentColumns+forumCommentFrom+`
+		WHERE c.post_id = $2 AND c.parent_id IS NULL AND c.deleted_at IS NULL
+		ORDER BY `+order+`
+		LIMIT $3 OFFSET $4`, viewerID(viewer), postID, limit+1, offset)
+	if err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	top := make([]forumComment, 0, limit)
+	for rows.Next() {
+		c, err := scanForumComment(rows, viewer, meta.authorID)
+		if err != nil {
+			rows.Close()
+			httpx.Internal(w, r, err)
+			return
+		}
+		top = append(top, c)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	hasMore := len(top) > limit
+	if hasMore {
+		top = top[:limit]
+	}
+
+	if len(top) > 0 {
+		ids := make([]uuid.UUID, len(top))
+		index := make(map[uuid.UUID]int, len(top))
+		for i, c := range top {
+			ids[i] = c.ID
+			index[c.ID] = i
+		}
+		rows, err := h.Pool.Query(r.Context(), `SELECT `+forumCommentColumns+forumCommentFrom+`
+			WHERE c.parent_id = ANY($2) AND c.deleted_at IS NULL
+			ORDER BY c.created_at, c.id`, viewerID(viewer), ids)
+		if err != nil {
+			httpx.Internal(w, r, err)
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			c, err := scanForumComment(rows, viewer, meta.authorID)
+			if err != nil {
+				httpx.Internal(w, r, err)
+				return
+			}
+			i := index[*c.ParentID]
+			top[i].Replies = append(top[i].Replies, c)
+		}
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"comments": top, "has_more": hasMore})
+}
+
+type forumCommentRequest struct {
+	Body        string     `json:"body"`
+	ParentID    *uuid.UUID `json:"parent_id"`
+	IsAnonymous bool       `json:"is_anonymous"`
+}
+
+// CreateForumComment adds a comment or a reply. Replies attach to top-level
+// comments only, so threads stay one level deep.
+func (h Handler) createForumComment(w http.ResponseWriter, r *http.Request) {
+	postID, ok := httpx.PathUUID(w, r, "id")
+	if !ok {
+		return
+	}
+	u, ok := auth.Require(w, r)
+	if !ok {
+		return
+	}
+	var req forumCommentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		forumError(w, http.StatusBadRequest, "bad_json")
+		return
+	}
+	body := strings.TrimSpace(req.Body)
+	if body == "" || utf8.RuneCountInString(body) > forumCommentMax {
+		forumError(w, http.StatusBadRequest, "invalid_body")
+		return
+	}
+
+	tx, err := h.Pool.BeginTx(r.Context(), pgx.TxOptions{})
+	if err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	meta, err := loadForumPostMeta(r.Context(), tx, postID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		forumError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	if err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	if req.IsAnonymous && !forumAnonSections[meta.section] {
+		forumError(w, http.StatusBadRequest, "anonymous_not_allowed")
+		return
+	}
+	if req.ParentID != nil {
+		var parentPost uuid.UUID
+		var grandparent *uuid.UUID
+		err := tx.QueryRow(r.Context(),
+			`SELECT post_id, parent_id FROM forum_comments WHERE id = $1 AND deleted_at IS NULL`,
+			*req.ParentID).Scan(&parentPost, &grandparent)
+		if err != nil || parentPost != postID || grandparent != nil {
+			forumError(w, http.StatusBadRequest, "invalid_parent")
+			return
+		}
+	}
+
+	var id uuid.UUID
+	if err := tx.QueryRow(r.Context(), `
+		INSERT INTO forum_comments (post_id, user_id, parent_id, body, is_anonymous)
+		VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+		postID, u.ID, req.ParentID, body, req.IsAnonymous).Scan(&id); err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	if _, err := tx.Exec(r.Context(),
+		`UPDATE forum_posts SET comment_count = comment_count + 1 WHERE id = $1`, postID); err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	c, err := scanForumComment(tx.QueryRow(r.Context(),
+		`SELECT `+forumCommentColumns+forumCommentFrom+` WHERE c.id = $2`, u.ID, id), u, meta.authorID)
+	if err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusCreated, c)
+}
+
+func (h Handler) voteForumComment(w http.ResponseWriter, r *http.Request) {
+	id, ok := httpx.PathUUID(w, r, "id")
+	if !ok {
+		return
+	}
+	u, ok := auth.Require(w, r)
+	if !ok {
+		return
+	}
+	votes.Handle(w, r, h.Pool, votes.ForumComment, id, u.ID)
+}
+
+// DeleteForumComment soft-deletes a comment (author or admin). Deleting a
+// top-level comment also removes its replies, and the post's comment count
+// drops by everything that disappeared.
+func (h Handler) deleteForumComment(w http.ResponseWriter, r *http.Request) {
+	id, ok := httpx.PathUUID(w, r, "id")
+	if !ok {
+		return
+	}
+	u, ok := auth.Require(w, r)
+	if !ok {
+		return
+	}
+	tx, err := h.Pool.BeginTx(r.Context(), pgx.TxOptions{})
+	if err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	var postID uuid.UUID
+	err = tx.QueryRow(r.Context(), `
+		UPDATE forum_comments SET deleted_at = now()
+		WHERE id = $1 AND deleted_at IS NULL AND (user_id = $2 OR $3)
+		RETURNING post_id`, id, u.ID, u.Role == "admin").Scan(&postID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		forumError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	if err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	tag, err := tx.Exec(r.Context(),
+		`UPDATE forum_comments SET deleted_at = now() WHERE parent_id = $1 AND deleted_at IS NULL`, id)
+	if err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	removed := 1 + tag.RowsAffected()
+	if _, err := tx.Exec(r.Context(),
+		`UPDATE forum_posts SET comment_count = GREATEST(comment_count - $2, 0) WHERE id = $1`,
+		postID, removed); err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

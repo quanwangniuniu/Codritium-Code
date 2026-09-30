@@ -1,9 +1,11 @@
-package handlers
+package comments
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -17,7 +19,7 @@ import (
 func TestCreateComment_UnlocksAfterGradedSubmission(t *testing.T) {
 	pool := testutil.Pool(t)
 	ctx := context.Background()
-	u := newForumUser(t, pool, "user")
+	u := testutil.NewUser(t, pool, "user")
 
 	var problemID, slug string
 	if err := pool.QueryRow(ctx,
@@ -32,7 +34,7 @@ func TestCreateComment_UnlocksAfterGradedSubmission(t *testing.T) {
 		req.SetPathValue("slug", slug)
 		req = req.WithContext(auth.WithUser(req.Context(), u))
 		rr := httptest.NewRecorder()
-		CreateComment(CommentsDeps{Pool: pool}).ServeHTTP(rr, req)
+		Handler{Pool: pool}.createComment(rr, req)
 		return rr.Code
 	}
 
@@ -46,5 +48,40 @@ func TestCreateComment_UnlocksAfterGradedSubmission(t *testing.T) {
 	}
 	if got := post(); got != http.StatusCreated {
 		t.Fatalf("after grading: status=%d want 201", got)
+	}
+}
+
+func TestListComments_KeysetPagination(t *testing.T) {
+	pool := testutil.Pool(t)
+	ctx := context.Background()
+	u := testutil.NewUser(t, pool, "admin") // admins skip the graded gate
+	slug := "zz-pagination-" + u.ID.String()[:8]
+	for i := 0; i < 3; i++ {
+		if _, err := pool.Exec(ctx, `
+			INSERT INTO comments (problem_slug, user_id, body, created_at)
+			VALUES ($1, $2, $3, now() - make_interval(mins => $4))`,
+			slug, u.ID, fmt.Sprintf("c%d", i), i); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h := Handler{Pool: pool}
+	type page struct {
+		Comments []struct {
+			Body string `json:"body"`
+		} `json:"comments"`
+		Next string `json:"next_cursor"`
+	}
+	list := func(q string) page {
+		rr := testutil.Call(t, http.HandlerFunc(h.listComments), "GET", "/?"+q, map[string]string{"slug": slug}, u, "")
+		testutil.WantStatus(t, rr, http.StatusOK)
+		return testutil.Decode[page](t, rr)
+	}
+	p1 := list("limit=2")
+	if len(p1.Comments) != 2 || p1.Comments[0].Body != "c0" || p1.Next == "" {
+		t.Fatalf("page1=%+v", p1)
+	}
+	p2 := list("limit=2&cursor=" + url.QueryEscape(p1.Next))
+	if len(p2.Comments) != 1 || p2.Comments[0].Body != "c2" || p2.Next != "" {
+		t.Fatalf("page2=%+v", p2)
 	}
 }

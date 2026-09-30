@@ -8,6 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"codritium/backend/internal/community/comments"
+	"codritium/backend/internal/submissions"
+
 	"codritium/backend/internal/sessions"
 
 	"github.com/google/uuid"
@@ -64,14 +67,7 @@ func GetOfficialReply(deps ReplyDeps) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if err := requireGradedOrAdmin(r, deps.Pool, u, slug); errors.Is(err, errNotGraded) {
-			writeJSON(w, http.StatusForbidden, map[string]any{
-				"error":          "must_complete_problem",
-				"challenge_slug": slug,
-			})
-			return
-		} else if err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+		if !comments.RequireGraded(w, r, submissions.Store{Pool: deps.Pool}, u, slug) {
 			return
 		}
 		var (

@@ -10,6 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	"codritium/backend/internal/community/comments"
+	"codritium/backend/internal/community/forum"
+	"codritium/backend/internal/community/notes"
+
 	"codritium/backend/internal/problems/seed"
 
 	"codritium/backend/internal/sessions"
@@ -142,9 +146,6 @@ func main() {
 		Sandbox:      sandbox,
 		Agents:       agentRegistry,
 	}
-	commentsDeps := handlers.CommentsDeps{Pool: database.Pool}
-	forumDeps := handlers.ForumDeps{Pool: database.Pool}
-	notesDeps := handlers.NotesDeps{Pool: database.Pool}
 	replyDeps := handlers.ReplyDeps{Pool: database.Pool}
 
 	mux := http.NewServeMux()
@@ -183,6 +184,9 @@ func main() {
 	for _, m := range []httpx.Module{
 		problems.Handler{Store: problemStore},
 		sessions.Handler{Store: sessions.Store{Pool: database.Pool}, Problems: problemStore},
+		forum.Handler{Pool: database.Pool},
+		comments.Handler{Pool: database.Pool},
+		notes.Handler{Pool: database.Pool},
 	} {
 		m.Routes(rt)
 	}
@@ -220,35 +224,6 @@ func main() {
 	mux.Handle("POST /api/tips", authMiddleware(handlers.PostTips(tipsDeps)))
 	mux.Handle("GET /api/tips/messages", authMiddleware(handlers.GetTipsMessages(tipsDeps)))
 	mux.Handle("GET /api/sessions/{id}/stream", authMiddleware(handlers.SessionStream(streamDeps)))
-
-	// Comments (per-problem discussion; graded gate enforced in handler).
-	mux.Handle("GET /api/problems/{slug}/comments", authMiddleware(handlers.ListComments(commentsDeps)))
-	mux.Handle("POST /api/problems/{slug}/comments", authMiddleware(handlers.CreateComment(commentsDeps)))
-	mux.Handle("POST /api/comments/{id}/vote", authMiddleware(handlers.VoteComment(commentsDeps)))
-	mux.Handle("DELETE /api/comments/{id}", authMiddleware(handlers.DeleteComment(commentsDeps)))
-
-	// Community forum. Reads are public (the middleware leaves signed-out
-	// users nil); writes require a session, enforced in the handlers.
-	mux.Handle("GET /api/forum/posts", authMiddleware(handlers.ListForumPosts(forumDeps)))
-	mux.Handle("GET /api/forum/pinned", authMiddleware(handlers.ListPinnedForumPosts(forumDeps)))
-	mux.Handle("GET /api/forum/trending", authMiddleware(handlers.ListTrendingForumPosts(forumDeps)))
-	mux.Handle("POST /api/forum/posts", authMiddleware(handlers.CreateForumPost(forumDeps)))
-	mux.Handle("GET /api/forum/posts/{id}", authMiddleware(handlers.GetForumPost(forumDeps)))
-	mux.Handle("PUT /api/forum/posts/{id}", authMiddleware(handlers.UpdateForumPost(forumDeps)))
-	mux.Handle("DELETE /api/forum/posts/{id}", authMiddleware(handlers.DeleteForumPost(forumDeps)))
-	mux.Handle("POST /api/forum/posts/{id}/vote", authMiddleware(handlers.VoteForumPost(forumDeps)))
-	mux.Handle("POST /api/forum/posts/{id}/pin", authMiddleware(handlers.PinForumPost(forumDeps)))
-	mux.Handle("GET /api/forum/posts/{id}/comments", authMiddleware(handlers.ListForumComments(forumDeps)))
-	mux.Handle("POST /api/forum/posts/{id}/comments", authMiddleware(handlers.CreateForumComment(forumDeps)))
-	mux.Handle("POST /api/forum/comments/{id}/vote", authMiddleware(handlers.VoteForumComment(forumDeps)))
-	mux.Handle("DELETE /api/forum/comments/{id}", authMiddleware(handlers.DeleteForumComment(forumDeps)))
-
-	// Candidate notes (private to the session owner; share publishes a comment).
-	mux.Handle("GET /api/sessions/{id}/notes", authMiddleware(handlers.ListNotes(notesDeps)))
-	mux.Handle("POST /api/sessions/{id}/notes", authMiddleware(handlers.CreateNote(notesDeps)))
-	mux.Handle("PUT /api/notes/{id}", authMiddleware(handlers.UpdateNote(notesDeps)))
-	mux.Handle("DELETE /api/notes/{id}", authMiddleware(handlers.DeleteNote(notesDeps)))
-	mux.Handle("POST /api/notes/{id}/share", authMiddleware(handlers.ShareNote(notesDeps)))
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

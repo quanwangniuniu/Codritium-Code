@@ -1,4 +1,4 @@
-package handlers
+package forum
 
 import (
 	"encoding/json"
@@ -13,6 +13,16 @@ import (
 	"codritium/backend/internal/platform/testutil"
 )
 
+// forumCall invokes a handler directly. id fills the {id} path value.
+func forumCall(t *testing.T, h http.HandlerFunc, method, target, id string, u *auth.User, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	var pv map[string]string
+	if id != "" {
+		pv = map[string]string{"id": id}
+	}
+	return testutil.Call(t, h, method, target, pv, u, body)
+}
+
 func decodeForum[T any](t *testing.T, rr *httptest.ResponseRecorder) T {
 	t.Helper()
 	var v T
@@ -25,29 +35,29 @@ func decodeForum[T any](t *testing.T, rr *httptest.ResponseRecorder) T {
 // uniqueTag keeps each test's feed queries scoped to its own posts.
 func uniqueTag() string { return "t" + strings.ReplaceAll(uuid.NewString()[:8], "-", "") }
 
-func createForumPost(t *testing.T, deps ForumDeps, u *auth.User, body string) forumPost {
+func createForumPost(t *testing.T, deps Handler, u *auth.User, body string) forumPost {
 	t.Helper()
-	rr := forumCall(t, CreateForumPost(deps), http.MethodPost, "/api/forum/posts", "", u, body)
-	wantStatus(t, rr, http.StatusCreated)
+	rr := forumCall(t, http.HandlerFunc(deps.createForumPost), http.MethodPost, "/api/forum/posts", "", u, body)
+	testutil.WantStatus(t, rr, http.StatusCreated)
 	return decodeForum[forumPost](t, rr)
 }
 
 func TestForum_WritesRequireLogin(t *testing.T) {
-	deps := ForumDeps{}
+	deps := Handler{}
 	id := uuid.NewString()
 	cases := []struct {
 		name string
 		h    http.HandlerFunc
 		id   string
 	}{
-		{"create post", CreateForumPost(deps), ""},
-		{"update post", UpdateForumPost(deps), id},
-		{"delete post", DeleteForumPost(deps), id},
-		{"vote post", VoteForumPost(deps), id},
-		{"pin post", PinForumPost(deps), id},
-		{"create comment", CreateForumComment(deps), id},
-		{"vote comment", VoteForumComment(deps), id},
-		{"delete comment", DeleteForumComment(deps), id},
+		{"create post", http.HandlerFunc(deps.createForumPost), ""},
+		{"update post", http.HandlerFunc(deps.updateForumPost), id},
+		{"delete post", http.HandlerFunc(deps.deleteForumPost), id},
+		{"vote post", http.HandlerFunc(deps.voteForumPost), id},
+		{"pin post", http.HandlerFunc(deps.pinForumPost), id},
+		{"create comment", http.HandlerFunc(deps.createForumComment), id},
+		{"vote comment", http.HandlerFunc(deps.voteForumComment), id},
+		{"delete comment", http.HandlerFunc(deps.deleteForumComment), id},
 	}
 	for _, c := range cases {
 		rr := forumCall(t, c.h, http.MethodPost, "/", c.id, nil, `{}`)
@@ -59,8 +69,8 @@ func TestForum_WritesRequireLogin(t *testing.T) {
 
 func TestForum_CreateValidation(t *testing.T) {
 	pool := testutil.Pool(t)
-	deps := ForumDeps{Pool: pool}
-	alice := newForumUser(t, pool, "user")
+	deps := Handler{Pool: pool}
+	alice := testutil.NewUser(t, pool, "user")
 	cases := map[string]struct {
 		body string
 		code string
@@ -74,7 +84,7 @@ func TestForum_CreateValidation(t *testing.T) {
 		"unknown problem":    {`{"section":"problems","title":"Hello world","body_md":"x","problem_slug":"no-such-problem"}`, "unknown_problem"},
 	}
 	for name, c := range cases {
-		rr := forumCall(t, CreateForumPost(deps), http.MethodPost, "/", "", alice, c.body)
+		rr := forumCall(t, http.HandlerFunc(deps.createForumPost), http.MethodPost, "/", "", alice, c.body)
 		if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), c.code) {
 			t.Errorf("%s: status=%d body=%s want 400 %s", name, rr.Code, rr.Body.String(), c.code)
 		}
@@ -90,10 +100,10 @@ func TestForum_CreateValidation(t *testing.T) {
 
 func TestForum_PostLifecycleAndOwnership(t *testing.T) {
 	pool := testutil.Pool(t)
-	deps := ForumDeps{Pool: pool}
-	alice := newForumUser(t, pool, "user")
-	bob := newForumUser(t, pool, "user")
-	admin := newForumUser(t, pool, "admin")
+	deps := Handler{Pool: pool}
+	alice := testutil.NewUser(t, pool, "user")
+	bob := testutil.NewUser(t, pool, "user")
+	admin := testutil.NewUser(t, pool, "admin")
 
 	p := createForumPost(t, deps, alice,
 		`{"section":"interview","title":"Onsite loop recap","body_md":"## Round 1\n**Two sum** variant with `+"`maps`"+`."}`)
@@ -106,69 +116,69 @@ func TestForum_PostLifecycleAndOwnership(t *testing.T) {
 
 	// Views count once per signed-in user; anonymous reads don't count.
 	for i := 0; i < 2; i++ {
-		forumCall(t, GetForumPost(deps), http.MethodGet, "/", p.ID.String(), bob, "")
+		forumCall(t, http.HandlerFunc(deps.getForumPost), http.MethodGet, "/", p.ID.String(), bob, "")
 	}
-	forumCall(t, GetForumPost(deps), http.MethodGet, "/", p.ID.String(), nil, "")
-	got := decodeForum[forumPost](t, forumCall(t, GetForumPost(deps), http.MethodGet, "/", p.ID.String(), alice, ""))
+	forumCall(t, http.HandlerFunc(deps.getForumPost), http.MethodGet, "/", p.ID.String(), nil, "")
+	got := decodeForum[forumPost](t, forumCall(t, http.HandlerFunc(deps.getForumPost), http.MethodGet, "/", p.ID.String(), alice, ""))
 	if got.ViewCount != 2 {
 		t.Fatalf("view_count=%d want 2 (bob once, alice once)", got.ViewCount)
 	}
 
 	edit := `{"section":"interview","title":"Onsite loop recap (edited)","body_md":"new body"}`
-	wantStatus(t, forumCall(t, UpdateForumPost(deps), http.MethodPut, "/", p.ID.String(), bob, edit), http.StatusNotFound)
-	wantStatus(t, forumCall(t, UpdateForumPost(deps), http.MethodPut, "/", p.ID.String(), admin, edit), http.StatusNotFound)
-	updated := decodeForum[forumPost](t, forumCall(t, UpdateForumPost(deps), http.MethodPut, "/", p.ID.String(), alice, edit))
+	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.updateForumPost), http.MethodPut, "/", p.ID.String(), bob, edit), http.StatusNotFound)
+	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.updateForumPost), http.MethodPut, "/", p.ID.String(), admin, edit), http.StatusNotFound)
+	updated := decodeForum[forumPost](t, forumCall(t, http.HandlerFunc(deps.updateForumPost), http.MethodPut, "/", p.ID.String(), alice, edit))
 	if updated.Title != "Onsite loop recap (edited)" || !updated.UpdatedAt.After(updated.CreatedAt) {
 		t.Fatalf("update: title=%q created=%v updated=%v", updated.Title, updated.CreatedAt, updated.UpdatedAt)
 	}
 
-	wantStatus(t, forumCall(t, DeleteForumPost(deps), http.MethodDelete, "/", p.ID.String(), bob, ""), http.StatusNotFound)
-	wantStatus(t, forumCall(t, DeleteForumPost(deps), http.MethodDelete, "/", p.ID.String(), admin, ""), http.StatusNoContent)
-	wantStatus(t, forumCall(t, GetForumPost(deps), http.MethodGet, "/", p.ID.String(), alice, ""), http.StatusNotFound)
-	wantStatus(t, forumCall(t, VoteForumPost(deps), http.MethodPost, "/", p.ID.String(), bob, `{"value":1}`), http.StatusNotFound)
+	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.deleteForumPost), http.MethodDelete, "/", p.ID.String(), bob, ""), http.StatusNotFound)
+	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.deleteForumPost), http.MethodDelete, "/", p.ID.String(), admin, ""), http.StatusNoContent)
+	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.getForumPost), http.MethodGet, "/", p.ID.String(), alice, ""), http.StatusNotFound)
+	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.voteForumPost), http.MethodPost, "/", p.ID.String(), bob, `{"value":1}`), http.StatusNotFound)
 }
 
 func TestForum_AnonymousHidesAuthor(t *testing.T) {
 	pool := testutil.Pool(t)
-	deps := ForumDeps{Pool: pool}
-	alice := newForumUser(t, pool, "user")
-	bob := newForumUser(t, pool, "user")
-	admin := newForumUser(t, pool, "admin")
+	deps := Handler{Pool: pool}
+	alice := testutil.NewUser(t, pool, "user")
+	bob := testutil.NewUser(t, pool, "user")
+	admin := testutil.NewUser(t, pool, "admin")
 	tag := uniqueTag()
 
 	p := createForumPost(t, deps, alice,
 		`{"section":"compensation","title":"Offer numbers","body_md":"TC details","is_anonymous":true,"tags":["`+tag+`"]}`)
 
-	asBob := decodeForum[forumPost](t, forumCall(t, GetForumPost(deps), http.MethodGet, "/", p.ID.String(), bob, ""))
+	asBob := decodeForum[forumPost](t, forumCall(t, http.HandlerFunc(deps.getForumPost), http.MethodGet, "/", p.ID.String(), bob, ""))
 	if asBob.Author != nil || asBob.IsMine || !asBob.IsAnonymous {
 		t.Fatalf("bob sees author=%+v is_mine=%v", asBob.Author, asBob.IsMine)
 	}
-	if strings.Contains(forumCall(t, GetForumPost(deps), http.MethodGet, "/", p.ID.String(), bob, "").Body.String(), alice.ID.String()) {
+	if strings.Contains(forumCall(t, http.HandlerFunc(deps.getForumPost), http.MethodGet, "/", p.ID.String(), bob, "").Body.String(), alice.ID.String()) {
 		t.Fatal("anonymous post leaks the author's id to other users")
 	}
-	asAlice := decodeForum[forumPost](t, forumCall(t, GetForumPost(deps), http.MethodGet, "/", p.ID.String(), alice, ""))
-	asAdmin := decodeForum[forumPost](t, forumCall(t, GetForumPost(deps), http.MethodGet, "/", p.ID.String(), admin, ""))
+	asAlice := decodeForum[forumPost](t, forumCall(t, http.HandlerFunc(deps.getForumPost), http.MethodGet, "/", p.ID.String(), alice, ""))
+	asAdmin := decodeForum[forumPost](t, forumCall(t, http.HandlerFunc(deps.getForumPost), http.MethodGet, "/", p.ID.String(), admin, ""))
 	if asAlice.Author == nil || !asAlice.IsMine || asAdmin.Author == nil || asAdmin.Author.ID != alice.ID {
 		t.Fatalf("author/admin should see author: alice=%+v admin=%+v", asAlice.Author, asAdmin.Author)
 	}
 
-	feed := forumCall(t, ListForumPosts(deps), http.MethodGet, "/api/forum/posts?tag="+tag, "", bob, "")
+	feed := forumCall(t, http.HandlerFunc(deps.listForumPosts), http.MethodGet, "/api/forum/posts?tag="+tag, "", bob, "")
 	if strings.Contains(feed.Body.String(), alice.ID.String()) || strings.Contains(feed.Body.String(), alice.Handle) {
 		t.Fatal("feed leaks the anonymous author")
 	}
 
 	// Anonymous comments are allowed on this post and mark the OP.
-	c := decodeForum[forumComment](t, forumCall(t, CreateForumComment(deps), http.MethodPost, "/", p.ID.String(), alice,
+	c := decodeForum[forumComment](t, forumCall(t, http.HandlerFunc(deps.createForumComment), http.MethodPost, "/", p.ID.String(), alice,
 		`{"body":"Update: negotiated +10%","is_anonymous":true}`))
 	list := decodeForum[struct{ Comments []forumComment }](t,
-		forumCall(t, ListForumComments(deps), http.MethodGet, "/", p.ID.String(), bob, ""))
+		forumCall(t, http.HandlerFunc(deps.listForumComments), http.MethodGet, "/", p.ID.String(), bob, ""))
 	if len(list.Comments) != 1 || list.Comments[0].ID != c.ID || list.Comments[0].Author != nil || !list.Comments[0].IsOP {
 		t.Fatalf("comment as bob: %+v", list.Comments)
 	}
 
 	// ...but not on a section that doesn't allow anonymity.
 	career := createForumPost(t, deps, alice, `{"section":"career","title":"Career question","body_md":"x"}`)
-	rr := forumCall(t, CreateForumComment(deps), http.MethodPost, "/", career.ID.String(), bob, `{"body":"hi","is_anonymous":true}`)
+	rr := forumCall(t, http.HandlerFunc(deps.createForumComment), http.MethodPost, "/", career.ID.String(), bob, `{"body":"hi","is_anonymous":true}`)
 	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "anonymous_not_allowed") {
 		t.Fatalf("anon comment on career: %d %s", rr.Code, rr.Body.String())
 	}
@@ -176,9 +186,9 @@ func TestForum_AnonymousHidesAuthor(t *testing.T) {
 
 func TestForum_VotesUpdateCounters(t *testing.T) {
 	pool := testutil.Pool(t)
-	deps := ForumDeps{Pool: pool}
-	alice := newForumUser(t, pool, "user")
-	bob := newForumUser(t, pool, "user")
+	deps := Handler{Pool: pool}
+	alice := testutil.NewUser(t, pool, "user")
+	bob := testutil.NewUser(t, pool, "user")
 	p := createForumPost(t, deps, alice, `{"section":"feedback","title":"Dark mode request","body_md":"please"}`)
 
 	type voteResp struct {
@@ -186,8 +196,8 @@ func TestForum_VotesUpdateCounters(t *testing.T) {
 		MyVote                    int `json:"my_vote"`
 	}
 	vote := func(v string) voteResp {
-		rr := forumCall(t, VoteForumPost(deps), http.MethodPost, "/", p.ID.String(), bob, `{"value":`+v+`}`)
-		wantStatus(t, rr, http.StatusOK)
+		rr := forumCall(t, http.HandlerFunc(deps.voteForumPost), http.MethodPost, "/", p.ID.String(), bob, `{"value":`+v+`}`)
+		testutil.WantStatus(t, rr, http.StatusOK)
 		return decodeForum[voteResp](t, rr)
 	}
 	if r := vote("1"); r.Upvotes != 1 || r.Score != 1 || r.MyVote != 1 {
@@ -202,11 +212,11 @@ func TestForum_VotesUpdateCounters(t *testing.T) {
 	if r := vote("0"); r.Upvotes != 0 || r.Downvotes != 0 || r.MyVote != 0 {
 		t.Fatalf("clear vote: %+v", r)
 	}
-	wantStatus(t, forumCall(t, VoteForumPost(deps), http.MethodPost, "/", p.ID.String(), bob, `{"value":2}`), http.StatusBadRequest)
-	wantStatus(t, forumCall(t, VoteForumPost(deps), http.MethodPost, "/", uuid.NewString(), bob, `{"value":1}`), http.StatusNotFound)
+	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.voteForumPost), http.MethodPost, "/", p.ID.String(), bob, `{"value":2}`), http.StatusBadRequest)
+	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.voteForumPost), http.MethodPost, "/", uuid.NewString(), bob, `{"value":1}`), http.StatusNotFound)
 
 	vote("1")
-	asBob := decodeForum[forumPost](t, forumCall(t, GetForumPost(deps), http.MethodGet, "/", p.ID.String(), bob, ""))
+	asBob := decodeForum[forumPost](t, forumCall(t, http.HandlerFunc(deps.getForumPost), http.MethodGet, "/", p.ID.String(), bob, ""))
 	if asBob.MyVote != 1 || asBob.Score != 1 {
 		t.Fatalf("post reflects vote: my_vote=%d score=%d", asBob.MyVote, asBob.Score)
 	}
@@ -214,14 +224,14 @@ func TestForum_VotesUpdateCounters(t *testing.T) {
 
 func TestForum_CommentsAndReplies(t *testing.T) {
 	pool := testutil.Pool(t)
-	deps := ForumDeps{Pool: pool}
-	alice := newForumUser(t, pool, "user")
-	bob := newForumUser(t, pool, "user")
+	deps := Handler{Pool: pool}
+	alice := testutil.NewUser(t, pool, "user")
+	bob := testutil.NewUser(t, pool, "user")
 	p := createForumPost(t, deps, alice, `{"section":"career","title":"Switching to backend","body_md":"advice?"}`)
 	pid := p.ID.String()
 
 	comment := func(u *auth.User, body string) *httptest.ResponseRecorder {
-		return forumCall(t, CreateForumComment(deps), http.MethodPost, "/", pid, u, body)
+		return forumCall(t, http.HandlerFunc(deps.createForumComment), http.MethodPost, "/", pid, u, body)
 	}
 	top := decodeForum[forumComment](t, comment(bob, `{"body":"Learn SQL first"}`))
 	second := decodeForum[forumComment](t, comment(alice, `{"body":"Thanks all"}`))
@@ -231,40 +241,40 @@ func TestForum_CommentsAndReplies(t *testing.T) {
 	}
 
 	// Threads are one level deep; replies to replies and cross-post parents fail.
-	wantStatus(t, comment(bob, `{"body":"nested","parent_id":"`+reply.ID.String()+`"}`), http.StatusBadRequest)
+	testutil.WantStatus(t, comment(bob, `{"body":"nested","parent_id":"`+reply.ID.String()+`"}`), http.StatusBadRequest)
 	other := createForumPost(t, deps, bob, `{"section":"career","title":"Another post","body_md":"x"}`)
-	wantStatus(t, forumCall(t, CreateForumComment(deps), http.MethodPost, "/", other.ID.String(), bob,
+	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.createForumComment), http.MethodPost, "/", other.ID.String(), bob,
 		`{"body":"x","parent_id":"`+top.ID.String()+`"}`), http.StatusBadRequest)
-	wantStatus(t, comment(bob, `{"body":"   "}`), http.StatusBadRequest)
+	testutil.WantStatus(t, comment(bob, `{"body":"   "}`), http.StatusBadRequest)
 
 	// Best sort puts the upvoted comment first; replies are nested under it.
-	wantStatus(t, forumCall(t, VoteForumComment(deps), http.MethodPost, "/", second.ID.String(), bob, `{"value":1}`), http.StatusOK)
+	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.voteForumComment), http.MethodPost, "/", second.ID.String(), bob, `{"value":1}`), http.StatusOK)
 	list := decodeForum[struct{ Comments []forumComment }](t,
-		forumCall(t, ListForumComments(deps), http.MethodGet, "/?sort=best", pid, bob, ""))
+		forumCall(t, http.HandlerFunc(deps.listForumComments), http.MethodGet, "/?sort=best", pid, bob, ""))
 	if len(list.Comments) != 2 || list.Comments[0].ID != second.ID || len(list.Comments[1].Replies) != 1 {
 		t.Fatalf("best order/replies: %+v", list.Comments)
 	}
 	newest := decodeForum[struct{ Comments []forumComment }](t,
-		forumCall(t, ListForumComments(deps), http.MethodGet, "/?sort=newest", pid, bob, ""))
+		forumCall(t, http.HandlerFunc(deps.listForumComments), http.MethodGet, "/?sort=newest", pid, bob, ""))
 	if newest.Comments[0].ID != second.ID || newest.Comments[1].ID != top.ID {
 		t.Fatalf("newest order: %+v", newest.Comments)
 	}
 
 	count := func() int {
-		return decodeForum[forumPost](t, forumCall(t, GetForumPost(deps), http.MethodGet, "/", pid, alice, "")).CommentCount
+		return decodeForum[forumPost](t, forumCall(t, http.HandlerFunc(deps.getForumPost), http.MethodGet, "/", pid, alice, "")).CommentCount
 	}
 	if n := count(); n != 3 {
 		t.Fatalf("comment_count=%d want 3", n)
 	}
 	// Only the author (or an admin) can delete; deleting a top-level comment
 	// takes its replies with it.
-	wantStatus(t, forumCall(t, DeleteForumComment(deps), http.MethodDelete, "/", top.ID.String(), alice, ""), http.StatusNotFound)
-	wantStatus(t, forumCall(t, DeleteForumComment(deps), http.MethodDelete, "/", top.ID.String(), bob, ""), http.StatusNoContent)
+	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.deleteForumComment), http.MethodDelete, "/", top.ID.String(), alice, ""), http.StatusNotFound)
+	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.deleteForumComment), http.MethodDelete, "/", top.ID.String(), bob, ""), http.StatusNoContent)
 	if n := count(); n != 1 {
 		t.Fatalf("comment_count after delete=%d want 1", n)
 	}
 	after := decodeForum[struct{ Comments []forumComment }](t,
-		forumCall(t, ListForumComments(deps), http.MethodGet, "/", pid, bob, ""))
+		forumCall(t, http.HandlerFunc(deps.listForumComments), http.MethodGet, "/", pid, bob, ""))
 	if len(after.Comments) != 1 || after.Comments[0].ID != second.ID {
 		t.Fatalf("after delete: %+v", after.Comments)
 	}
@@ -272,9 +282,9 @@ func TestForum_CommentsAndReplies(t *testing.T) {
 
 func TestForum_FeedFiltersSortAndSearch(t *testing.T) {
 	pool := testutil.Pool(t)
-	deps := ForumDeps{Pool: pool}
-	alice := newForumUser(t, pool, "user")
-	bob := newForumUser(t, pool, "user")
+	deps := Handler{Pool: pool}
+	alice := testutil.NewUser(t, pool, "user")
+	bob := testutil.NewUser(t, pool, "user")
 	tag := uniqueTag()
 
 	mk := func(section, title string) forumPost {
@@ -284,15 +294,15 @@ func TestForum_FeedFiltersSortAndSearch(t *testing.T) {
 	a := mk("career", "Resume review thread")
 	b := mk("interview", "Graph questions at onsite")
 	c := mk("career", "Negotiation tactics")
-	forumCall(t, VoteForumPost(deps), http.MethodPost, "/", b.ID.String(), bob, `{"value":1}`)
+	forumCall(t, http.HandlerFunc(deps.voteForumPost), http.MethodPost, "/", b.ID.String(), bob, `{"value":1}`)
 
 	type feed struct {
 		Posts   []forumPost
 		HasMore bool `json:"has_more"`
 	}
 	get := func(q string) feed {
-		rr := forumCall(t, ListForumPosts(deps), http.MethodGet, "/api/forum/posts?tag="+tag+q, "", bob, "")
-		wantStatus(t, rr, http.StatusOK)
+		rr := forumCall(t, http.HandlerFunc(deps.listForumPosts), http.MethodGet, "/api/forum/posts?tag="+tag+q, "", bob, "")
+		testutil.WantStatus(t, rr, http.StatusOK)
 		return decodeForum[feed](t, rr)
 	}
 	ids := func(f feed) []uuid.UUID {
@@ -327,12 +337,12 @@ func TestForum_FeedFiltersSortAndSearch(t *testing.T) {
 	if f := get("&sort=newest&limit=2&offset=2"); len(f.Posts) != 1 || f.HasMore || f.Posts[0].ID != a.ID {
 		t.Fatalf("page 2: %v has_more=%v", ids(f), f.HasMore)
 	}
-	wantStatus(t, forumCall(t, ListForumPosts(deps), http.MethodGet, "/api/forum/posts?sort=bogus", "", nil, ""), http.StatusBadRequest)
-	wantStatus(t, forumCall(t, ListForumPosts(deps), http.MethodGet, "/api/forum/posts?section=bogus", "", nil, ""), http.StatusBadRequest)
+	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.listForumPosts), http.MethodGet, "/api/forum/posts?sort=bogus", "", nil, ""), http.StatusBadRequest)
+	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.listForumPosts), http.MethodGet, "/api/forum/posts?section=bogus", "", nil, ""), http.StatusBadRequest)
 
 	// Signed-out visitors can read the feed.
-	rr := forumCall(t, ListForumPosts(deps), http.MethodGet, "/api/forum/posts?tag="+tag, "", nil, "")
-	wantStatus(t, rr, http.StatusOK)
+	rr := forumCall(t, http.HandlerFunc(deps.listForumPosts), http.MethodGet, "/api/forum/posts?tag="+tag, "", nil, "")
+	testutil.WantStatus(t, rr, http.StatusOK)
 	if f := decodeForum[feed](t, rr); len(f.Posts) != 3 || f.Posts[0].MyVote != 0 {
 		t.Fatalf("signed-out feed: %v", ids(f))
 	}
@@ -340,19 +350,19 @@ func TestForum_FeedFiltersSortAndSearch(t *testing.T) {
 
 func TestForum_PinIsAdminOnly(t *testing.T) {
 	pool := testutil.Pool(t)
-	deps := ForumDeps{Pool: pool}
-	alice := newForumUser(t, pool, "user")
-	admin := newForumUser(t, pool, "admin")
+	deps := Handler{Pool: pool}
+	alice := testutil.NewUser(t, pool, "user")
+	admin := testutil.NewUser(t, pool, "admin")
 	p := createForumPost(t, deps, admin, `{"section":"feedback","title":"Welcome to the forum","body_md":"rules"}`)
 	if p.Author == nil || !p.Author.Verified {
 		t.Fatalf("admin post should be verified: %+v", p.Author)
 	}
 
-	wantStatus(t, forumCall(t, PinForumPost(deps), http.MethodPost, "/", p.ID.String(), alice, `{"pinned":true}`), http.StatusForbidden)
-	wantStatus(t, forumCall(t, PinForumPost(deps), http.MethodPost, "/", p.ID.String(), admin, `{"pinned":true}`), http.StatusOK)
+	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.pinForumPost), http.MethodPost, "/", p.ID.String(), alice, `{"pinned":true}`), http.StatusForbidden)
+	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.pinForumPost), http.MethodPost, "/", p.ID.String(), admin, `{"pinned":true}`), http.StatusOK)
 
 	pinned := decodeForum[struct{ Posts []forumPost }](t,
-		forumCall(t, ListPinnedForumPosts(deps), http.MethodGet, "/", "", nil, ""))
+		forumCall(t, http.HandlerFunc(deps.listPinnedForumPosts), http.MethodGet, "/", "", nil, ""))
 	found := false
 	for _, pp := range pinned.Posts {
 		found = found || pp.ID == p.ID
@@ -360,7 +370,7 @@ func TestForum_PinIsAdminOnly(t *testing.T) {
 	if !found {
 		t.Fatalf("pinned list missing post: %+v", pinned.Posts)
 	}
-	wantStatus(t, forumCall(t, PinForumPost(deps), http.MethodPost, "/", p.ID.String(), admin, `{"pinned":false}`), http.StatusOK)
+	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.pinForumPost), http.MethodPost, "/", p.ID.String(), admin, `{"pinned":false}`), http.StatusOK)
 }
 
 func TestForumExcerpt(t *testing.T) {
@@ -382,15 +392,15 @@ func TestForumExcerpt(t *testing.T) {
 
 func TestForum_TrendingOnlyReadPosts(t *testing.T) {
 	pool := testutil.Pool(t)
-	deps := ForumDeps{Pool: pool}
-	alice := newForumUser(t, pool, "user")
-	bob := newForumUser(t, pool, "user")
+	deps := Handler{Pool: pool}
+	alice := testutil.NewUser(t, pool, "user")
+	bob := testutil.NewUser(t, pool, "user")
 	unread := createForumPost(t, deps, alice, `{"section":"career","title":"Nobody read this yet","body_md":"x"}`)
 	read := createForumPost(t, deps, alice, `{"section":"career","title":"Bob read this one","body_md":"x","tags":["resume"]}`)
-	forumCall(t, GetForumPost(deps), http.MethodGet, "/", read.ID.String(), bob, "")
+	forumCall(t, http.HandlerFunc(deps.getForumPost), http.MethodGet, "/", read.ID.String(), bob, "")
 
 	list := decodeForum[struct{ Posts []forumTrendingItem }](t,
-		forumCall(t, ListTrendingForumPosts(deps), http.MethodGet, "/", "", nil, ""))
+		forumCall(t, http.HandlerFunc(deps.listTrendingForumPosts), http.MethodGet, "/", "", nil, ""))
 	var sawRead bool
 	for _, it := range list.Posts {
 		if it.ID == unread.ID {
