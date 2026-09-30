@@ -1,4 +1,4 @@
-package handlers
+package submissions
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"codritium/backend/internal/sessions"
 
 	"github.com/google/uuid"
 
@@ -35,7 +37,7 @@ func TestSubmit_RejectsSessionOwnedBySomeoneElse(t *testing.T) {
 	intruder := testutil.NewUser(t, pool, "user")
 	req = req.WithContext(auth.WithUser(req.Context(), intruder))
 	rr := httptest.NewRecorder()
-	Submit(SubmissionDeps{Pool: pool, Agents: reg}).ServeHTTP(rr, req)
+	Handler{Store: Store{Pool: pool}, Sessions: sessions.Store{Pool: pool}, Agents: reg}.submit(rr, req)
 
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("status=%d body=%s, want 404", rr.Code, rr.Body.String())

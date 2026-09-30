@@ -10,6 +10,9 @@ import (
 	"syscall"
 	"time"
 
+	"codritium/backend/internal/grading"
+	"codritium/backend/internal/submissions"
+
 	"codritium/backend/internal/account"
 	"codritium/backend/internal/profile"
 	"codritium/backend/internal/replay"
@@ -141,15 +144,13 @@ func main() {
 		log.Printf("tips agent disabled — GOOGLE_API_KEY not set")
 	}
 	tipsDeps := handlers.TipsDeps{Pool: database.Pool, Agent: tipsAgent, Filter: tipsFilter}
-	subDeps := handlers.SubmissionDeps{
-		Pool:         database.Pool,
-		Anthropic:    anthClient,
-		Gemini:       geminiClient,
-		Ollama:       ollamaClient,
-		GraderEngine: cfg.GraderEngine,
-		Sandbox:      sandbox,
-		Agents:       agentRegistry,
+	gradeEngine, err := grader.NewEngine(cfg.GraderEngine, grader.Clients{
+		Anthropic: anthClient, Gemini: geminiClient, Ollama: ollamaClient,
+	})
+	if err != nil {
+		log.Fatalf("grader: %v", err)
 	}
+	gradingSvc := &grading.Service{Pool: database.Pool, Sandbox: sandbox, Engine: gradeEngine}
 
 	mux := http.NewServeMux()
 	authMiddleware := auth.Middleware(database.Pool, cfg.CookieSecret)
@@ -193,15 +194,19 @@ func main() {
 		account.Handler{Pool: database.Pool},
 		profile.Handler{Pool: database.Pool},
 		replay.Handler{Pool: database.Pool},
+		submissions.Handler{
+			Store:    submissions.Store{Pool: database.Pool},
+			Problems: problemStore,
+			Sessions: sessions.Store{Pool: database.Pool},
+			Sandbox:  sandbox,
+			Grading:  gradingSvc,
+			Agents:   agentRegistry,
+		},
 	} {
 		m.Routes(rt)
 	}
 
 	// Authed routes — wrap each with authMiddleware so r.Context() carries the user.
-	mux.Handle("POST /api/submissions", authMiddleware(handlers.Submit(subDeps)))
-	mux.Handle("GET /api/submissions/{id}", authMiddleware(handlers.GetSubmission(subDeps)))
-	mux.Handle("DELETE /api/submissions/{id}", authMiddleware(handlers.DeleteSubmission(subDeps)))
-	mux.Handle("GET /api/me/submissions", authMiddleware(handlers.ListMySubmissions(subDeps)))
 	mux.Handle("POST /api/decision", authMiddleware(handlers.PostDecision(decisionDeps)))
 	mux.Handle("POST /api/events", authMiddleware(handlers.PostEvent(eventsDeps)))
 	if cfg.ChatEngine == "disabled" {
@@ -242,6 +247,13 @@ func main() {
 	shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutCancel()
 	_ = srv.Shutdown(shutCtx)
+	// Let in-flight grading finish; past the deadline, jobs are cancelled
+	// and their submissions marked failed rather than left "grading".
+	gradeCtx, gradeCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer gradeCancel()
+	if err := gradingSvc.Shutdown(gradeCtx); err != nil {
+		log.Printf("grading shutdown: %v", err)
+	}
 }
 
 // Allowed origins for browser fetches. Credentials cookies require an exact
