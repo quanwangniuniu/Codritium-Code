@@ -25,6 +25,7 @@ type SubmissionDeps struct {
 	Gemini       *genai.Client
 	Ollama       *grader.OllamaClient
 	GraderEngine string
+	Sandbox      grader.Sandbox
 
 	// Agents, when set, has the session's chat agent dropped on submit so
 	// its history and scratch directory don't outlive the session.
@@ -138,7 +139,7 @@ func Submit(deps SubmissionDeps) http.HandlerFunc {
 		// candidate can fix without burning a grader budget.
 		if sampleTestFile != nil && sampleTestContent != nil && *sampleTestContent != "" {
 			sampleCtx, sampleCancel := context.WithTimeout(ctx, 30*time.Second)
-			sampleRes, sampleErr := grader.RunPytest(sampleCtx, grader.SandboxInput{
+			sampleRes, sampleErr := deps.Sandbox.RunPytest(sampleCtx, grader.SandboxInput{
 				StarterFiles:       starter,
 				CandidateFiles:     req.CodeFiles,
 				HiddenTestFilename: *sampleTestFile,
@@ -248,7 +249,7 @@ func runGradingPipeline(deps SubmissionDeps, submissionID uuid.UUID,
 	var sb *grader.SandboxOutput
 	err := retryWithBackoff(func() error {
 		var e error
-		sb, e = grader.RunPytest(ctx, grader.SandboxInput{
+		sb, e = deps.Sandbox.RunPytest(ctx, grader.SandboxInput{
 			StarterFiles:       starter,
 			CandidateFiles:     candidate,
 			HiddenTestFilename: hiddenTestFile,

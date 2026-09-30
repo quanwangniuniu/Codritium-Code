@@ -63,8 +63,8 @@ func main() {
 	var (
 		tier        = flag.String("tier", "", "tier name (poor|mid|good) — folder under -tier-dir")
 		engine      = flag.String("engine", "", "grader engine: ollama|anthropic|gemini (overrides GRADER_ENGINE)")
-		problemPath = flag.String("problem", "../seed/problems/22-build-rate-limiter-middleware.json", "path to problem seed JSON")
-		tierDir     = flag.String("tier-dir", "/Users/johns3248/project/AICH/temp/22", "root dir containing poor/, mid/, good/")
+		problemPath = flag.String("problem", "", "path to problem seed JSON (default: seed/problems/22-build-rate-limiter-middleware.json)")
+		tierDir     = flag.String("tier-dir", "", "root dir containing poor/, mid/, good/ (required)")
 		skipSandbox = flag.Bool("skip-sandbox", false, "skip E2B sandbox run; test_results will be null")
 		outPath     = flag.String("out", "", "write JSON result here; if empty, write to stdout")
 	)
@@ -73,6 +73,9 @@ func main() {
 	if *tier == "" {
 		log.Fatal("missing -tier")
 	}
+	if *tierDir == "" {
+		log.Fatal("missing -tier-dir")
+	}
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -80,6 +83,9 @@ func main() {
 	}
 	if *engine != "" {
 		cfg.GraderEngine = *engine
+	}
+	if *problemPath == "" {
+		*problemPath = filepath.Join(cfg.Paths.ProblemsSeed, "22-build-rate-limiter-middleware.json")
 	}
 	if cfg.GraderEngine != "ollama" &&
 		cfg.GraderEngine != "anthropic" &&
@@ -117,7 +123,7 @@ func main() {
 	if !*skipSandbox {
 		log.Printf("[grade] running sandbox for tier=%s ...", *tier)
 		t0 := time.Now()
-		sandbox, err = grader.RunPytest(ctx, grader.SandboxInput{
+		sandbox, err = grader.Sandbox{Python: cfg.Paths.SandboxPython, Script: cfg.Paths.SandboxScript}.RunPytest(ctx, grader.SandboxInput{
 			StarterFiles:       starter,
 			CandidateFiles:     candidate,
 			HiddenTestFilename: ps.HiddenTestFilename,

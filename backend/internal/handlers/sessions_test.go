@@ -5,34 +5,15 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"codritium/backend/internal/auth"
+	"codritium/backend/internal/platform/testutil"
 )
-
-func setupSessionsPool(t *testing.T) *pgxpool.Pool {
-	t.Helper()
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		dsn = "postgres://codritium:codritium@localhost:5434/codritium?sslmode=disable"
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Skipf("no postgres at %s: %v", dsn, err)
-	}
-	if err := pool.Ping(ctx); err != nil {
-		t.Skipf("postgres ping: %v", err)
-	}
-	return pool
-}
 
 func sendSession(t *testing.T, deps SessionsDeps, handle, body string) *httptest.ResponseRecorder {
 	t.Helper()
@@ -71,7 +52,7 @@ func TestPostSession_Unauthorized(t *testing.T) {
 }
 
 func TestPostSession_MissingSlug(t *testing.T) {
-	pool := setupSessionsPool(t)
+	pool := testutil.Pool(t)
 	rr := sendSession(t, SessionsDeps{Pool: pool}, "alice", `{}`)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d want 400", rr.Code)
@@ -79,7 +60,7 @@ func TestPostSession_MissingSlug(t *testing.T) {
 }
 
 func TestPostSession_UnknownChallenge(t *testing.T) {
-	pool := setupSessionsPool(t)
+	pool := testutil.Pool(t)
 	rr := sendSession(t, SessionsDeps{Pool: pool}, "alice", `{"challenge_slug":"does-not-exist"}`)
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("status=%d want 404", rr.Code)
@@ -87,7 +68,7 @@ func TestPostSession_UnknownChallenge(t *testing.T) {
 }
 
 func TestPostSession_CreateThenReuse(t *testing.T) {
-	pool := setupSessionsPool(t)
+	pool := testutil.Pool(t)
 	cleanupSessions(t, pool, "alice-reuse")
 	deps := SessionsDeps{Pool: pool}
 
@@ -117,7 +98,7 @@ func TestPostSession_CreateThenReuse(t *testing.T) {
 }
 
 func TestPostSession_ForceNewCreatesDistinct(t *testing.T) {
-	pool := setupSessionsPool(t)
+	pool := testutil.Pool(t)
 	cleanupSessions(t, pool, "alice-force")
 	deps := SessionsDeps{Pool: pool}
 
@@ -138,7 +119,7 @@ func TestPostSession_ForceNewCreatesDistinct(t *testing.T) {
 }
 
 func TestPostSession_IsolatedPerCandidate(t *testing.T) {
-	pool := setupSessionsPool(t)
+	pool := testutil.Pool(t)
 	cleanupSessions(t, pool, "alice-iso")
 	cleanupSessions(t, pool, "bob-iso")
 	deps := SessionsDeps{Pool: pool}

@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/joho/godotenv"
@@ -36,11 +37,20 @@ type Config struct {
 	SMTPPass               string
 	SMTPFrom               string
 	PublicURL              string
+	Paths                  Paths
 }
 
 func Load() (*Config, error) {
-	_ = godotenv.Load("../.env")
+	paths, err := ResolvePaths()
+	if err != nil {
+		return nil, err
+	}
+	_ = godotenv.Load(filepath.Join(paths.Root, ".env"))
 	_ = godotenv.Load(".env")
+	// SANDBOX_PYTHON may come from .env, which was not loaded yet above.
+	if v := os.Getenv("SANDBOX_PYTHON"); v != "" {
+		paths.SandboxPython = v
+	}
 
 	c := &Config{
 		Env:                    getenv("ENV", "dev"),
@@ -69,6 +79,7 @@ func Load() (*Config, error) {
 		SMTPPass:               os.Getenv("SMTP_PASS"),
 		SMTPFrom:               os.Getenv("SMTP_FROM"),
 		PublicURL:              getenv("PUBLIC_URL", "http://localhost:3000"),
+		Paths:                  paths,
 	}
 
 	// The session cookie is Secure by default in prod. dev and staging may

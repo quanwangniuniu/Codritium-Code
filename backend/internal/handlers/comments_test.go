@@ -8,13 +8,14 @@ import (
 	"testing"
 
 	"codritium/backend/internal/auth"
+	"codritium/backend/internal/platform/testutil"
 )
 
 // Commenting on a problem unlocks once the user has a graded submission.
 // Regression: the gate used candidate_sessions.graded_at, which nothing
 // ever set, so non-admins were locked out forever.
 func TestCreateComment_UnlocksAfterGradedSubmission(t *testing.T) {
-	pool := setupSessionsPool(t)
+	pool := testutil.Pool(t)
 	ctx := context.Background()
 	u := newForumUser(t, pool, "user")
 

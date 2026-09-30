@@ -46,11 +46,11 @@ func main() {
 	}
 	defer database.Close()
 
-	if err := migrate.Run(ctx, database.Pool, "../migrations", "../seed"); err != nil {
+	if err := migrate.Run(ctx, database.Pool, cfg.Paths.Migrations, cfg.Paths.Seed); err != nil {
 		log.Fatalf("migrate: %v", err)
 	}
 
-	if err := problems.SeedFromDir(ctx, database.Pool, "../seed/problems"); err != nil {
+	if err := problems.SeedFromDir(ctx, database.Pool, cfg.Paths.ProblemsSeed); err != nil {
 		log.Fatalf("seed problems: %v", err)
 	}
 
@@ -109,7 +109,8 @@ func main() {
 		log.Printf("chat engine: gemini (gemini_stream)")
 	}
 
-	agentFactory := buildAgentFactory(database, streamClient, eventStore, textBroadcaster, decisionWaiter)
+	sandbox := grader.Sandbox{Python: cfg.Paths.SandboxPython, Script: cfg.Paths.SandboxScript}
+	agentFactory := buildAgentFactory(database, streamClient, eventStore, textBroadcaster, decisionWaiter, sandbox)
 	agentRegistry := llm.NewAgentRegistry(agentFactory)
 	chatJailbreak := llm.NewChatJailbreakClassifier()
 	chatV2Deps := handlers.ChatV2Deps{
@@ -134,6 +135,7 @@ func main() {
 		Gemini:       geminiClient,
 		Ollama:       ollamaClient,
 		GraderEngine: cfg.GraderEngine,
+		Sandbox:      sandbox,
 		Agents:       agentRegistry,
 	}
 	commentsDeps := handlers.CommentsDeps{Pool: database.Pool}
@@ -304,10 +306,10 @@ func withLogging(h http.Handler) http.Handler {
 // they wrote themselves, and those tests are part of `files`. The sandbox
 // wrapper drops `files` into the workspace then invokes pytest against
 // `testFile` directly.
-type graderSandboxRunner struct{}
+type graderSandboxRunner struct{ sandbox grader.Sandbox }
 
-func (graderSandboxRunner) RunPytest(ctx context.Context, files map[string]string, testFile string) (llm.SandboxResult, error) {
-	out, err := grader.RunPytest(ctx, grader.SandboxInput{
+func (g graderSandboxRunner) RunPytest(ctx context.Context, files map[string]string, testFile string) (llm.SandboxResult, error) {
+	out, err := g.sandbox.RunPytest(ctx, grader.SandboxInput{
 		CandidateFiles:     files,
 		HiddenTestFilename: testFile,
 		TimeoutSec:         60,
@@ -337,7 +339,7 @@ func (graderSandboxRunner) RunPytest(ctx context.Context, files map[string]strin
 // test file path from the problems table; wires the engine-neutral
 // stream client + DecisionWaiter + events store; locks the visible
 // test path via DenyRule.
-func buildAgentFactory(pool *db.DB, stream llm.LLMStreamClient, store *events.Store, text *llm.TextBroadcaster, waiter *llm.DecisionWaiter) llm.AgentFactory {
+func buildAgentFactory(pool *db.DB, stream llm.LLMStreamClient, store *events.Store, text *llm.TextBroadcaster, waiter *llm.DecisionWaiter, sandbox grader.Sandbox) llm.AgentFactory {
 	return func(ctx context.Context, sessionID uuid.UUID, slug string) (*llm.Agent, error) {
 		var readme, hiddenTestFile string
 		var starterJSON []byte
@@ -379,7 +381,7 @@ func buildAgentFactory(pool *db.DB, stream llm.LLMStreamClient, store *events.St
 			Waiter:       waiter,
 			Tools:        llm.NewDefaultRegistry(),
 			Workspace:    &llm.Workspace{Files: files},
-			Sandbox:      graderSandboxRunner{},
+			Sandbox:      graderSandboxRunner{sandbox: sandbox},
 			TmpFS:        tmpFS,
 			SystemPrompt: systemPrompt,
 			Deny: []llm.DenyRule{

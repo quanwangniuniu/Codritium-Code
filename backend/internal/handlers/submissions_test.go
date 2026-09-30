@@ -11,10 +11,11 @@ import (
 
 	"codritium/backend/internal/auth"
 	"codritium/backend/internal/llm"
+	"codritium/backend/internal/platform/testutil"
 )
 
 func TestSubmit_RejectsSessionOwnedBySomeoneElse(t *testing.T) {
-	pool := setupSessionsPool(t)
+	pool := testutil.Pool(t)
 	ctx := context.Background()
 
 	owner := "owner-" + uuid.NewString()

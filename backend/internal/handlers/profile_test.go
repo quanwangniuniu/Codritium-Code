@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"codritium/backend/internal/auth"
+	"codritium/backend/internal/platform/testutil"
 )
 
 func day(s string) time.Time {
@@ -92,7 +93,7 @@ func TestProfile_RequiresLogin(t *testing.T) {
 }
 
 func TestProfile_Aggregates(t *testing.T) {
-	pool := setupSessionsPool(t)
+	pool := testutil.Pool(t)
 	ctx := context.Background()
 	u := newForumUser(t, pool, "user")
 	now := day("2026-09-30").Add(15 * time.Hour)
@@ -188,7 +189,7 @@ func TestProfile_Aggregates(t *testing.T) {
 }
 
 func TestUpdateMe_Persists(t *testing.T) {
-	pool := setupSessionsPool(t)
+	pool := testutil.Pool(t)
 	u := newForumUser(t, pool, "user")
 	deps := ProfileDeps{Pool: pool}
 

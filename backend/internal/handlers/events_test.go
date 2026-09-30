@@ -4,35 +4,16 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"codritium/backend/internal/auth"
 	"codritium/backend/internal/events"
+	"codritium/backend/internal/platform/testutil"
 )
-
-func newEventsTestPool(t *testing.T) *pgxpool.Pool {
-	t.Helper()
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		dsn = "postgres://codritium:codritium@localhost:5434/codritium?sslmode=disable"
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Skipf("no postgres at %s: %v", dsn, err)
-	}
-	if err := pool.Ping(ctx); err != nil {
-		t.Skipf("postgres ping: %v", err)
-	}
-	return pool
-}
 
 func createSessionFor(t *testing.T, pool *pgxpool.Pool, handle string) uuid.UUID {
 	t.Helper()
@@ -74,7 +55,7 @@ func TestPostEvent_Unauthorized(t *testing.T) {
 }
 
 func TestPostEvent_BadJSON(t *testing.T) {
-	pool := newEventsTestPool(t)
+	pool := testutil.Pool(t)
 	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
 	rr := sendEvent(t, deps, "alice", `{not json`)
 	if rr.Code != http.StatusBadRequest {
@@ -83,7 +64,7 @@ func TestPostEvent_BadJSON(t *testing.T) {
 }
 
 func TestPostEvent_BadSessionID(t *testing.T) {
-	pool := newEventsTestPool(t)
+	pool := testutil.Pool(t)
 	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
 	rr := sendEvent(t, deps, "alice", `{"session_id":"not-uuid","kind":"ai_output_read","payload":{}}`)
 	if rr.Code != http.StatusBadRequest {
@@ -92,7 +73,7 @@ func TestPostEvent_BadSessionID(t *testing.T) {
 }
 
 func TestPostEvent_BackendKindRejected(t *testing.T) {
-	pool := newEventsTestPool(t)
+	pool := testutil.Pool(t)
 	sid := createSessionFor(t, pool, "alice")
 	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
 	body := `{"session_id":"` + sid.String() + `","kind":"tool_use_proposed","payload":{}}`
@@ -106,7 +87,7 @@ func TestPostEvent_BackendKindRejected(t *testing.T) {
 }
 
 func TestPostEvent_UnknownSession(t *testing.T) {
-	pool := newEventsTestPool(t)
+	pool := testutil.Pool(t)
 	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
 	body := `{"session_id":"` + uuid.NewString() + `","kind":"ai_output_read","payload":{"message_id":"m1","pause_duration_sec":3,"scroll_depth_percent":80,"next_action_kind":"new_prompt"}}`
 	rr := sendEvent(t, deps, "alice", body)
@@ -116,7 +97,7 @@ func TestPostEvent_UnknownSession(t *testing.T) {
 }
 
 func TestPostEvent_CrossUserReturns404(t *testing.T) {
-	pool := newEventsTestPool(t)
+	pool := testutil.Pool(t)
 	sid := createSessionFor(t, pool, "alice")
 	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
 	// bob tries to emit on alice's session
@@ -128,7 +109,7 @@ func TestPostEvent_CrossUserReturns404(t *testing.T) {
 }
 
 func TestPostEvent_AIOutputReadHappy(t *testing.T) {
-	pool := newEventsTestPool(t)
+	pool := testutil.Pool(t)
 	sid := createSessionFor(t, pool, "alice")
 	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
 	body := `{
@@ -161,7 +142,7 @@ func TestPostEvent_AIOutputReadHappy(t *testing.T) {
 }
 
 func TestPostEvent_CandidateRevertedEditHappy(t *testing.T) {
-	pool := newEventsTestPool(t)
+	pool := testutil.Pool(t)
 	sid := createSessionFor(t, pool, "alice")
 	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
 	body := `{
@@ -181,7 +162,7 @@ func TestPostEvent_CandidateRevertedEditHappy(t *testing.T) {
 }
 
 func TestPostEvent_UnknownPayloadFieldRejected(t *testing.T) {
-	pool := newEventsTestPool(t)
+	pool := testutil.Pool(t)
 	sid := createSessionFor(t, pool, "alice")
 	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
 	body := `{
