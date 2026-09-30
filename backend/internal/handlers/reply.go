@@ -23,25 +23,25 @@ type ReplyDeps struct {
 }
 
 type replyResponse struct {
-	Source        string             `json:"source"`
-	Challenge     string             `json:"challenge_slug"`
-	Generator     string             `json:"generator_model,omitempty"`
-	Candidate     *int               `json:"candidate_index,omitempty"`
-	CreatedAt     string             `json:"created_at,omitempty"`
-	SessionID     string             `json:"session_id,omitempty"`
-	StartedAt     string             `json:"started_at,omitempty"`
-	Envelopes     []json.RawMessage  `json:"envelopes"`
-	Files         json.RawMessage    `json:"files,omitempty"`
-	ExplanationMD string             `json:"explanation_md,omitempty"`
-	StarterFiles  json.RawMessage    `json:"starter_files,omitempty"`
+	Source        string            `json:"source"`
+	Challenge     string            `json:"challenge_slug"`
+	Generator     string            `json:"generator_model,omitempty"`
+	Candidate     *int              `json:"candidate_index,omitempty"`
+	CreatedAt     string            `json:"created_at,omitempty"`
+	SessionID     string            `json:"session_id,omitempty"`
+	StartedAt     string            `json:"started_at,omitempty"`
+	Envelopes     []json.RawMessage `json:"envelopes"`
+	Files         json.RawMessage   `json:"files,omitempty"`
+	ExplanationMD string            `json:"explanation_md,omitempty"`
+	StarterFiles  json.RawMessage   `json:"starter_files,omitempty"`
 }
 
 type userEnvelope struct {
-	SessionID  string          `json:"session_id"`
-	Seq        int64           `json:"seq"`
-	Kind       string          `json:"kind"`
-	EmittedAt  string          `json:"emitted_at"`
-	Payload    json.RawMessage `json:"payload"`
+	SessionID string          `json:"session_id"`
+	Seq       int64           `json:"seq"`
+	Kind      string          `json:"kind"`
+	EmittedAt string          `json:"emitted_at"`
+	Payload   json.RawMessage `json:"payload"`
 }
 
 // GetOfficialReply returns the most recently created official walkthrough
@@ -62,23 +62,15 @@ func GetOfficialReply(deps ReplyDeps) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if u.Role != "admin" {
-			var graded bool
-			if err := deps.Pool.QueryRow(r.Context(), `
-				SELECT EXISTS(
-				  SELECT 1 FROM candidate_sessions
-				  WHERE candidate_id = $1 AND challenge_id = $2 AND graded_at IS NOT NULL
-				)`, u.Handle, slug).Scan(&graded); err != nil {
-				http.Error(w, "gate check: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
-			if !graded {
-				writeJSON(w, http.StatusForbidden, map[string]any{
-					"error":          "must_complete_problem",
-					"challenge_slug": slug,
-				})
-				return
-			}
+		if err := requireGradedOrAdmin(r, deps.Pool, u, slug); errors.Is(err, errNotGraded) {
+			writeJSON(w, http.StatusForbidden, map[string]any{
+				"error":          "must_complete_problem",
+				"challenge_slug": slug,
+			})
+			return
+		} else if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
 		}
 		var (
 			source        string

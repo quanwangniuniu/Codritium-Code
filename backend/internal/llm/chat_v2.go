@@ -47,6 +47,9 @@ type Agent struct {
 
 	// running history (carried across turns within the session)
 	messages []Message
+	// turnMu serialises RunTurn: each chat message starts its own goroutine,
+	// and two turns must never interleave on messages or the workspace.
+	turnMu sync.Mutex
 
 	closeMu sync.Mutex
 	closed  chan struct{} // closed by Close; lazily created
@@ -88,6 +91,9 @@ const defaultMaxIterations = 50
 // (max_turns / aborted). All events are written to the store; the caller
 // observes the session via events.Store.Subscribe.
 func (a *Agent) RunTurn(ctx context.Context, sessionID uuid.UUID, turnIndex int, userMsg string) (RunResult, error) {
+	a.turnMu.Lock()
+	defer a.turnMu.Unlock()
+
 	maxIter := a.MaxIterations
 	if maxIter <= 0 {
 		maxIter = defaultMaxIterations
@@ -294,7 +300,7 @@ func (a *Agent) handleToolUse(ctx context.Context, sessionID uuid.UUID, turnInde
 		path, pOK := tu.Input["path"].(string)
 		content, cOK := tu.Input["content"].(string)
 		if pOK && cOK && a.Workspace != nil {
-			if existing, exists := a.Workspace.Files[path]; exists && existing == content {
+			if existing, exists := a.Workspace.Get(path); exists && existing == content {
 				a.recordMessage(ctx, sessionID, Message{
 					Role: "tool",
 					Content: []ContentBlock{{
@@ -330,7 +336,7 @@ func (a *Agent) handleToolUse(ctx context.Context, sessionID uuid.UUID, turnInde
 	if isAuto {
 		decision = Decision{Kind: "approve"}
 	} else {
-		d, err := a.Waiter.Wait(ctx, tu.ID)
+		d, err := a.Waiter.Wait(ctx, DecisionKey(sessionID, tu.ID))
 		if err != nil {
 			return fmt.Errorf("waiter: %w", err)
 		}

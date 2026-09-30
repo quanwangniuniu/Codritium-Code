@@ -164,6 +164,7 @@ export default function ProblemWorkspacePage() {
           const auto = env.payload.auto === true;
           const path = parseEditPath(summary) ?? parseReadPath(summary);
           const patch: PendingPatch = {
+            sessionId: env.session_id,
             toolUseId,
             tool,
             inputSummary: summary,

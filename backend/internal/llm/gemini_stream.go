@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"iter"
 
 	"google.golang.org/genai"
@@ -142,7 +143,7 @@ func (r *geminiReader) enqueueFromResponse(resp *genai.GenerateContentResponse) 
 				r.queue = append(r.queue, NormalizedChunk{Kind: "text_delta", Text: p.Text})
 			case p.FunctionCall != nil:
 				r.functionID++
-				id := fmt.Sprintf("tu-gem-%d", r.functionID)
+				id := fmt.Sprintf("tu-gem-%d-%s", r.functionID, uuid.NewString()[:8])
 				args := p.FunctionCall.Args
 				inputJSON, _ := json.Marshal(args)
 				r.queue = append(r.queue,
@@ -163,10 +164,10 @@ func (r *geminiReader) enqueueFromResponse(resp *genai.GenerateContentResponse) 
 	if resp.UsageMetadata != nil && !r.usageSent {
 		r.usageSent = true
 		r.queue = append(r.queue, NormalizedChunk{
-			Kind:                "usage",
-			InputTokens:         int(resp.UsageMetadata.PromptTokenCount),
-			OutputTokens:        int(resp.UsageMetadata.CandidatesTokenCount),
-			CacheReadTokens:     int(resp.UsageMetadata.CachedContentTokenCount),
+			Kind:            "usage",
+			InputTokens:     int(resp.UsageMetadata.PromptTokenCount),
+			OutputTokens:    int(resp.UsageMetadata.CandidatesTokenCount),
+			CacheReadTokens: int(resp.UsageMetadata.CachedContentTokenCount),
 		})
 	}
 }

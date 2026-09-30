@@ -15,6 +15,19 @@ import (
 	"codritium/backend/internal/llm"
 )
 
+// fakeOwner reports ownership from a fixed session id.
+type fakeOwner struct{ owned uuid.UUID }
+
+func (f fakeOwner) SessionOwnedBy(_ context.Context, id uuid.UUID, _ *auth.User) (bool, error) {
+	return id == f.owned, nil
+}
+
+var decisionSession = uuid.MustParse("11111111-1111-1111-1111-111111111111")
+
+func decisionDeps(w *llm.DecisionWaiter) DecisionDeps {
+	return DecisionDeps{Waiter: w, Sessions: fakeOwner{owned: decisionSession}}
+}
+
 func authedRequest(t *testing.T, method, path, body string) *http.Request {
 	t.Helper()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
@@ -24,7 +37,7 @@ func authedRequest(t *testing.T, method, path, body string) *http.Request {
 
 func TestPostDecision_Unauthorized(t *testing.T) {
 	waiter := llm.NewDecisionWaiter()
-	h := PostDecision(DecisionDeps{Waiter: waiter})
+	h := PostDecision(decisionDeps(waiter))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/decision", strings.NewReader(`{}`))
 	rr := httptest.NewRecorder()
@@ -36,7 +49,7 @@ func TestPostDecision_Unauthorized(t *testing.T) {
 }
 
 func TestPostDecision_BadJSON(t *testing.T) {
-	h := PostDecision(DecisionDeps{Waiter: llm.NewDecisionWaiter()})
+	h := PostDecision(decisionDeps(llm.NewDecisionWaiter()))
 	req := authedRequest(t, http.MethodPost, "/api/decision", `{not json`)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -46,8 +59,8 @@ func TestPostDecision_BadJSON(t *testing.T) {
 }
 
 func TestPostDecision_MissingToolUseID(t *testing.T) {
-	h := PostDecision(DecisionDeps{Waiter: llm.NewDecisionWaiter()})
-	req := authedRequest(t, http.MethodPost, "/api/decision", `{"decision":"approve"}`)
+	h := PostDecision(decisionDeps(llm.NewDecisionWaiter()))
+	req := authedRequest(t, http.MethodPost, "/api/decision", `{"session_id":"11111111-1111-1111-1111-111111111111","decision":"approve"}`)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusBadRequest {
@@ -56,9 +69,9 @@ func TestPostDecision_MissingToolUseID(t *testing.T) {
 }
 
 func TestPostDecision_BadDecisionKind(t *testing.T) {
-	h := PostDecision(DecisionDeps{Waiter: llm.NewDecisionWaiter()})
+	h := PostDecision(decisionDeps(llm.NewDecisionWaiter()))
 	req := authedRequest(t, http.MethodPost, "/api/decision",
-		`{"tool_use_id":"tu-1","decision":"yes"}`)
+		`{"session_id":"11111111-1111-1111-1111-111111111111","tool_use_id":"tu-1","decision":"yes"}`)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusBadRequest {
@@ -67,9 +80,9 @@ func TestPostDecision_BadDecisionKind(t *testing.T) {
 }
 
 func TestPostDecision_NoPendingWaitReturns404(t *testing.T) {
-	h := PostDecision(DecisionDeps{Waiter: llm.NewDecisionWaiter()})
+	h := PostDecision(decisionDeps(llm.NewDecisionWaiter()))
 	req := authedRequest(t, http.MethodPost, "/api/decision",
-		`{"tool_use_id":"tu-not-waiting","decision":"approve"}`)
+		`{"session_id":"11111111-1111-1111-1111-111111111111","tool_use_id":"tu-not-waiting","decision":"approve"}`)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusNotFound {
@@ -79,12 +92,12 @@ func TestPostDecision_NoPendingWaitReturns404(t *testing.T) {
 
 func TestPostDecision_RoundTrip(t *testing.T) {
 	waiter := llm.NewDecisionWaiter()
-	h := PostDecision(DecisionDeps{Waiter: waiter})
+	h := PostDecision(decisionDeps(waiter))
 
 	// Start a Wait in a goroutine; capture the decision it receives.
 	got := make(chan llm.Decision, 1)
 	go func() {
-		d, err := waiter.Wait(context.Background(), "tu-real")
+		d, err := waiter.Wait(context.Background(), llm.DecisionKey(decisionSession, "tu-real"))
 		if err != nil {
 			t.Errorf("wait: %v", err)
 			return
@@ -94,7 +107,7 @@ func TestPostDecision_RoundTrip(t *testing.T) {
 
 	// Wait for the entry to register.
 	deadline := time.Now().Add(500 * time.Millisecond)
-	for !waiter.Pending("tu-real") {
+	for !waiter.Pending(llm.DecisionKey(decisionSession, "tu-real")) {
 		if time.Now().After(deadline) {
 			t.Fatal("Wait did not register")
 		}
@@ -102,6 +115,7 @@ func TestPostDecision_RoundTrip(t *testing.T) {
 	}
 
 	body := bytes.NewBufferString(`{
+		"session_id":"11111111-1111-1111-1111-111111111111",
 		"tool_use_id":"tu-real",
 		"decision":"modify",
 		"modified_input":"{\"path\":\"x.py\"}",
@@ -130,5 +144,42 @@ func TestPostDecision_RoundTrip(t *testing.T) {
 		}
 	case <-time.After(1 * time.Second):
 		t.Fatal("waiter did not receive decision")
+	}
+}
+
+func TestPostDecision_OtherUsersSessionIsNotFound(t *testing.T) {
+	waiter := llm.NewDecisionWaiter()
+	h := PostDecision(decisionDeps(waiter))
+
+	// A decision is pending in someone else's session with the same tool id.
+	other := uuid.New()
+	go func() { _, _ = waiter.Wait(context.Background(), llm.DecisionKey(other, "tu-1")) }()
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for !waiter.Pending(llm.DecisionKey(other, "tu-1")) {
+		if time.Now().After(deadline) {
+			t.Fatal("Wait did not register")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+
+	req := authedRequest(t, http.MethodPost, "/api/decision",
+		`{"session_id":"`+other.String()+`","tool_use_id":"tu-1","decision":"approve"}`)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status=%d want 404", rr.Code)
+	}
+	if !waiter.Pending(llm.DecisionKey(other, "tu-1")) {
+		t.Fatal("decision leaked into another user's session")
+	}
+}
+
+func TestPostDecision_MissingSessionID(t *testing.T) {
+	h := PostDecision(decisionDeps(llm.NewDecisionWaiter()))
+	req := authedRequest(t, http.MethodPost, "/api/decision", `{"tool_use_id":"tu-1","decision":"approve"}`)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d want 400", rr.Code)
 	}
 }

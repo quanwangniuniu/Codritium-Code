@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -26,10 +27,54 @@ type Tool interface {
 }
 
 // Workspace is the candidate's in-memory file tree for one session.
-// FileEdit mutates Files; FileRead reads it. The Workspace is per-session
-// and lives in the chat goroutine — never shared across sessions.
+// The chat goroutine's tools read and edit it while HTTP handlers sync the
+// editor's state into it, so all access after construction must go
+// through the locked methods below. Files is exported only for building
+// a Workspace (and for tests inspecting it once a turn has finished).
 type Workspace struct {
+	mu    sync.RWMutex
 	Files map[string]string // path -> contents
+}
+
+// Get returns one file's contents.
+func (w *Workspace) Get(path string) (string, bool) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	content, ok := w.Files[path]
+	return content, ok
+}
+
+// Set writes one file.
+func (w *Workspace) Set(path, content string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.Files == nil {
+		w.Files = map[string]string{}
+	}
+	w.Files[path] = content
+}
+
+// Merge writes several files at once.
+func (w *Workspace) Merge(files map[string]string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.Files == nil {
+		w.Files = make(map[string]string, len(files))
+	}
+	for path, content := range files {
+		w.Files[path] = content
+	}
+}
+
+// Snapshot returns a copy that is safe to read without the lock.
+func (w *Workspace) Snapshot() map[string]string {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	out := make(map[string]string, len(w.Files))
+	for path, content := range w.Files {
+		out[path] = content
+	}
+	return out
 }
 
 // SandboxRunner runs the visible test suite (V0: pytest) against the
@@ -134,7 +179,10 @@ func (fileReadTool) Execute(ctx context.Context, input map[string]any, deps Tool
 	if !ok || path == "" {
 		return `{"error":"path required"}`, true, nil
 	}
-	content, ok := deps.Workspace.Files[path]
+	if err := checkDeny("FileRead", path, deps.Deny); err != nil {
+		return fmt.Sprintf(`{"error":%q}`, err.Error()), true, nil
+	}
+	content, ok := deps.Workspace.Get(path)
 	if !ok {
 		return fmt.Sprintf(`{"error":"file not found: %s"}`, path), true, nil
 	}
@@ -178,7 +226,7 @@ func (fileEditTool) Execute(ctx context.Context, input map[string]any, deps Tool
 	if err := checkDeny("FileEdit", path, deps.Deny); err != nil {
 		return fmt.Sprintf(`{"error":%q}`, err.Error()), true, nil
 	}
-	deps.Workspace.Files[path] = content
+	deps.Workspace.Set(path, content)
 	resp, _ := json.Marshal(map[string]any{
 		"applied": true,
 		"path":    path,
@@ -219,11 +267,11 @@ func (runTestsTool) Execute(ctx context.Context, input map[string]any, deps Tool
 	if !ok || path == "" {
 		return `{"error":"path required"}`, true, nil
 	}
-	if _, exists := deps.Workspace.Files[path]; !exists {
+	if _, exists := deps.Workspace.Get(path); !exists {
 		return fmt.Sprintf(`{"error":"test file %q not found in workspace; create it via FileEdit first"}`, path), true, nil
 	}
 	start := time.Now()
-	res, err := deps.Sandbox.RunPytest(ctx, deps.Workspace.Files, path)
+	res, err := deps.Sandbox.RunPytest(ctx, deps.Workspace.Snapshot(), path)
 	if err != nil {
 		return fmt.Sprintf(`{"error":%q}`, err.Error()), true, nil
 	}
@@ -277,7 +325,7 @@ func (grepTool) Execute(ctx context.Context, input map[string]any, deps ToolDeps
 		return `[]`, false, nil
 	}
 	matches := make([]grepMatch, 0)
-	for name, content := range deps.Workspace.Files {
+	for name, content := range deps.Workspace.Snapshot() {
 		if err := checkDeny("Grep", name, deps.Deny); err != nil {
 			continue
 		}
@@ -332,7 +380,7 @@ func (globTool) Execute(ctx context.Context, input map[string]any, deps ToolDeps
 		return `[]`, false, nil
 	}
 	out := make([]string, 0)
-	for name := range deps.Workspace.Files {
+	for name := range deps.Workspace.Snapshot() {
 		if err := checkDeny("Glob", name, deps.Deny); err != nil {
 			continue
 		}
@@ -381,7 +429,7 @@ func (runCommandTool) Execute(ctx context.Context, input map[string]any, deps To
 		return `{"error":"tmpfs not configured for this session"}`, true, nil
 	}
 	if deps.Workspace != nil {
-		if err := deps.TmpFS.Sync(deps.Workspace.Files); err != nil {
+		if err := deps.TmpFS.Sync(deps.Workspace.Snapshot()); err != nil {
 			return fmt.Sprintf(`{"error":"sync workspace: %s"}`, err.Error()), true, nil
 		}
 	}

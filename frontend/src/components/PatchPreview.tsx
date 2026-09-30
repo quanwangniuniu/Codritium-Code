@@ -55,6 +55,8 @@ function langForPath(path: string | undefined): string {
 // is). For non-FileEdit tools (FileRead / RunTests) we still render an
 // approve/reject prompt but no diff.
 export interface PendingPatch {
+  // Session the tool call belongs to; the backend checks the caller owns it.
+  sessionId: string;
   toolUseId: string;
   tool: string; // "FileEdit" | "FileRead" | "RunTests" | ...
   inputSummary: string;
@@ -105,7 +107,7 @@ export function PatchPreview({
     if (busy) return;
     setBusy(true);
     try {
-      await Backend.decision(pending.toolUseId, kind, opts);
+      await Backend.decision(pending.sessionId, pending.toolUseId, kind, opts);
       onResolved(pending.toolUseId, kind, result);
     } catch (e) {
       console.error("decision failed:", e);

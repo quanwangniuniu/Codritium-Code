@@ -82,7 +82,7 @@ func main() {
 	}
 	probDeps := handlers.ProblemDeps{Pool: database.Pool}
 	decisionWaiter := llm.NewDecisionWaiter()
-	decisionDeps := handlers.DecisionDeps{Waiter: decisionWaiter}
+	decisionDeps := handlers.DecisionDeps{Waiter: decisionWaiter, Sessions: handlers.PGSessionOwner{Pool: database.Pool}}
 	eventStore := events.NewStore(database.Pool)
 	eventsDeps := handlers.EventsDeps{Pool: database.Pool, Events: eventStore}
 	textBroadcaster := llm.NewTextBroadcaster()
@@ -279,7 +279,7 @@ func withCORS(h http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 		}
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		if r.Method == "OPTIONS" {

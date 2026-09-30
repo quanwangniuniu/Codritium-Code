@@ -135,12 +135,18 @@ export const Backend = {
       method: "POST",
       body: JSON.stringify({ session_id: sessionId, message, files: files ?? {} }),
     }),
-  decision: async (toolUseId: string, decision: DecisionKind, opts?: { modifiedInput?: string; reason?: string; comment?: string }): Promise<void> => {
+  decision: async (
+    sessionId: string,
+    toolUseId: string,
+    decision: DecisionKind,
+    opts?: { modifiedInput?: string; reason?: string; comment?: string },
+  ): Promise<void> => {
     const res = await fetch(`${API_BASE}/api/decision`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        session_id: sessionId,
         tool_use_id: toolUseId,
         decision,
         modified_input: opts?.modifiedInput ?? "",
