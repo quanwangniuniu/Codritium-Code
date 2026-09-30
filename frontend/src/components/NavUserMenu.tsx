@@ -6,8 +6,8 @@ import Link from "next/link";
 import { ChevronDown, UserRound, Settings, CreditCard, LogOut } from "lucide-react";
 import { Backend } from "@/lib/api";
 import { initialOf } from "@/shared/format";
-import { t } from "@/lib/i18n";
-import { useLocale } from "@/lib/i18n-client";
+import { t } from "@/shared/i18n";
+import { useLocale } from "@/shared/i18n/client";
 
 interface NavUserMenuProps {
   displayName: string;

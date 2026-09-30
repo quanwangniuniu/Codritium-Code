@@ -15,8 +15,8 @@ import {
 } from "lucide-react";
 import type { ReplyEnvelope, ReplyKind } from "@/types/reply";
 import { SURFACE_KINDS } from "@/types/reply";
-import { t } from "@/lib/i18n";
-import { useLocale } from "@/lib/i18n-client";
+import { t } from "@/shared/i18n";
+import { useLocale } from "@/shared/i18n/client";
 
 // EnvelopeCard renders a single replay step. It is the only place the UI
 // knows what each of the 13 surface kinds looks like; the StepController

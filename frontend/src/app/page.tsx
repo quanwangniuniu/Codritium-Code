@@ -7,7 +7,7 @@ import { HomeHero } from "@/components/home/HomeHero";
 import { MissionSection } from "@/components/home/MissionSection";
 import { ACCENT_TEXT, SectionBadge, type HomeAccent } from "@/components/home/SectionBadge";
 import { currentUser } from "@/lib/auth";
-import { t, type LocaleKey } from "@/lib/i18n";
+import { t, type LocaleKey } from "@/shared/i18n";
 import { getProblem, listProblems } from "@/lib/store";
 import type { Category, Difficulty, Problem } from "@/lib/types";
 import { cn } from "@/lib/utils";

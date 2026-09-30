@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import { Flame, Layers, Lock, Rocket, Send, Target, Trophy, type LucideIcon } from "lucide-react";
-import { t, type LocaleKey } from "@/lib/i18n";
+import { t, type LocaleKey } from "@/shared/i18n";
 import type { ProfileData } from "@/lib/types";
 import { cn } from "@/lib/utils";
 

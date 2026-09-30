@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 
 // SubmissionTabs sits at the top of /submissions/[id] and
 // /submissions/[id]/reply and gives the candidate a single switch

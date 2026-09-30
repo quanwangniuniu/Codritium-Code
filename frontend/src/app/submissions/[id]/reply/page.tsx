@@ -10,7 +10,7 @@ import { ReplyClient } from "@/components/reply/ReplyClient";
 import { SubmissionTabs } from "@/components/SubmissionTabs";
 import { CommentsPanel } from "@/components/CommentsPanel";
 import { NotesPanel } from "@/components/NotesPanel";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 import { transformForReplay, type ReplyEnvelope } from "@/types/reply";
 
 interface ReplyPageProps {

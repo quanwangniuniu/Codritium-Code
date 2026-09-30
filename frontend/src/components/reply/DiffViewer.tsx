@@ -3,8 +3,8 @@
 import { useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { diffLines } from "diff";
-import { t } from "@/lib/i18n";
-import { useLocale } from "@/lib/i18n-client";
+import { t } from "@/shared/i18n";
+import { useLocale } from "@/shared/i18n/client";
 
 // DiffViewer renders a single-column unified diff between starter and
 // current cumulative state for one file. The layout mirrors Claude Code's

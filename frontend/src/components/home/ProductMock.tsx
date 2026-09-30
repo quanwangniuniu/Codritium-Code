@@ -1,5 +1,5 @@
 import { Check, FileCode2, Sparkles, X } from "lucide-react";
-import { t, type LocaleKey } from "@/lib/i18n";
+import { t, type LocaleKey } from "@/shared/i18n";
 import { cn } from "@/lib/utils";
 
 // Static illustration of the workspace for the hero: an editor with an AI

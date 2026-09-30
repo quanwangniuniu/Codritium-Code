@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
-import { useLocale } from "@/lib/i18n-client";
+import { useLocale } from "@/shared/i18n/client";
 import { cn } from "@/lib/utils";
 
 interface ProblemsFilterSelectProps {

@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowBigDown, ArrowBigUp } from "lucide-react";
-import { t } from "@/lib/i18n";
-import { useLocale } from "@/lib/i18n-client";
+import { t } from "@/shared/i18n";
+import { useLocale } from "@/shared/i18n/client";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { forumApi, forumErrorMessage } from "@/lib/forum";

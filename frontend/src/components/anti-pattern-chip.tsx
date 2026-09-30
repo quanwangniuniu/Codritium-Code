@@ -1,6 +1,6 @@
 import { AlertTriangle, CircleHelp, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 import { antiPatternLabel } from "@/shared/labels";
 
 interface AntiPatternChipProps {

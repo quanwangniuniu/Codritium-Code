@@ -9,10 +9,10 @@ import {
   getSnapshot,
   setLocale,
   subscribe,
-} from "@/lib/i18n";
+} from "@/shared/i18n";
 
 // useLocale subscribes a Client Component to the locale store. The non-hook
-// pieces (subscribe / getSnapshot / setLocale) live in i18n.ts so server
+// pieces (subscribe / getSnapshot / setLocale) live in ./index.ts so server
 // components can still call t() during SSR without crossing the
 // Client / Server boundary.
 export function useLocale(): { locale: Locale; setLocale: (l: Locale) => void } {

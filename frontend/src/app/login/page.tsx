@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { KeyRound, Info } from "lucide-react";
 import { currentUser } from "@/lib/auth";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 import { Button } from "@/components/ui/button";
 import {
   Card,

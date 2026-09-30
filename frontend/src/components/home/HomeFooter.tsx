@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 import { CONTACT_EMAIL } from "./AudienceSection";
 
 export function HomeFooter() {

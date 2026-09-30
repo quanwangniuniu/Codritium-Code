@@ -13,8 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Backend } from "@/lib/api";
 import { formatDateTime } from "@/shared/format";
 import { toast } from "@/lib/toast";
-import { t as tr } from "@/lib/i18n";
-import { useLocale } from "@/lib/i18n-client";
+import { t as tr } from "@/shared/i18n";
+import { useLocale } from "@/shared/i18n/client";
 import type { Problem, Submission } from "@/lib/types";
 
 const PAGE_SIZE = 8;

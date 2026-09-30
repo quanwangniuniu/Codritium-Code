@@ -3,7 +3,7 @@
 //
 // Usage:
 //   import { toast } from "@/lib/toast";
-//   import { t } from "@/lib/i18n";
+//   import { t } from "@/shared/i18n";
 //   toast.error(t("gemini_unavailable"));
 //
 // Rules:

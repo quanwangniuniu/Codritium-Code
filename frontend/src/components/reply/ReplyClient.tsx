@@ -17,8 +17,8 @@ import { FileTree } from "./FileTree";
 import { DiffViewer } from "./DiffViewer";
 import { ExplanationPanel } from "./ExplanationPanel";
 import { AnswerModeView } from "./AnswerModeView";
-import { t } from "@/lib/i18n";
-import { useLocale } from "@/lib/i18n-client";
+import { t } from "@/shared/i18n";
+import { useLocale } from "@/shared/i18n/client";
 import {
   extractPatches,
   applyPatches,

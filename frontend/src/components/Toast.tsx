@@ -1,7 +1,7 @@
 "use client";
 
 import { dismiss, type ToastItem } from "@/lib/toast";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 
 const VARIANT_STYLE: Record<
   ToastItem["variant"],

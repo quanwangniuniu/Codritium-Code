@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 import { ProductMock } from "./ProductMock";
 
 interface HomeHeroProps {

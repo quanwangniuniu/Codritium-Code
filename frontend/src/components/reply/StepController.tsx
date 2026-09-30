@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { ReplyEnvelope } from "@/types/reply";
 import { EnvelopeCard } from "./EnvelopeCard";
-import { t } from "@/lib/i18n";
-import { useLocale } from "@/lib/i18n-client";
+import { t } from "@/shared/i18n";
+import { useLocale } from "@/shared/i18n/client";
 
 // StepController paces the replay one envelope at a time. The candidate
 // drives progression with Next / Prev so the official walkthrough reads

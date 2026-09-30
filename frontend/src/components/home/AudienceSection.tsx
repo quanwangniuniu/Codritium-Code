@@ -1,5 +1,5 @@
 import { Briefcase, Check, ClipboardCheck, MessagesSquare, Users } from "lucide-react";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 import { cn } from "@/lib/utils";
 import { ArrowLink } from "./ArrowLink";
 import { ACCENT_TEXT, SectionBadge } from "./SectionBadge";

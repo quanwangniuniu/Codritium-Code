@@ -2,8 +2,8 @@
 
 import { motion } from "framer-motion";
 import { File, FileText } from "lucide-react";
-import { t } from "@/lib/i18n";
-import { useLocale } from "@/lib/i18n-client";
+import { t } from "@/shared/i18n";
+import { useLocale } from "@/shared/i18n/client";
 
 // FileTree is the IDE-style sidebar on the left column of the replay UI.
 // The active file slides via a shared layout id, modified files carry a

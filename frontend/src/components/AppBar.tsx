@@ -5,8 +5,8 @@ import { Clock, BookOpen, HelpCircle, Play } from "lucide-react";
 import { CodritiumLogo } from "@/components/CodritiumLogo";
 import { ExitWorkspaceButton } from "@/components/ExitWorkspaceButton";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { t } from "@/lib/i18n";
-import { useLocale } from "@/lib/i18n-client";
+import { t } from "@/shared/i18n";
+import { useLocale } from "@/shared/i18n/client";
 
 export function AppBar({
   timer,

@@ -3,7 +3,7 @@ import { CircleCheck, CircleDashed, Lock, Search } from "lucide-react";
 import { listProblems, listMyAttemptedProblems, listUserSubmissions } from "@/lib/store";
 import { ProblemsPagination } from "@/components/ProblemsPagination";
 import { ProblemsFilterSelect } from "@/components/ProblemsFilterSelect";
-import { t, type LocaleKey } from "@/lib/i18n";
+import { t, type LocaleKey } from "@/shared/i18n";
 import { cn } from "@/lib/utils";
 import {
   CATEGORIES,

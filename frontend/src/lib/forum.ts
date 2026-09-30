@@ -1,7 +1,7 @@
 // Community forum types + browser-side API calls. Server components fetch
 // through lib/forum-server.ts instead (it forwards the session cookie).
 
-import { t, type LocaleKey } from "@/lib/i18n";
+import { t, type LocaleKey } from "@/shared/i18n";
 
 import { apiRequest } from "@/shared/api/client";
 import { ApiError } from "@/shared/api/errors";

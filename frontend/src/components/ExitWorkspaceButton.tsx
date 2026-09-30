@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { ArrowLeft, X } from "lucide-react";
-import { t } from "@/lib/i18n";
-import { useLocale } from "@/lib/i18n-client";
+import { t } from "@/shared/i18n";
+import { useLocale } from "@/shared/i18n/client";
 
 // Top-left workspace control. Leaves the IDE and returns to the problem brief
 // (/problems/[id]); it does NOT sign the user out. In-progress edits persist

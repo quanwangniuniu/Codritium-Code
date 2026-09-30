@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { listProblems } from "@/lib/store";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 import { FORUM_SECTIONS, type ForumSection } from "@/lib/forum";
 import { ForumPostEditor } from "@/components/forum/ForumPostEditor";
 

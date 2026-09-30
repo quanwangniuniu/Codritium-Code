@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { MessageCircle, Reply, Trash2 } from "lucide-react";
-import { t } from "@/lib/i18n";
-import { useLocale } from "@/lib/i18n-client";
+import { t } from "@/shared/i18n";
+import { useLocale } from "@/shared/i18n/client";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import {

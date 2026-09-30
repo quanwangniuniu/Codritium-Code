@@ -1,5 +1,5 @@
 import { BadgeCheck, UserRound } from "lucide-react";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 import { cn } from "@/lib/utils";
 import { initialOf } from "@/shared/format";
 import type { ForumAuthor } from "@/lib/forum";

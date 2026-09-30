@@ -2,7 +2,7 @@
 
 import { ExternalLink, Minimize2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 
 export function ReadmeBody({ readme }: { readme: string }) {
   return (

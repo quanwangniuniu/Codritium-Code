@@ -3,7 +3,7 @@
 // anti-patterns). Helpers fall back to the raw value for unknown keys so a
 // new backend enum never renders as an empty string.
 
-import { t, type LocaleKey } from "@/lib/i18n";
+import { t, type LocaleKey } from "@/shared/i18n";
 import type { Category, Difficulty } from "@/lib/types";
 
 export const CATEGORIES: Category[] = [

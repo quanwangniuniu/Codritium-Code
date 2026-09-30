@@ -21,7 +21,7 @@ import type { OpenTab } from "@/lib/types";
 import { toast } from "@/lib/toast";
 import { formatDuration } from "@/shared/format";
 import { languageForFile } from "@/shared/lib/language";
-import { t as tr } from "@/lib/i18n";
+import { t as tr } from "@/shared/i18n";
 import { useProblemSession } from "@/hooks/useProblemSession";
 import { useSessionStream, type StreamEnvelope } from "@/hooks/useSessionStream";
 import { clearRestoredFlag, deleteSession, getSession } from "@/lib/problem-session-store";

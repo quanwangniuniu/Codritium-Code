@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import { Lightbulb, Send, AtSign } from "lucide-react";
 import { Backend, type TipsMessage } from "@/lib/api";
 import { toast } from "@/lib/toast";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 
 // Tints used to mark the tutor surface visually distinct from the agent
 // surface. R12 cursor research recommends "diff lives where the cursor

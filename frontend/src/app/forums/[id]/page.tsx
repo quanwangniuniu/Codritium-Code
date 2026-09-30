@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { compactCount } from "@/shared/format";
 import { ArrowLeft, Code2, Eye, MessageCircle, Pin } from "lucide-react";
 import { currentUser } from "@/lib/auth";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 import {
   forumTimeAgo,
   FORUM_ANON_SECTIONS,

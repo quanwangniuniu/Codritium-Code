@@ -1,4 +1,4 @@
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 import type { ProfileData } from "@/lib/types";
 import { cn } from "@/lib/utils";
 

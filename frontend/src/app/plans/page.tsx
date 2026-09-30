@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { Check } from "lucide-react";
 import { currentUser } from "@/lib/auth";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 import {
   Card,
   CardContent,

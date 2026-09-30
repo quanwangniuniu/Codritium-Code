@@ -21,7 +21,7 @@ import { ScoreBar } from "@/components/score-bar";
 import { AntiPatternChip } from "@/components/anti-pattern-chip";
 import { SubmissionTabs } from "@/components/SubmissionTabs";
 import { cn } from "@/lib/utils";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 import { DIMENSION_ORDER, dimensionLabel } from "@/shared/labels";
 import { formatDate, formatDateTime } from "@/shared/format";
 

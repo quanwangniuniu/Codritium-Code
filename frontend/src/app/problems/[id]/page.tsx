@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { getProblem, listMyAttemptedProblems, listUserProblemSubmissions } from "@/lib/store";
 import { currentUser } from "@/lib/auth";
-import { t, type LocaleKey } from "@/lib/i18n";
+import { t, type LocaleKey } from "@/shared/i18n";
 import { splitProblemReadme } from "@/lib/problem-readme";
 import { cn } from "@/lib/utils";
 import { CATEGORY_LABEL_KEY, DIFFICULTY_LABEL_KEY, DIFFICULTY_TONE } from "@/shared/labels";

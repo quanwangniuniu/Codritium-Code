@@ -7,7 +7,7 @@ import {
   Layers,
   ShieldCheck,
 } from "lucide-react";
-import { t, type LocaleKey } from "@/lib/i18n";
+import { t, type LocaleKey } from "@/shared/i18n";
 import { cn } from "@/lib/utils";
 import { ArrowLink } from "./ArrowLink";
 import { ACCENT_TEXT, SectionBadge, type HomeAccent } from "./SectionBadge";

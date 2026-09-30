@@ -10,7 +10,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { SubmissionsList } from "@/components/SubmissionsList";
-import { t, type LocaleKey } from "@/lib/i18n";
+import { t, type LocaleKey } from "@/shared/i18n";
 import type { Problem, ProfileData, Submission } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { DIFFICULTY_HOME_TEXT_CLASS, DIFFICULTY_LABEL_KEY } from "@/shared/labels";

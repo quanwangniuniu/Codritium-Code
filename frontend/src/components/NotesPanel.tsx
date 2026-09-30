@@ -6,7 +6,7 @@ import { Backend, type Note } from "@/lib/api";
 import { hasErrorCode } from "@/shared/api/errors";
 import { formatDateTime } from "@/shared/format";
 import { toast } from "@/lib/toast";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 
 // NotesPanel lists session-private markdown notes attached to the
 // candidate's run of this problem. Sharing a note publishes it as a

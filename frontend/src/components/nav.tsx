@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Bell, LogIn } from "lucide-react";
 import { currentUser } from "@/lib/auth";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 import { CodritiumLogo } from "@/components/CodritiumLogo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { NavUserMenu } from "@/components/NavUserMenu";

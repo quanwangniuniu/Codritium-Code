@@ -6,7 +6,7 @@ import { Backend, type Comment } from "@/lib/api";
 import { hasErrorCode } from "@/shared/api/errors";
 import { formatDateTime, initialOf } from "@/shared/format";
 import { toast } from "@/lib/toast";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 
 // CommentsPanel renders the per-problem discussion thread for a graded
 // candidate. The list is collapsed by default so the candidate sees the

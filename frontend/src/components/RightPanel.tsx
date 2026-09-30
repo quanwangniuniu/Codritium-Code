@@ -5,7 +5,7 @@ import { Lightbulb, MessageSquare } from "lucide-react";
 import { ChatPanel, type ChatMessage } from "@/components/ChatPanel";
 import { TipsView } from "@/components/TipsView";
 import { type ResolveCallback } from "@/components/PatchPreview";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 
 // Tab label colour used by the Tutor surface; matches TipsView amber so
 // switching tabs feels chromatic, not just textual.

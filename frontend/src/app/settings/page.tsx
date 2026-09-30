@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { ChevronLeft, Layout, Type, Lightbulb } from "lucide-react";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 
 // Settings is a placeholder scaffold during v0.9. The intent (per the
 // 2026-05-20 tips-frontend interv §20) is to give the workspace a place

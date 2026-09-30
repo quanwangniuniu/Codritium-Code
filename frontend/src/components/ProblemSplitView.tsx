@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { Splitter } from "@/components/Splitter";
-import { useLocale } from "@/lib/i18n-client";
+import { useLocale } from "@/shared/i18n/client";
 import { cn } from "@/lib/utils";
 
 export interface ProblemTab {

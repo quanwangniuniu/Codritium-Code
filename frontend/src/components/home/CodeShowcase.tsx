@@ -6,7 +6,7 @@ import { Check, Code2, Copy, SquareArrowOutUpRight } from "lucide-react";
 import { IDEPane } from "@/components/ide/IDEPane";
 import { useMonacoTheme } from "@/components/ide/editor-utils";
 import { languageForFile } from "@/shared/lib/language";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 import { cn } from "@/lib/utils";
 import { ArrowLink } from "./ArrowLink";
 

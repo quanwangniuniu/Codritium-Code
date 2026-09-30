@@ -17,8 +17,8 @@ import { Backend, type DecisionKind } from "@/lib/api";
 import { unifiedDiff, diffStats, type DiffLine } from "@/lib/diff";
 import { toast } from "@/lib/toast";
 import { languageForFile } from "@/shared/lib/language";
-import { t } from "@/lib/i18n";
-import { useLocale } from "@/lib/i18n-client";
+import { t } from "@/shared/i18n";
+import { useLocale } from "@/shared/i18n/client";
 
 const DiffEditor = dynamic(
   () => import("@monaco-editor/react").then((mod) => mod.DiffEditor),

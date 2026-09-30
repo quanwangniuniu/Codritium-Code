@@ -3,8 +3,8 @@
 import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import { Sparkles, Send, AtSign, Check, X } from "lucide-react";
-import { t } from "@/lib/i18n";
-import { useLocale } from "@/lib/i18n-client";
+import { t } from "@/shared/i18n";
+import { useLocale } from "@/shared/i18n/client";
 import { PatchPreview, type PendingPatch, type ResolveCallback } from "@/components/PatchPreview";
 
 export type TextMessage = {

@@ -6,7 +6,7 @@ import { X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Backend } from "@/lib/api";
-import { t } from "@/lib/i18n";
+import { t } from "@/shared/i18n";
 import { toast } from "@/lib/toast";
 
 // Limits mirror the backend (handlers/profile.go).

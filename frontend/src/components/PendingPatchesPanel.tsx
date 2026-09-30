@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, GitPullRequest } from "lucide-react";
 import { PatchPreview, type PendingPatch, type ResolveCallback } from "@/components/PatchPreview";
-import { t } from "@/lib/i18n";
-import { useLocale } from "@/lib/i18n-client";
+import { t } from "@/shared/i18n";
+import { useLocale } from "@/shared/i18n/client";
 
 // PendingPatchesPanel is the SideBar overflow surface. The primary patch
 // decision UI lives inline in ChatPanel (D-01). This panel renders only when

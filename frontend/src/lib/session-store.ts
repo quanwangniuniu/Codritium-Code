@@ -8,7 +8,7 @@
 // Values are arbitrary JSON-serialisable objects.
 
 import { toast } from "@/lib/toast";
-import { t as tr } from "@/lib/i18n";
+import { t as tr } from "@/shared/i18n";
 
 const DEBOUNCE_MS = 500;
 

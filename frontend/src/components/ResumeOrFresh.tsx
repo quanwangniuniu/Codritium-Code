@@ -8,8 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Backend } from "@/lib/api";
 import { formatDateTime, formatRelativeTime } from "@/shared/format";
 import { deleteSession, peekSessionMeta } from "@/lib/problem-session-store";
-import { t } from "@/lib/i18n";
-import { useLocale } from "@/lib/i18n-client";
+import { t } from "@/shared/i18n";
+import { useLocale } from "@/shared/i18n/client";
 
 interface Info {
   hasReal: boolean;
