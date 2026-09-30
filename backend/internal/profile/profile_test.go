@@ -1,4 +1,4 @@
-package handlers
+package profile
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"codritium/backend/internal/auth"
 	"codritium/backend/internal/platform/testutil"
 )
 
@@ -43,59 +42,18 @@ func TestStreaks(t *testing.T) {
 	}
 }
 
-func TestApplyProfileUpdate(t *testing.T) {
-	str := func(s string) *string { return &s }
-	long := func(n int) *string {
-		b := make([]rune, n)
-		for i := range b {
-			b[i] = '字'
-		}
-		s := string(b)
-		return &s
-	}
-	cases := []struct {
-		name    string
-		req     updateMeRequest
-		wantErr string
-	}{
-		{"trims and sets", updateMeRequest{DisplayName: str("  Ada  "), Bio: str(" hi "), Region: str("AU")}, ""},
-		{"empty name rejected", updateMeRequest{DisplayName: str("   ")}, "invalid_display_name"},
-		{"name at limit ok", updateMeRequest{DisplayName: long(maxDisplayNameRunes)}, ""},
-		{"name over limit", updateMeRequest{DisplayName: long(maxDisplayNameRunes + 1)}, "invalid_display_name"},
-		{"bio over limit", updateMeRequest{Bio: long(maxBioRunes + 1)}, "invalid_bio"},
-		{"region over limit", updateMeRequest{Region: long(maxRegionRunes + 1)}, "invalid_region"},
-		{"clear bio", updateMeRequest{Bio: str("")}, ""},
-	}
-	for _, c := range cases {
-		u := &auth.User{DisplayName: "old", Bio: "old bio", Region: "US"}
-		err := applyProfileUpdate(u, c.req)
-		got := ""
-		if err != nil {
-			got = err.Error()
-		}
-		if got != c.wantErr {
-			t.Errorf("%s: err=%q want %q", c.name, got, c.wantErr)
-		}
-	}
-	u := &auth.User{DisplayName: "old", Bio: "keep", Region: "US"}
-	_ = applyProfileUpdate(u, updateMeRequest{DisplayName: str("  Ada  ")})
-	if u.DisplayName != "Ada" || u.Bio != "keep" || u.Region != "US" {
-		t.Errorf("partial update changed wrong fields: %+v", u)
-	}
-}
-
 func TestProfile_RequiresLogin(t *testing.T) {
-	deps := ProfileDeps{}
-	for _, h := range []http.HandlerFunc{GetMyProfile(deps), UpdateMe(deps)} {
-		rr := forumCall(t, h, http.MethodGet, "/", "", nil, "")
-		wantStatus(t, rr, http.StatusUnauthorized)
+	deps := Handler{}
+	for _, h := range []http.HandlerFunc{http.HandlerFunc(deps.getMyProfile)} {
+		rr := testutil.Call(t, h, http.MethodGet, "/", nil, nil, "")
+		testutil.WantStatus(t, rr, http.StatusUnauthorized)
 	}
 }
 
 func TestProfile_Aggregates(t *testing.T) {
 	pool := testutil.Pool(t)
 	ctx := context.Background()
-	u := newForumUser(t, pool, "user")
+	u := testutil.NewUser(t, pool, "user")
 	now := day("2026-09-30").Add(15 * time.Hour)
 
 	var slugs []string
@@ -186,28 +144,4 @@ func TestProfile_Aggregates(t *testing.T) {
 	if len(p.RecentSubmissions) != 3 {
 		t.Errorf("recent submissions = %d", len(p.RecentSubmissions))
 	}
-}
-
-func TestUpdateMe_Persists(t *testing.T) {
-	pool := testutil.Pool(t)
-	u := newForumUser(t, pool, "user")
-	deps := ProfileDeps{Pool: pool}
-
-	rr := forumCall(t, UpdateMe(deps), http.MethodPatch, "/api/me", "", u,
-		`{"display_name":"  Grace  ","bio":"Debugs things","region":"NZ"}`)
-	wantStatus(t, rr, http.StatusOK)
-	var name, bio, region string
-	if err := pool.QueryRow(context.Background(),
-		`SELECT display_name, COALESCE(bio,''), COALESCE(region,'') FROM users WHERE id = $1`, u.ID).
-		Scan(&name, &bio, &region); err != nil {
-		t.Fatal(err)
-	}
-	if name != "Grace" || bio != "Debugs things" || region != "NZ" {
-		t.Errorf("persisted %q %q %q", name, bio, region)
-	}
-
-	rr = forumCall(t, UpdateMe(deps), http.MethodPatch, "/api/me", "", u, `{"role":"admin"}`)
-	wantStatus(t, rr, http.StatusBadRequest)
-	rr = forumCall(t, UpdateMe(deps), http.MethodPatch, "/api/me", "", u, `{"display_name":""}`)
-	wantStatus(t, rr, http.StatusBadRequest)
 }

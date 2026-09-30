@@ -1,14 +1,13 @@
-package handlers
+// Package profile builds the LeetCode-style profile read model.
+package profile
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"net/http"
 	"sort"
-	"strings"
 	"time"
-	"unicode/utf8"
+
+	"codritium/backend/internal/platform/httpx"
 
 	"codritium/backend/internal/problems"
 
@@ -26,7 +25,12 @@ var profileDimensions = []string{
 	"correctness", "problem_decomposition", "ai_collaboration", "verification", "communication",
 }
 
-type ProfileDeps struct {
+// Routes registers the profile API.
+func (h Handler) Routes(rt *httpx.Router) {
+	rt.Handle("GET /api/me/profile", h.getMyProfile)
+}
+
+type Handler struct {
 	Pool *pgxpool.Pool
 	// Now is injectable so streak math is testable; nil means time.Now.
 	Now func() time.Time
@@ -128,24 +132,22 @@ type profileResponse struct {
 }
 
 // GetMyProfile serves the signed-in user's profile. GET /api/me/profile
-func GetMyProfile(deps ProfileDeps) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		u := auth.FromContext(r.Context())
-		if u == nil {
-			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
-			return
-		}
-		now := time.Now
-		if deps.Now != nil {
-			now = deps.Now
-		}
-		p, err := buildProfile(r.Context(), deps.Pool, u, now().UTC())
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
-			return
-		}
-		writeJSON(w, http.StatusOK, p)
+func (h Handler) getMyProfile(w http.ResponseWriter, r *http.Request) {
+	u := auth.FromContext(r.Context())
+	if u == nil {
+		httpx.JSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+		return
 	}
+	now := time.Now
+	if h.Now != nil {
+		now = h.Now
+	}
+	p, err := buildProfile(r.Context(), h.Pool, u, now().UTC())
+	if err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, p)
 }
 
 // buildProfile assembles every profile section for one user. It only reads
@@ -423,75 +425,4 @@ func loadRecent(ctx context.Context, pool *pgxpool.Pool, u *auth.User, p *profil
 		p.RecentPosts = append(p.RecentPosts, fp)
 	}
 	return rows.Err()
-}
-
-// Profile field limits (in characters).
-const (
-	maxDisplayNameRunes = 50
-	maxBioRunes         = 280
-	maxRegionRunes      = 40
-)
-
-type updateMeRequest struct {
-	DisplayName *string `json:"display_name"`
-	Bio         *string `json:"bio"`
-	Region      *string `json:"region"`
-}
-
-// UpdateMe edits the signed-in user's display name, bio, and region.
-// Omitted fields are left unchanged. PATCH /api/me
-func UpdateMe(deps ProfileDeps) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		u := auth.FromContext(r.Context())
-		if u == nil {
-			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
-			return
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
-		dec := json.NewDecoder(r.Body)
-		dec.DisallowUnknownFields()
-		var req updateMeRequest
-		if err := dec.Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad_json"})
-			return
-		}
-		next := *u
-		if err := applyProfileUpdate(&next, req); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-			return
-		}
-		_, err := deps.Pool.Exec(r.Context(), `
-			UPDATE users SET display_name = $2, bio = NULLIF($3, ''), region = NULLIF($4, '')
-			WHERE id = $1`, u.ID, next.DisplayName, next.Bio, next.Region)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
-			return
-		}
-		WriteUserJSON(w, &next)
-	}
-}
-
-func applyProfileUpdate(u *auth.User, req updateMeRequest) error {
-	if req.DisplayName != nil {
-		v := strings.TrimSpace(*req.DisplayName)
-		if v == "" || utf8.RuneCountInString(v) > maxDisplayNameRunes {
-			return errors.New("invalid_display_name")
-		}
-		u.DisplayName = v
-	}
-	if req.Bio != nil {
-		v := strings.TrimSpace(*req.Bio)
-		if utf8.RuneCountInString(v) > maxBioRunes {
-			return errors.New("invalid_bio")
-		}
-		u.Bio = v
-	}
-	if req.Region != nil {
-		v := strings.TrimSpace(*req.Region)
-		if utf8.RuneCountInString(v) > maxRegionRunes {
-			return errors.New("invalid_region")
-		}
-		u.Region = v
-	}
-	return nil
 }

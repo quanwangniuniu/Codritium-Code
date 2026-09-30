@@ -10,6 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	"codritium/backend/internal/account"
+	"codritium/backend/internal/profile"
+	"codritium/backend/internal/replay"
+
 	"codritium/backend/internal/community/comments"
 	"codritium/backend/internal/community/forum"
 	"codritium/backend/internal/community/notes"
@@ -146,7 +150,6 @@ func main() {
 		Sandbox:      sandbox,
 		Agents:       agentRegistry,
 	}
-	replyDeps := handlers.ReplyDeps{Pool: database.Pool}
 
 	mux := http.NewServeMux()
 	authMiddleware := auth.Middleware(database.Pool, cfg.CookieSecret)
@@ -187,21 +190,14 @@ func main() {
 		forum.Handler{Pool: database.Pool},
 		comments.Handler{Pool: database.Pool},
 		notes.Handler{Pool: database.Pool},
+		account.Handler{Pool: database.Pool},
+		profile.Handler{Pool: database.Pool},
+		replay.Handler{Pool: database.Pool},
 	} {
 		m.Routes(rt)
 	}
-	mux.Handle("GET /api/challenges/{slug}/official-reply", authMiddleware(handlers.GetOfficialReply(replyDeps)))
-	mux.Handle("GET /api/me/replays/{slug}", authMiddleware(handlers.GetMyReplay(replyDeps)))
 
 	// Authed routes — wrap each with authMiddleware so r.Context() carries the user.
-	meHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		u := auth.FromContext(r.Context())
-		handlers.WriteUserJSON(w, u)
-	})
-	mux.Handle("GET /api/me", authMiddleware(meHandler))
-	profileDeps := handlers.ProfileDeps{Pool: database.Pool}
-	mux.Handle("PATCH /api/me", authMiddleware(handlers.UpdateMe(profileDeps)))
-	mux.Handle("GET /api/me/profile", authMiddleware(handlers.GetMyProfile(profileDeps)))
 	mux.Handle("POST /api/submissions", authMiddleware(handlers.Submit(subDeps)))
 	mux.Handle("GET /api/submissions/{id}", authMiddleware(handlers.GetSubmission(subDeps)))
 	mux.Handle("DELETE /api/submissions/{id}", authMiddleware(handlers.DeleteSubmission(subDeps)))
