@@ -123,15 +123,6 @@ type LocaleKey =
   | "envelope_reverted"
   | "role_engineer"
   // home / landing
-  | "home_hero_badge"
-  | "home_hero_title_part1"
-  | "home_hero_title_part2"
-  | "home_hero_blurb"
-  | "home_browse_problems"
-  | "home_get_started"
-  | "home_try_today"
-  | "home_section_dims_title"
-  | "home_section_dims_blurb"
   | "dim_correctness_title"
   | "dim_correctness_desc"
   | "dim_decomposition_title"
@@ -140,8 +131,6 @@ type LocaleKey =
   | "dim_ai_collab_desc"
   | "dim_verification_title"
   | "dim_verification_desc"
-  | "home_section_companies_title"
-  | "home_section_companies_blurb"
   // app bar
   | "brand_name"
   | "appbar_readme"
@@ -432,28 +421,7 @@ type LocaleKey =
   | "submission_meta_id"
   | "submission_meta_lines_changed"
   // landing
-  | "home_hero_a_badge"
-  | "home_hero_a_title"
-  | "home_hero_a_blurb"
-  | "home_hero_b_badge"
-  | "home_hero_b_title"
-  | "home_hero_b_blurb"
-  | "home_lc_hr_label"
-  | "home_b2b_logos_label"
-  | "home_b2b_contact_hint"
   // feature cards (six)
-  | "home_feature_chat_v2_title"
-  | "home_feature_chat_v2_desc"
-  | "home_feature_tips_agent_title"
-  | "home_feature_tips_agent_desc"
-  | "home_feature_five_dim_title"
-  | "home_feature_five_dim_desc"
-  | "home_feature_company_premium_title"
-  | "home_feature_company_premium_desc"
-  | "home_feature_reply_walkthrough_title"
-  | "home_feature_reply_walkthrough_desc"
-  | "home_feature_community_title"
-  | "home_feature_community_desc"
   // profile + tier + credits + badge
   | "tier_standard"
   | "tier_max"
@@ -507,12 +475,135 @@ type LocaleKey =
   | "workspace_exit_aria"
   | "ide_split_btn"
   | "ide_close_pane_btn"
-  | "ide_pane_limit_reached";
+  | "ide_pane_limit_reached"
+  // home page
+  | "home_hero_eyebrow"
+  | "home_hero_title"
+  | "home_hero_blurb"
+  | "home_cta_create_account"
+  | "home_cta_continue"
+  | "home_cta_browse"
+  | "home_stat_problems"
+  | "home_stat_tracks"
+  | "home_stat_dimensions"
+  | "home_mock_user_msg"
+  | "home_mock_ai_msg"
+  | "home_mock_patch"
+  | "home_mock_approve"
+  | "home_mock_reject"
+  | "home_mock_report"
+  | "home_explore_title"
+  | "home_explore_blurb"
+  | "home_feature_problems_title"
+  | "home_feature_problems_desc"
+  | "home_feature_problems_link"
+  | "home_feature_agent_title"
+  | "home_feature_agent_desc"
+  | "home_feature_agent_link"
+  | "home_feature_scoring_title"
+  | "home_feature_scoring_desc"
+  | "home_feature_scoring_link"
+  | "home_visual_problem_count"
+  | "home_visual_patch_title"
+  | "home_visual_patch_hint"
+  | "home_visual_patch_edit"
+  | "home_visual_antipatterns_clear"
+  | "home_candidates_title"
+  | "home_candidates_desc"
+  | "home_candidates_link_problems"
+  | "home_candidates_link_forums"
+  | "home_teams_title"
+  | "home_teams_desc"
+  | "home_teams_point_rubric"
+  | "home_teams_point_replay"
+  | "home_teams_point_problems"
+  | "home_teams_link"
+  | "home_showcase_title"
+  | "home_showcase_blurb"
+  | "home_showcase_copy"
+  | "home_showcase_copied"
+  | "home_showcase_open"
+  | "home_showcase_browse_all"
+  | "home_mission_title"
+  | "home_mission_body"
+  | "home_mission_skills_label"
+  | "home_skill_incidents"
+  | "home_skill_security"
+  | "home_skill_refactor"
+  | "home_skill_patches"
+  | "home_skill_tests"
+  | "home_skill_tradeoffs"
+  | "home_hiring_title"
+  | "home_hiring_body"
+  | "home_hiring_link"
+  | "home_footer_copyright"
+  | "home_footer_contact";
 
 type Locale = "en" | "zh";
 
 const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
   en: {
+    home_hero_eyebrow: "Practice for AI-enabled interviews",
+    home_hero_title: "Show how you think with AI.",
+    home_hero_blurb: "Solve real engineering problems with an AI agent in the editor. Codritium scores more than the code you ship: it grades how you direct the agent, verify its work, and explain your decisions.",
+    home_cta_create_account: "Create account",
+    home_cta_continue: "Continue practicing",
+    home_cta_browse: "Browse problems",
+    home_stat_problems: "Hands-on problems",
+    home_stat_tracks: "Problem tracks",
+    home_stat_dimensions: "Scoring dimensions",
+    home_mock_user_msg: "Why does a retried webhook ship twice?",
+    home_mock_ai_msg: "Retries reuse the event id. I'd skip ids the ledger has already seen before dispatching.",
+    home_mock_patch: "Proposed patch",
+    home_mock_approve: "Approve",
+    home_mock_reject: "Reject",
+    home_mock_report: "Sample report",
+    home_explore_title: "Start exploring",
+    home_explore_blurb: "Everything you need to practice the way modern engineering interviews actually run.",
+    home_feature_problems_title: "Real problems, not puzzles",
+    home_feature_problems_desc: "Production-style incidents across debugging, security, and refactoring. Each one ships with starter code, tests, and a scenario you'd recognize from on-call.",
+    home_feature_problems_link: "View problems",
+    home_feature_agent_title: "An AI agent in your editor",
+    home_feature_agent_desc: "Ask, delegate, and review. Every change the agent proposes arrives as a patch you approve, edit, or reject, so the decisions stay yours.",
+    home_feature_agent_link: "Open a problem",
+    home_feature_scoring_title: "Scored on five dimensions",
+    home_feature_scoring_desc: "Correctness, problem decomposition, AI collaboration, verification, and communication are each graded on their own, with anti-pattern flags when you hand the wheel to the model.",
+    home_feature_scoring_link: "Start a problem",
+    home_visual_problem_count: "{n} problems",
+    home_visual_patch_title: "Agent patch",
+    home_visual_patch_hint: "Review before it lands",
+    home_visual_patch_edit: "Edit",
+    home_visual_antipatterns_clear: "No anti-patterns flagged",
+    home_candidates_title: "Problems & community",
+    home_candidates_desc: "Work through {n} hands-on problems, compare approaches in per-problem discussions, and trade notes with other candidates in the forums.",
+    home_candidates_link_problems: "View problems",
+    home_candidates_link_forums: "Visit the forums",
+    home_teams_title: "For hiring teams",
+    home_teams_desc: "Run AI-enabled technical assessments in the same workspace your candidates practice in.",
+    home_teams_point_rubric: "A consistent five-dimension rubric for every candidate",
+    home_teams_point_replay: "Code, prompt history, and a step-by-step replay of each session",
+    home_teams_point_problems: "Realistic problems instead of algorithm trivia",
+    home_teams_link: "Talk to our team",
+    home_showcase_title: "Try a real problem",
+    home_showcase_blurb: "Every problem comes with runnable starter code. Look through a few here, then open one in the full workspace with the AI agent beside you.",
+    home_showcase_copy: "Copy",
+    home_showcase_copied: "Copied",
+    home_showcase_open: "Open in workspace",
+    home_showcase_browse_all: "Browse all problems",
+    home_mission_title: "Built for the AI-enabled interview",
+    home_mission_body: "More teams now let candidates use AI during interviews. What they look for isn't typing speed. They want to see you break a problem down, direct an agent, check its work, and explain your call. Codritium exists to help you practice exactly that.",
+    home_mission_skills_label: "What you'll practice",
+    home_skill_incidents: "Debugging production incidents",
+    home_skill_security: "Security review",
+    home_skill_refactor: "Refactoring legacy code",
+    home_skill_patches: "Reviewing AI patches",
+    home_skill_tests: "Writing verification tests",
+    home_skill_tradeoffs: "Explaining trade-offs",
+    home_hiring_title: "Hiring engineers who work with AI?",
+    home_hiring_body: "We'd love to help you run assessments that reflect how your team really builds software.",
+    home_hiring_link: "Contact us",
+    home_footer_copyright: "© {year} Codritium",
+    home_footer_contact: "Contact",
     loading: "Loading…",
     submit: "Submit",
     cancel: "Cancel",
@@ -610,15 +701,6 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     envelope_self_check: "Self-check artifact",
     envelope_reverted: "Reverted edit",
     role_engineer: "Engineer",
-    home_hero_badge: "v0 demo · five-dimension scoring",
-    home_hero_title_part1: "Practice real engineering problems",
-    home_hero_title_part2: "next to your AI tool.",
-    home_hero_blurb: "AI is allowed. Your job is to direct it. Submit code plus the prompt history that produced it, and get scored on Correctness, Problem Decomposition, AI Collaboration, Verification, and Communication — the same axes Canva-style and Atlassian AI-Enabled interviews evaluate.",
-    home_browse_problems: "Browse problems",
-    home_get_started: "Get started",
-    home_try_today: "Try today's challenge",
-    home_section_dims_title: "Five dimensions, four anti-patterns",
-    home_section_dims_blurb: "Each submission is graded by a code-based runner plus an LLM rubric per dimension.",
     dim_correctness_title: "Correctness",
     dim_correctness_desc: "Tests pass + edge cases honoured + implicit constraints preserved.",
     dim_decomposition_title: "Problem Decomposition",
@@ -627,8 +709,6 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     dim_ai_collab_desc: "Course corrections, selective undo, architectural decisions kept by candidate.",
     dim_verification_title: "Verification & Quality",
     dim_verification_desc: "Tests run after generations, AI bugs caught, static analysis clean (Medium / Hard).",
-    home_section_companies_title: "Targeted at AI-enabled interviews",
-    home_section_companies_blurb: "Companies that already permit (or require) AI tools during interviews.",
     brand_name: "Codritium",
     appbar_readme: "README",
     appbar_help: "Help",
@@ -898,27 +978,6 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     submission_meta_prompts: "Prompts",
     submission_meta_id: "Submission ID",
     submission_meta_lines_changed: "Lines changed",
-    home_hero_a_badge: "Test AI collaboration",
-    home_hero_a_title: "Show how you think with AI.",
-    home_hero_a_blurb: "Codritium grades not what you type but how you decide what to delegate.",
-    home_hero_b_badge: "Test real engineering",
-    home_hero_b_title: "Work problems the way real teams do.",
-    home_hero_b_blurb: "Bring an AI agent into the editor and prove you can ship without it owning the call.",
-    home_lc_hr_label: "Not LC algorithms. Not HR speedruns.",
-    home_b2b_logos_label: "Engineering teams hiring with Codritium",
-    home_b2b_contact_hint: "Hiring at scale? Reach the team at contact@codritium.com.",
-    home_feature_chat_v2_title: "AI agent in the editor",
-    home_feature_chat_v2_desc: "A Cursor-style agent inside the workspace. You approve, modify, or reject every change.",
-    home_feature_tips_agent_title: "Tutor on call",
-    home_feature_tips_agent_desc: "Socratic hints when you're stuck. Never the answer, always the next question.",
-    home_feature_five_dim_title: "5-dim G-Eval rubric",
-    home_feature_five_dim_desc: "Correctness, decomposition, AI collaboration, verification, communication — each scored on its own.",
-    home_feature_company_premium_title: "Company premium pack",
-    home_feature_company_premium_desc: "Real problems from Adobe, Stripe, Google, and more. Pro tier.",
-    home_feature_reply_walkthrough_title: "Reply walkthroughs",
-    home_feature_reply_walkthrough_desc: "Every problem ships with a model-and-human replay you can step through.",
-    home_feature_community_title: "Per-problem discussion",
-    home_feature_community_desc: "See how other candidates broke the same problem after you ship yours.",
     tier_standard: "Standard",
     tier_max: "Max",
     credits_label: "Credits",
@@ -972,6 +1031,67 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
   // empty so t("key", { locale: "zh" }) doesn't crash; the switcher will
   // populate them in a dedicated i18n track.
   zh: {
+    home_hero_eyebrow: "",
+    home_hero_title: "",
+    home_hero_blurb: "",
+    home_cta_create_account: "",
+    home_cta_continue: "",
+    home_cta_browse: "",
+    home_stat_problems: "",
+    home_stat_tracks: "",
+    home_stat_dimensions: "",
+    home_mock_user_msg: "",
+    home_mock_ai_msg: "",
+    home_mock_patch: "",
+    home_mock_approve: "",
+    home_mock_reject: "",
+    home_mock_report: "",
+    home_explore_title: "",
+    home_explore_blurb: "",
+    home_feature_problems_title: "",
+    home_feature_problems_desc: "",
+    home_feature_problems_link: "",
+    home_feature_agent_title: "",
+    home_feature_agent_desc: "",
+    home_feature_agent_link: "",
+    home_feature_scoring_title: "",
+    home_feature_scoring_desc: "",
+    home_feature_scoring_link: "",
+    home_visual_problem_count: "",
+    home_visual_patch_title: "",
+    home_visual_patch_hint: "",
+    home_visual_patch_edit: "",
+    home_visual_antipatterns_clear: "",
+    home_candidates_title: "",
+    home_candidates_desc: "",
+    home_candidates_link_problems: "",
+    home_candidates_link_forums: "",
+    home_teams_title: "",
+    home_teams_desc: "",
+    home_teams_point_rubric: "",
+    home_teams_point_replay: "",
+    home_teams_point_problems: "",
+    home_teams_link: "",
+    home_showcase_title: "",
+    home_showcase_blurb: "",
+    home_showcase_copy: "",
+    home_showcase_copied: "",
+    home_showcase_open: "",
+    home_showcase_browse_all: "",
+    home_mission_title: "",
+    home_mission_body: "",
+    home_mission_skills_label: "",
+    home_skill_incidents: "",
+    home_skill_security: "",
+    home_skill_refactor: "",
+    home_skill_patches: "",
+    home_skill_tests: "",
+    home_skill_tradeoffs: "",
+    home_hiring_title: "",
+    home_hiring_body: "",
+    home_hiring_link: "",
+    home_footer_copyright: "",
+    home_footer_contact: "",
     loading: "",
     submit: "",
     cancel: "",
@@ -1069,15 +1189,6 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     envelope_self_check: "",
     envelope_reverted: "",
     role_engineer: "",
-    home_hero_badge: "",
-    home_hero_title_part1: "",
-    home_hero_title_part2: "",
-    home_hero_blurb: "",
-    home_browse_problems: "",
-    home_get_started: "",
-    home_try_today: "",
-    home_section_dims_title: "",
-    home_section_dims_blurb: "",
     dim_correctness_title: "",
     dim_correctness_desc: "",
     dim_decomposition_title: "",
@@ -1086,8 +1197,6 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     dim_ai_collab_desc: "",
     dim_verification_title: "",
     dim_verification_desc: "",
-    home_section_companies_title: "",
-    home_section_companies_blurb: "",
     brand_name: "",
     appbar_readme: "",
     appbar_help: "",
@@ -1357,27 +1466,6 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     submission_meta_prompts: "",
     submission_meta_id: "",
     submission_meta_lines_changed: "",
-    home_hero_a_badge: "",
-    home_hero_a_title: "",
-    home_hero_a_blurb: "",
-    home_hero_b_badge: "",
-    home_hero_b_title: "",
-    home_hero_b_blurb: "",
-    home_lc_hr_label: "",
-    home_b2b_logos_label: "",
-    home_b2b_contact_hint: "",
-    home_feature_chat_v2_title: "",
-    home_feature_chat_v2_desc: "",
-    home_feature_tips_agent_title: "",
-    home_feature_tips_agent_desc: "",
-    home_feature_five_dim_title: "",
-    home_feature_five_dim_desc: "",
-    home_feature_company_premium_title: "",
-    home_feature_company_premium_desc: "",
-    home_feature_reply_walkthrough_title: "",
-    home_feature_reply_walkthrough_desc: "",
-    home_feature_community_title: "",
-    home_feature_community_desc: "",
     tier_standard: "",
     tier_max: "",
     credits_label: "",

@@ -380,3 +380,99 @@ body.is-resizing * {
   background: var(--surface-2);
   color: var(--ink);
 }
+
+/* ----------------------------------------------------------------------------
+   Home page. Section accent colours (one per section badge) plus the light
+   hero backdrop. Defined per theme so the landing page tracks default,
+   system-dark, and bright without component edits.
+---------------------------------------------------------------------------- */
+
+@theme inline {
+  --color-home-blue: var(--home-blue);
+  --color-home-blue-soft: var(--home-blue-soft);
+  --color-home-green: var(--home-green);
+  --color-home-green-soft: var(--home-green-soft);
+  --color-home-amber: var(--home-amber);
+  --color-home-amber-soft: var(--home-amber-soft);
+  --color-home-teal: var(--home-teal);
+  --color-home-teal-soft: var(--home-teal-soft);
+  --color-home-rose: var(--home-rose);
+  --color-home-rose-soft: var(--home-rose-soft);
+}
+
+:root,
+[data-theme="default"],
+[data-theme="bright"] {
+  --home-blue: #2563eb;
+  --home-blue-soft: #dbeafe;
+  --home-green: #16a34a;
+  --home-green-soft: #dcfce7;
+  --home-amber: #b7791f;
+  --home-amber-soft: #fef3c7;
+  --home-teal: #0d9488;
+  --home-teal-soft: #ccfbf1;
+  --home-rose: #e11d48;
+  --home-rose-soft: #ffe4e6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root,
+  [data-theme="default"] {
+    --home-blue: #60a5fa;
+    --home-blue-soft: #172554;
+    --home-green: #4ade80;
+    --home-green-soft: #052e16;
+    --home-amber: #fbbf24;
+    --home-amber-soft: #422006;
+    --home-teal: #2dd4bf;
+    --home-teal-soft: #042f2e;
+    --home-rose: #fb7185;
+    --home-rose-soft: #4c0519;
+  }
+}
+
+/* Hero backdrop: soft accent glow, a faint dot grid that fades out, and an
+   angled lower edge (the light take on a diagonal hero band). */
+.home-hero-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 70% at 85% 10%, color-mix(in srgb, var(--home-blue) 14%, transparent), transparent 70%),
+    radial-gradient(45% 60% at 10% 30%, color-mix(in srgb, var(--home-teal) 10%, transparent), transparent 70%),
+    var(--surface);
+  clip-path: polygon(0 0, 100% 0, 100% 82%, 0 100%);
+}
+.home-hero-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(var(--divider-strong) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), transparent 85%);
+}
+
+/* Section badge: a rounded tile in the section's accent colour. */
+.home-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  color: #ffffff;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--badge) 78%, #ffffff), var(--badge));
+  box-shadow:
+    rgba(255, 255, 255, 0.45) 0 1px 0 0 inset,
+    color-mix(in srgb, var(--badge) 35%, transparent) 0 10px 22px -8px;
+}
+
+/* Floating product-mock window used in the hero and feature visuals. */
+.home-window {
+  border-radius: 16px;
+  border: 1px solid var(--divider);
+  background: var(--surface);
+  box-shadow:
+    rgba(15, 23, 42, 0.04) 0 1px 2px,
+    rgba(15, 23, 42, 0.10) 0 24px 48px -16px;
+}
