@@ -66,9 +66,9 @@ export function ChatPanel({
           fontWeight: 600,
         }}
       >
-        <Sparkles size={13} strokeWidth={1.7} style={{ color: "var(--accent)" }} />
+        <Sparkles size={13} strokeWidth={1.7} className="text-ide-accent" />
         <span>{t("chat_ai_assistant")}</span>
-        <span style={{ flex: 1 }} />
+        <span className="flex-1" />
         <span
           className="mono"
           style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "none" }}
@@ -77,7 +77,7 @@ export function ChatPanel({
         </span>
       </div>
 
-      <div ref={scrollRef} className="scroll-y" style={{ flex: 1, padding: "12px 14px" }}>
+      <div ref={scrollRef} className="scroll-y flex-1 px-3.5 py-3">
         {messages.length === 0 && (
           <div
             style={{
@@ -130,7 +130,7 @@ export function ChatPanel({
             >
               {m.role === "user" ? t("chat_role_you") : t("ai_role")}
               {m.streaming && (
-                <span style={{ marginLeft: 6, color: "var(--warn)" }}>…</span>
+                <span className="ml-1.5 text-ide-warn">…</span>
               )}
             </div>
             <ReactMarkdown
@@ -155,7 +155,7 @@ export function ChatPanel({
                     );
                   }
                   return (
-                    <div style={{ position: "relative", margin: "8px 0" }}>
+                    <div className="relative my-2">
                       <pre
                         className="mono"
                         style={{
@@ -192,9 +192,9 @@ export function ChatPanel({
                     </div>
                   );
                 },
-                p: ({ children }) => <p style={{ marginBottom: 6 }}>{children}</p>,
+                p: ({ children }) => <p className="mb-1.5">{children}</p>,
                 ul: ({ children }) => (
-                  <ul style={{ paddingLeft: 18 }}>{children}</ul>
+                  <ul className="pl-[18px]">{children}</ul>
                 ),
               }}
             >
@@ -253,8 +253,8 @@ function PatchTimelineEntry({
           strokeWidth={2}
           style={{ color: isReject ? "var(--bad)" : isAuto ? "var(--text-muted)" : "var(--good)" }}
         />
-        <span style={{ fontWeight: 600, color: "var(--text)" }}>{label}</span>
-        <span style={{ color: "var(--text-muted)" }}>
+        <span className="font-semibold text-ide-text">{label}</span>
+        <span className="text-ide-text-muted">
           {message.pending.tool}
           {message.pending.path ? ` · ${message.pending.path}` : ""}
           {message.pending.tool !== "FileRead" && message.pending.tool !== "FileEdit" && message.pending.inputSummary
@@ -266,7 +266,7 @@ function PatchTimelineEntry({
   }
 
   return (
-    <div style={{ marginBottom: 14 }}>
+    <div className="mb-3.5">
       <div
         style={{
           fontSize: 10,

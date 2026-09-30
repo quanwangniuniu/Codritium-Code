@@ -31,7 +31,7 @@ export function StatusBar({
       }}
     >
       <span>⊗ 0  ⚠ 0</span>
-      <span style={{ flex: 1 }} />
+      <span className="flex-1" />
       <span className="mono">
         {me ? `@${me.handle}` : "—"} · {problemSlug}
       </span>

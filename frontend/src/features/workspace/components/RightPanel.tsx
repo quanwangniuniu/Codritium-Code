@@ -114,7 +114,7 @@ export function RightPanel({
       </div>
 
       {active === "agent" ? (
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div className="flex min-h-0 flex-1 flex-col">
           <ChatPanel
             messages={messages}
             onSend={onSend}

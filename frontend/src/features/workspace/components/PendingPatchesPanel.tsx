@@ -24,7 +24,7 @@ export function PendingPatchesPanel({
   if (pending.length === 0) return null;
 
   return (
-    <div style={{ flexShrink: 0, borderTop: "1px solid var(--border-soft)" }}>
+    <div className="shrink-0 border-t border-ide-border-soft">
       <button
         onClick={() => setExpanded((v) => !v)}
         style={{
@@ -60,12 +60,12 @@ export function PendingPatchesPanel({
         >
           {pending.length}
         </span>
-        <span style={{ marginLeft: "auto", display: "flex" }}>
+        <span className="ml-auto flex">
           {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
       </button>
       {expanded && (
-        <div style={{ padding: "4px 10px 10px", maxHeight: 360, overflowY: "auto" }}>
+        <div className="max-h-[360px] overflow-y-auto px-2.5 pt-1 pb-2.5">
           {pending.map((p) => (
             <PatchPreview key={p.toolUseId} pending={p} onResolved={onResolved} />
           ))}

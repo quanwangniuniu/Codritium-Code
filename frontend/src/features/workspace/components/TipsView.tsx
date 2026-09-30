@@ -171,16 +171,15 @@ export function TipsView({
         }}
       >
         <Lightbulb size={15} color={AMBER_ACCENT} strokeWidth={2} />
-        <span style={{ fontWeight: 600 }}>{t("tutor_role")}</span>
-        <span style={{ color: "var(--text-muted)", fontSize: 11.5 }}>
+        <span className="font-semibold">{t("tutor_role")}</span>
+        <span className="text-[11.5px] text-ide-text-muted">
           · {t("tutor_empty_state").split(".")[0]}.
         </span>
       </header>
 
       <div
         ref={scrollRef}
-        className="scroll-y"
-        style={{ flex: 1, padding: "12px", display: "flex", flexDirection: "column", gap: 10 }}
+        className="scroll-y flex flex-1 flex-col gap-2.5 p-3"
       >
         {rows.length === 0 && (
           <div
@@ -245,7 +244,7 @@ export function TipsView({
           </div>
         ))}
         {busy && !streamingKeyRef.current && (
-          <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
+          <div className="text-xs text-ide-text-muted">
             {t("tutor_thinking")}
           </div>
         )}

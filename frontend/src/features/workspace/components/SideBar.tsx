@@ -65,7 +65,7 @@ export function SideBar({
         Explorer
       </div>
 
-      <div style={{ flexShrink: 0 }}>
+      <div className="shrink-0">
         <SectionHeader label="Problem" />
         <FileRow
           icon={
@@ -81,7 +81,7 @@ export function SideBar({
         />
       </div>
 
-      <div style={{ flexShrink: 0, marginTop: 4 }}>
+      <div className="mt-1 shrink-0">
         <SectionHeader label="Starter Files" />
         {files.map((f) => (
           <FileRow
@@ -126,7 +126,7 @@ function SectionHeader({ label }: { label: string }) {
         fontWeight: 600,
       }}
     >
-      <ChevronDown size={11} strokeWidth={2} style={{ color: "var(--text-muted)" }} />
+      <ChevronDown size={11} strokeWidth={2} className="text-ide-text-muted" />
       <span>{label}</span>
     </div>
   );

@@ -58,7 +58,7 @@ export function AppBar({
         {problemTitle}
       </div>
 
-      <div style={{ flex: 1 }} />
+      <div className="flex-1" />
 
       <div
         className="mono"
@@ -74,7 +74,7 @@ export function AppBar({
           gap: 5,
         }}
       >
-        <Clock size={12} strokeWidth={1.7} style={{ color: "var(--text-dim)" }} />
+        <Clock size={12} strokeWidth={1.7} className="text-ide-text-dim" />
         <span>{timer}</span>
       </div>
 

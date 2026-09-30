@@ -16,6 +16,7 @@ import {
 import { workspaceApi, type DecisionKind } from "@/features/workspace/api";
 import { unifiedDiff, diffStats, type DiffLine } from "@/shared/lib/diff";
 import { toast } from "@/shared/lib/toast";
+import { cn } from "@/shared/lib/cn";
 import { languageForFile } from "@/shared/editor/language";
 import { t } from "@/shared/i18n";
 import { useLocale } from "@/shared/i18n/client";
@@ -28,14 +29,7 @@ const DiffEditor = dynamic(
 
 function DiffEditorSkeleton() {
   return (
-    <div
-      style={{
-        padding: "12px 14px",
-        fontSize: 11,
-        color: "var(--text-muted)",
-        background: "var(--bg-editor)",
-      }}
-    >
+    <div className="bg-ide-editor px-3.5 py-3 text-[11px] text-ide-text-muted">
       Loading diff…
     </div>
   );
@@ -87,35 +81,20 @@ export function PatchPreview({
   };
 
   return (
-    <div
-      style={{
-        border: "1px solid var(--border)",
-        borderRadius: 4,
-        background: "var(--bg-side)",
-        marginBottom: 8,
-        overflow: "hidden",
-      }}
-    >
+    <div className="mb-2 overflow-hidden rounded border border-ide-border bg-ide-side">
       <header
-        style={{
-          padding: "6px 10px",
-          borderBottom: "1px solid var(--border)",
-          fontSize: 11,
-          color: "var(--text-dim)",
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          background:
-            pending.tool === "RunCommand" ? "rgba(244, 162, 89, 0.10)" : undefined,
-        }}
+        className={cn(
+          "flex items-center gap-2 border-b border-ide-border px-2.5 py-1.5 text-[11px] text-ide-text-dim",
+          pending.tool === "RunCommand" && "bg-[rgba(244,162,89,0.10)]",
+        )}
       >
         <ToolIcon tool={pending.tool} />
-        <span style={{ fontWeight: 600, color: "var(--text-strong)" }}>{pending.tool}</span>
+        <span className="font-semibold text-ide-text-strong">{pending.tool}</span>
         {pending.path && <span className="mono">{pending.path}</span>}
         {pending.tool === "FileEdit" && (
-          <span style={{ marginLeft: "auto", fontSize: 10 }}>
-            <span style={{ color: "var(--good)" }}>+{stats.added}</span>{" "}
-            <span style={{ color: "var(--bad)" }}>-{stats.removed}</span>
+          <span className="ml-auto text-[10px]">
+            <span className="text-ide-good">+{stats.added}</span>{" "}
+            <span className="text-ide-bad">-{stats.removed}</span>
           </span>
         )}
       </header>
@@ -123,7 +102,7 @@ export function PatchPreview({
       {mode === "view" ? (
         <ToolBody pending={pending} />
       ) : (
-        <div style={{ height: 240 }}>
+        <div className="h-[240px]">
           <Editor
             height="100%"
             language={languageForFile(pending.path)}
@@ -162,11 +141,11 @@ export function PatchPreview({
 function ToolIcon({ tool }: { tool: string }) {
   switch (tool) {
     case "Grep":
-      return <Search size={12} strokeWidth={1.7} style={{ color: "var(--text-dim)" }} />;
+      return <Search size={12} strokeWidth={1.7} className="text-ide-text-dim" />;
     case "Glob":
-      return <FileSearch size={12} strokeWidth={1.7} style={{ color: "var(--text-dim)" }} />;
+      return <FileSearch size={12} strokeWidth={1.7} className="text-ide-text-dim" />;
     case "RunCommand":
-      return <Terminal size={12} strokeWidth={1.7} style={{ color: "var(--warn)" }} />;
+      return <Terminal size={12} strokeWidth={1.7} className="text-ide-warn" />;
     default:
       return null;
   }
@@ -176,7 +155,7 @@ function ToolBody({ pending }: { pending: PendingPatch }) {
   switch (pending.tool) {
     case "FileEdit":
       return (
-        <div style={{ height: 240, background: "var(--bg-editor)" }}>
+        <div className="h-[240px] bg-ide-editor">
           <DiffEditor
             height="100%"
             width="100%"
@@ -234,7 +213,7 @@ function ToolBody({ pending }: { pending: PendingPatch }) {
             }}
           >
             <AlertTriangle size={11} strokeWidth={1.7} />
-            <span style={{ textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            <span className="uppercase tracking-[0.06em]">
               {t("patch_runcommand_warn")}
             </span>
           </div>
@@ -256,7 +235,7 @@ function ToolBody({ pending }: { pending: PendingPatch }) {
       );
     default:
       return (
-        <div style={{ padding: "10px 12px", fontSize: 12, color: "var(--text)" }}>
+        <div className="px-3 py-2.5 text-xs text-ide-text">
           {pending.inputSummary}
         </div>
       );
@@ -301,20 +280,12 @@ function ActionBar({
   };
 
   return (
-    <div style={{ borderTop: "1px solid var(--border)" }}>
-      <div
-        style={{
-          padding: "8px 10px",
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          flexWrap: "wrap",
-        }}
-      >
+    <div className="border-t border-ide-border">
+      <div className="flex flex-wrap items-center gap-1.5 px-2.5 py-2">
         <button
           onClick={onApprove}
           disabled={busy || rejectArmed}
-          style={btnStyle("var(--accent)", "#fff", busy || rejectArmed)}
+          className={btnClass("primary", busy || rejectArmed)}
         >
           <Check size={12} strokeWidth={2} /> {t("patch_approve")}
         </button>
@@ -322,17 +293,17 @@ function ActionBar({
           <button
             onClick={onModify}
             disabled={busy || rejectArmed}
-            style={btnStyle("var(--bg-tab)", "var(--text)", busy || rejectArmed)}
+            className={btnClass("secondary", busy || rejectArmed)}
           >
             <Pencil size={12} strokeWidth={1.7} /> {t("patch_modify")}
           </button>
         )}
-        <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
+        <span className="ml-auto inline-flex gap-1.5">
           {rejectArmed && (
             <button
               onClick={handleCancelReject}
               disabled={busy}
-              style={btnStyle("transparent", "var(--text-muted)")}
+              className={btnClass("ghost")}
             >
               {t("cancel")}
             </button>
@@ -340,14 +311,14 @@ function ActionBar({
           <button
             onClick={handleRejectClick}
             disabled={busy}
-            style={btnStyle("var(--bg-tab)", "var(--bad)")}
+            className={btnClass("danger")}
           >
             <X size={12} strokeWidth={1.7} /> {rejectArmed ? t("patch_reject_confirm") : t("patch_reject")}
           </button>
         </span>
       </div>
       {rejectArmed && (
-        <div style={{ padding: "0 10px 10px" }}>
+        <div className="px-2.5 pb-2.5">
           <textarea
             ref={reasonRef}
             value={reason}
@@ -381,37 +352,30 @@ function ModifyActionBar({
   onCancel: () => void;
 }) {
   return (
-    <div
-      style={{
-        padding: "8px 10px",
-        borderTop: "1px solid var(--border)",
-        display: "flex",
-        gap: 6,
-      }}
-    >
-      <button onClick={onSave} disabled={busy} style={btnStyle("var(--accent)", "#fff")}>
+    <div className="flex gap-1.5 border-t border-ide-border px-2.5 py-2">
+      <button onClick={onSave} disabled={busy} className={btnClass("primary")}>
         <Save size={12} strokeWidth={2} /> {t("patch_save_approve")}
       </button>
-      <button onClick={onCancel} disabled={busy} style={btnStyle("var(--bg-tab)", "var(--text)")}>
+      <button onClick={onCancel} disabled={busy} className={btnClass("secondary")}>
         {t("cancel")}
       </button>
     </div>
   );
 }
 
-function btnStyle(bg: string, color: string, dimmed = false): React.CSSProperties {
-  return {
-    background: bg,
-    color,
-    border: "none",
-    padding: "4px 9px",
-    fontSize: 11,
-    borderRadius: 3,
-    cursor: dimmed ? "default" : "pointer",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-    fontWeight: 600,
-    opacity: dimmed ? 0.4 : 1,
-  };
+type BtnTone = "primary" | "secondary" | "ghost" | "danger";
+
+const BTN_TONE: Record<BtnTone, string> = {
+  primary: "bg-ide-accent text-white",
+  secondary: "bg-ide-tab text-ide-text",
+  ghost: "bg-transparent text-ide-text-muted",
+  danger: "bg-ide-tab text-ide-bad",
+};
+
+function btnClass(tone: BtnTone, dimmed = false): string {
+  return cn(
+    "inline-flex items-center gap-1 rounded-[3px] border-none px-[9px] py-1 text-[11px] font-semibold",
+    BTN_TONE[tone],
+    dimmed ? "cursor-default opacity-40" : "cursor-pointer",
+  );
 }

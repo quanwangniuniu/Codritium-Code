@@ -182,11 +182,11 @@ export function ReplyClient({
           flexWrap: "wrap",
         }}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <div className="flex flex-col gap-1">
           <h1 style={{ fontSize: 22, fontWeight: 600 }}>{title}</h1>
-          <p style={{ fontSize: 12.5, color: "var(--muted)", margin: 0 }}>{subtitle}</p>
+          <p className="m-0 text-[12.5px] text-muted">{subtitle}</p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div className="flex items-center gap-3.5">
           {secondaryHref && secondaryLabel && (
             <Link
               href={secondaryHref}
@@ -207,7 +207,7 @@ export function ReplyClient({
       </header>
 
       {hasAnswer && (
-        <div role="tablist" style={{ display: "flex", gap: 4, marginBottom: 18 }}>
+        <div role="tablist" className="mb-[18px] flex gap-1">
           <ModeTab
             active={mode === "replay"}
             onClick={() => setMode("replay")}
@@ -311,7 +311,7 @@ export function ReplyClient({
                           cursorKey={patchCursor}
                         />
                       ) : (
-                        <div style={{ padding: 16, color: "var(--muted)", fontSize: 12.5 }}>
+                        <div className="p-4 text-[12.5px] text-muted">
                           {t("diff_select_hint")}
                         </div>
                       )}

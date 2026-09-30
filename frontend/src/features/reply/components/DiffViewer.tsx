@@ -110,7 +110,7 @@ export function DiffViewer({
   const gutterCh = Math.max(2, String(maxLineNum).length);
 
   return (
-    <div style={{ position: "relative" }}>
+    <div className="relative">
       <div
         style={{
           display: "flex",

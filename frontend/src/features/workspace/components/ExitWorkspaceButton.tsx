@@ -195,7 +195,7 @@ function ExitModal({
               cursor: "pointer",
             }}
           >
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span className="inline-flex items-center gap-[5px]">
               <ArrowLeft size={12} strokeWidth={1.9} />
               {t("workspace_exit_action")}
             </span>

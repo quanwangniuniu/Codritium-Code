@@ -60,15 +60,15 @@ export function ReadmeBody({ readme }: { readme: string }) {
             </h3>
           ),
           p: ({ children }) => (
-            <p style={{ margin: "10px 0", color: "var(--text)" }}>{children}</p>
+            <p className="my-2.5 text-ide-text">{children}</p>
           ),
           strong: ({ children }) => (
-            <strong style={{ color: "var(--text-strong)", fontWeight: 600 }}>
+            <strong className="font-semibold text-ide-text-strong">
               {children}
             </strong>
           ),
           em: ({ children }) => (
-            <em style={{ color: "var(--text)", fontStyle: "italic" }}>
+            <em className="italic text-ide-text">
               {children}
             </em>
           ),
@@ -95,7 +95,7 @@ export function ReadmeBody({ readme }: { readme: string }) {
             </ol>
           ),
           li: ({ children }) => (
-            <li style={{ margin: "4px 0", color: "var(--text)" }}>{children}</li>
+            <li className="my-1 text-ide-text">{children}</li>
           ),
           a: ({ children, href }) => (
             <a
@@ -249,7 +249,7 @@ export function ReadmeTab({
               userSelect: "none",
             }}
           >
-            <ExternalLink size={36} strokeWidth={1} style={{ opacity: 0.4 }} />
+            <ExternalLink size={36} strokeWidth={1} className="opacity-40" />
             <div
               style={{
                 fontSize: 13,
@@ -259,7 +259,7 @@ export function ReadmeTab({
             >
               {t("readme_floating_title")}
             </div>
-            <div style={{ fontSize: 11.5, lineHeight: 1.7, maxWidth: 320 }}>
+            <div className="max-w-[320px] text-[11.5px] leading-[1.7]">
               {t("readme_floating_hint")}
             </div>
           </div>

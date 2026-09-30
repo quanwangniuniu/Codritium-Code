@@ -75,7 +75,7 @@ export function StepController({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+    <div className="flex h-full min-h-0 flex-col">
       <div
         ref={listRef}
         className="reply-scroll"

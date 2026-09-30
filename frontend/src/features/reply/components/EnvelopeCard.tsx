@@ -251,7 +251,7 @@ function CenteredChip({
   subtitle?: string;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+    <div className="flex flex-col items-center gap-1">
       <span
         style={{
           display: "inline-flex",
@@ -358,7 +358,7 @@ function SideBubble({
           </div>
         )}
         {description && (
-          <div style={{ fontSize: 12.5, color: "var(--ink)", lineHeight: 1.55 }}>
+          <div className="text-[12.5px] leading-[1.55] text-ink">
             {description}
           </div>
         )}
@@ -381,7 +381,7 @@ function DecisionPill({
   description: string;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+    <div className="flex flex-col items-end gap-1">
       <span
         style={{
           display: "inline-flex",
@@ -417,7 +417,7 @@ function DecisionPill({
           }}
         >
           {reason && (
-            <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{reason}</div>
+            <div className="text-[11.5px] text-muted">{reason}</div>
           )}
           {description && <div>{description}</div>}
         </div>
@@ -481,7 +481,7 @@ function FullCard({
         </div>
       )}
       {description && (
-        <div style={{ fontSize: 12.5, color: "var(--ink)", lineHeight: 1.55 }}>
+        <div className="text-[12.5px] leading-[1.55] text-ink">
           {description}
         </div>
       )}
