@@ -61,14 +61,22 @@ type LocaleKey =
   | "submit_disabled_no_grader"
   // auth
   | "login_title"
-  | "login_subtitle"
-  | "pick_demo_user"
   | "password_placeholder"
   | "password_required"
   | "sign_in"
   | "sign_out"
   | "signing_in"
   | "login_failed"
+  | "register_card_title"
+  | "register_card_desc"
+  | "register_password_hint"
+  | "create_account"
+  | "register_prompt"
+  | "login_prompt"
+  | "auth_email_exists"
+  | "auth_invalid_credentials"
+  | "auth_invalid_input"
+  | "auth_request_failed"
   // session
   | "session_quota_exceeded_oldest_evicted"
   // apply
@@ -220,20 +228,93 @@ type LocaleKey =
   | "profile_find_problem_btn"
   // forum
   | "forum_section_interview_label"
-  | "forum_section_interview_tagline"
   | "forum_section_career_label"
-  | "forum_section_career_tagline"
   | "forum_section_compensation_label"
-  | "forum_section_compensation_tagline"
   | "forum_section_feedback_label"
-  | "forum_section_feedback_tagline"
+  | "forum_section_problems_label"
+  | "forum_for_you"
+  | "forum_sections"
+  | "forum_create"
+  | "forum_sort_votes"
+  | "forum_sort_newest"
+  | "forum_sort_best"
+  | "forum_sort_comments"
+  | "forum_search_placeholder"
+  | "forum_results_for_fmt"
+  | "forum_clear_filter"
+  | "forum_trending"
+  | "forum_trending_empty"
+  | "forum_pinned"
+  | "forum_empty_feed"
+  | "forum_load_more"
+  | "forum_load_more_comments"
+  | "forum_anonymous"
+  | "forum_verified"
+  | "forum_posted_anonymously"
+  | "forum_votes"
+  | "forum_views"
+  | "forum_comments"
+  | "forum_comments_count_fmt"
+  | "forum_upvote"
+  | "forum_downvote"
+  | "forum_post_actions"
+  | "forum_copy_link"
+  | "forum_link_copied"
+  | "forum_edit"
+  | "forum_delete"
+  | "forum_pin"
+  | "forum_unpin"
+  | "forum_post_pinned"
+  | "forum_post_unpinned"
+  | "forum_delete_post_confirm"
+  | "forum_post_deleted"
+  | "forum_edited"
+  | "forum_reply"
+  | "forum_op_badge"
+  | "forum_no_comments"
+  | "forum_comment_placeholder"
+  | "forum_reply_placeholder"
+  | "forum_post_comment"
+  | "forum_comment_anonymously"
+  | "forum_comment_deleted"
+  | "forum_delete_comment_confirm"
+  | "forum_login_link"
+  | "forum_login_to_comment"
+  | "forum_new_post_title"
+  | "forum_edit_post_title"
+  | "forum_title_label"
+  | "forum_title_placeholder"
+  | "forum_title_hint_fmt"
+  | "forum_section_label"
+  | "forum_problem_label"
+  | "forum_problem_none"
+  | "forum_tags_label_fmt"
+  | "forum_tags_placeholder"
+  | "forum_remove_tag_fmt"
+  | "forum_write"
+  | "forum_preview"
+  | "forum_markdown_hint"
+  | "forum_body_label"
+  | "forum_body_placeholder"
+  | "forum_preview_empty"
+  | "forum_post_anonymously"
+  | "forum_publish"
+  | "forum_save"
+  | "forum_post_published"
+  | "forum_post_updated"
+  | "forum_err_login_required"
+  | "forum_err_invalid_title"
+  | "forum_err_invalid_body"
+  | "forum_err_invalid_tag"
+  | "forum_err_too_many_tags"
+  | "forum_err_unknown_problem"
+  | "forum_err_anonymous_not_allowed"
+  | "forum_err_not_found"
+  | "forum_err_generic"
   | "forum_just_now"
   | "forum_minutes_ago_fmt"
   | "forum_hours_ago_fmt"
   | "forum_days_ago_fmt"
-  | "forum_title"
-  | "forum_subtitle"
-  | "forum_no_posts_fmt"
   // SubmissionsList
   | "submissions_empty_prefix"
   | "submissions_problem_list_word"
@@ -258,9 +339,6 @@ type LocaleKey =
   | "profile_bio_empty"
   | "profile_view_plans_btn"
   // forums placeholder
-  | "forums_coming_soon"
-  | "forums_start_discussion"
-  | "forums_locked_note"
   // ResumeOrFresh
   | "resume_just_now"
   | "resume_minute_ago"
@@ -294,7 +372,13 @@ type LocaleKey =
   | "problems_no_match"
   | "problems_clear_filters"
   | "problems_pro_lock_tooltip"
-  | "problems_filter_done"
+  | "problems_filter_status"
+  | "problems_status_todo"
+  | "problems_status_attempted"
+  | "problems_status_solved"
+  | "problems_col_title"
+  | "problems_search_placeholder"
+  | "problems_solved_count_fmt"
   | "problems_page_indicator_fmt"
   | "problems_page_prev"
   | "problems_page_next"
@@ -306,14 +390,19 @@ type LocaleKey =
   | "breadcrumb_problems"
   | "back_to_problems"
   | "problem_intro_blurb"
-  | "problem_brief_card_title"
-  | "problem_brief_card_desc"
-  | "problem_solutions_title"
-  | "badge_locked"
+  | "problem_tab_description"
+  | "problem_tab_submissions"
+  | "problem_solutions_unlocked_desc"
+  | "problem_solutions_view_btn"
+  | "problem_submissions_empty"
+  | "problem_submission_status_pending"
+  | "problem_submission_status_grading"
+  | "problem_submission_status_failed"
+  | "problem_start_title"
+  | "problem_start_point_files"
+  | "problem_start_point_ai"
+  | "problem_start_point_timer"
   | "problem_solutions_desc"
-  | "problem_discussion_title"
-  | "badge_soon"
-  | "problem_discussion_desc"
   // submission detail
   | "dim_label_correctness"
   | "dim_label_decomposition"
@@ -464,14 +553,22 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     gemini_unavailable_progress_saved: "Grader is unavailable. Your progress has been saved locally.",
     submit_disabled_no_grader: "Submit is disabled — grader is unavailable.",
     login_title: "Sign in to Codritium",
-    login_subtitle: "Mock authentication for the demo. Pick an account and enter any password.",
-    pick_demo_user: "Pick a demo account",
     password_placeholder: "Password",
     password_required: "Password cannot be empty.",
     sign_in: "Sign in",
     sign_out: "Sign out",
     signing_in: "Signing in…",
     login_failed: "Could not sign in. Please try again.",
+    register_card_title: "Create your account",
+    register_card_desc: "Register with your email and a password to get started.",
+    register_password_hint: "At least 8 characters",
+    create_account: "Create account",
+    register_prompt: "New to Codritium?",
+    login_prompt: "Already have an account?",
+    auth_email_exists: "An account with that email already exists. Sign in instead.",
+    auth_invalid_credentials: "Email or password is incorrect.",
+    auth_invalid_input: "Enter a valid email and a password of at least 8 characters.",
+    auth_request_failed: "Could not reach the authentication service. Please try again.",
     session_quota_exceeded_oldest_evicted: "Local storage is full; the oldest saved session was removed.",
     apply_failed: "Could not apply the change. Please try again.",
     apply_in_progress: "Applying…",
@@ -559,10 +656,10 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     patch_runcommand_warn: "Shell command — review before approving",
     pending_label: "Pending",
     login_card_title: "Sign in",
-    login_card_desc: "Demo authentication: pick a mock user and enter any non-empty password. Real GitHub/Google OAuth comes later.",
-    login_account_label: "Account",
-    login_password_placeholder_hint: "any non-empty value",
-    login_footer_info: "Local demo: passwords are not validated server-side. Cookie session lasts 30 days.",
+    login_card_desc: "Sign in with the email address and password you registered with.",
+    login_account_label: "Email",
+    login_password_placeholder_hint: "Password",
+    login_footer_info: "Passwords are securely hashed. Your session lasts 30 days.",
     problem_tab_brief: "Brief",
     problem_tab_hint: "Hint",
     problem_tab_anti_patterns: "Anti-patterns",
@@ -608,20 +705,93 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     profile_submission_history_title: "Submission history",
     profile_find_problem_btn: "Find a problem",
     forum_section_interview_label: "Interview",
-    forum_section_interview_tagline: "Mock + on-site experiences, AI-allowed prep tactics",
     forum_section_career_label: "Career",
-    forum_section_career_tagline: "Job hunt, transitions, leveling, layoffs",
     forum_section_compensation_label: "Compensation",
-    forum_section_compensation_tagline: "Offer comparisons, negotiation, cost-of-living",
     forum_section_feedback_label: "Feedback",
-    forum_section_feedback_tagline: "Product / scoring / UI feedback to platform",
+    forum_section_problems_label: "Problems",
+    forum_for_you: "For You",
+    forum_sections: "Forum sections",
+    forum_create: "Create",
+    forum_sort_votes: "Most Votes",
+    forum_sort_newest: "Newest",
+    forum_sort_best: "Best",
+    forum_sort_comments: "Sort comments",
+    forum_search_placeholder: "Search",
+    forum_results_for_fmt: "Results for \"{q}\"",
+    forum_clear_filter: "Clear filter",
+    forum_trending: "Trending",
+    forum_trending_empty: "Nothing trending yet. Start a discussion!",
+    forum_pinned: "Pinned",
+    forum_empty_feed: "No posts here yet. Be the first to start a discussion.",
+    forum_load_more: "Load more",
+    forum_load_more_comments: "Load more comments",
+    forum_anonymous: "Anonymous",
+    forum_verified: "Official",
+    forum_posted_anonymously: "posted anonymously",
+    forum_votes: "Votes",
+    forum_views: "Views",
+    forum_comments: "Comments",
+    forum_comments_count_fmt: "Comments ({n})",
+    forum_upvote: "Upvote",
+    forum_downvote: "Downvote",
+    forum_post_actions: "Post actions",
+    forum_copy_link: "Copy link",
+    forum_link_copied: "Link copied",
+    forum_edit: "Edit",
+    forum_delete: "Delete",
+    forum_pin: "Pin to top",
+    forum_unpin: "Unpin",
+    forum_post_pinned: "Post pinned",
+    forum_post_unpinned: "Post unpinned",
+    forum_delete_post_confirm: "Delete this post? This can't be undone.",
+    forum_post_deleted: "Post deleted",
+    forum_edited: "edited",
+    forum_reply: "Reply",
+    forum_op_badge: "Author",
+    forum_no_comments: "No comments yet. Start the conversation.",
+    forum_comment_placeholder: "Share your thoughts… (Markdown supported)",
+    forum_reply_placeholder: "Write a reply…",
+    forum_post_comment: "Comment",
+    forum_comment_anonymously: "Comment anonymously",
+    forum_comment_deleted: "Comment deleted",
+    forum_delete_comment_confirm: "Delete this comment? Its replies will be removed too.",
+    forum_login_link: "Log in",
+    forum_login_to_comment: "to join the discussion.",
+    forum_new_post_title: "New post",
+    forum_edit_post_title: "Edit post",
+    forum_title_label: "Title",
+    forum_title_placeholder: "Enter a title",
+    forum_title_hint_fmt: "{n}/{max} characters (at least {min})",
+    forum_section_label: "Section",
+    forum_problem_label: "Related problem (optional)",
+    forum_problem_none: "No specific problem",
+    forum_tags_label_fmt: "Tags (up to {max})",
+    forum_tags_placeholder: "Add a tag and press Enter",
+    forum_remove_tag_fmt: "Remove tag {tag}",
+    forum_write: "Write",
+    forum_preview: "Preview",
+    forum_markdown_hint: "Markdown: **bold**, `code`, ``` blocks, [links](https://…)",
+    forum_body_label: "Post content",
+    forum_body_placeholder: "Share your experience, question, or insight…",
+    forum_preview_empty: "Nothing to preview yet.",
+    forum_post_anonymously: "Post anonymously",
+    forum_publish: "Post",
+    forum_save: "Save changes",
+    forum_post_published: "Post published",
+    forum_post_updated: "Post updated",
+    forum_err_login_required: "Please log in first.",
+    forum_err_invalid_title: "Titles need 5–150 characters.",
+    forum_err_invalid_body: "Write something before posting (up to 20,000 characters).",
+    forum_err_invalid_tag: "Tags use letters, numbers, and - + # . (up to 24 characters).",
+    forum_err_too_many_tags: "Use at most 5 tags.",
+    forum_err_unknown_problem: "That problem doesn't exist.",
+    forum_err_anonymous_not_allowed: "Anonymous posting is only available in Interview and Compensation.",
+    forum_err_not_found: "This post or comment no longer exists.",
+    forum_err_generic: "Something went wrong. Please try again.",
     forum_just_now: "just now",
     forum_minutes_ago_fmt: "{n}m ago",
     forum_hours_ago_fmt: "{n}h ago",
     forum_days_ago_fmt: "{n}d ago",
-    forum_title: "Forum",
-    forum_subtitle: "Community discussion across 4 sections. Per-problem discussion lives on each problem page (Discussion tab).",
-    forum_no_posts_fmt: "No posts yet in {section}.",
     submissions_empty_prefix: "No submissions yet. Start with the",
     submissions_problem_list_word: "problem list",
     submissions_total_fmt: "{total} total · page {page} of {pages}",
@@ -641,9 +811,6 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     profile_bio_label: "About",
     profile_bio_empty: "No bio yet.",
     profile_view_plans_btn: "View plans",
-    forums_coming_soon: "Coming soon",
-    forums_start_discussion: "Start a discussion",
-    forums_locked_note: "Community discussions open at launch. The sections below preview what's coming.",
     resume_just_now: "just now",
     resume_minute_ago: "1 minute ago",
     resume_minutes_ago_fmt: "{n} minutes ago",
@@ -674,7 +841,13 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     problems_no_match: "No problems match the current filters.",
     problems_clear_filters: "Clear filters",
     problems_pro_lock_tooltip: "Requires Pro tier",
-    problems_filter_done: "Done",
+    problems_filter_status: "Status",
+    problems_status_todo: "Todo",
+    problems_status_attempted: "Attempted",
+    problems_status_solved: "Solved",
+    problems_col_title: "Title",
+    problems_search_placeholder: "Search problems",
+    problems_solved_count_fmt: "{count} solved",
     problems_page_indicator_fmt: "Page {page} of {total}",
     problems_page_prev: "Prev",
     problems_page_next: "Next",
@@ -685,14 +858,19 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     breadcrumb_problems: "Problems",
     back_to_problems: "Back to problems",
     problem_intro_blurb: "Open the workspace to read the full task, edit files, talk to the AI assistant, and submit. Your in-progress edits are saved per-user across reload.",
-    problem_brief_card_title: "Problem brief",
-    problem_brief_card_desc: "Scenario, constraints, and what you'll need to deliver. Starter files are revealed inside the workspace.",
-    problem_solutions_title: "Solutions",
-    badge_locked: "locked",
+    problem_tab_description: "Description",
+    problem_tab_submissions: "Submissions",
+    problem_solutions_unlocked_desc: "You've solved this problem. Compare your approach with the official walkthrough and community solutions.",
+    problem_solutions_view_btn: "View solutions",
+    problem_submissions_empty: "You haven't submitted this problem yet.",
+    problem_submission_status_pending: "Pending",
+    problem_submission_status_grading: "Grading",
+    problem_submission_status_failed: "Grading failed",
+    problem_start_title: "Ready to solve?",
+    problem_start_point_files: "A multi-file workspace with the starter code",
+    problem_start_point_ai: "An AI assistant and Codritium Tips beside the editor",
+    problem_start_point_timer: "The timer starts when you open the workspace",
     problem_solutions_desc: "Top-rated community solutions unlock after you submit your own.",
-    problem_discussion_title: "Discussion",
-    badge_soon: "soon",
-    problem_discussion_desc: "Per-problem discussion will appear here once community launches.",
     dim_label_correctness: "Correctness",
     dim_label_decomposition: "Problem Decomposition",
     dim_label_ai_collab: "AI Collaboration",
@@ -834,14 +1012,22 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     gemini_unavailable_progress_saved: "",
     submit_disabled_no_grader: "",
     login_title: "",
-    login_subtitle: "",
-    pick_demo_user: "",
     password_placeholder: "",
     password_required: "",
     sign_in: "",
     sign_out: "",
     signing_in: "",
     login_failed: "",
+    register_card_title: "",
+    register_card_desc: "",
+    register_password_hint: "",
+    create_account: "",
+    register_prompt: "",
+    login_prompt: "",
+    auth_email_exists: "",
+    auth_invalid_credentials: "",
+    auth_invalid_input: "",
+    auth_request_failed: "",
     session_quota_exceeded_oldest_evicted: "",
     apply_failed: "",
     apply_in_progress: "",
@@ -978,20 +1164,93 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     profile_submission_history_title: "",
     profile_find_problem_btn: "",
     forum_section_interview_label: "",
-    forum_section_interview_tagline: "",
     forum_section_career_label: "",
-    forum_section_career_tagline: "",
     forum_section_compensation_label: "",
-    forum_section_compensation_tagline: "",
     forum_section_feedback_label: "",
-    forum_section_feedback_tagline: "",
+    forum_section_problems_label: "",
+    forum_for_you: "",
+    forum_sections: "",
+    forum_create: "",
+    forum_sort_votes: "",
+    forum_sort_newest: "",
+    forum_sort_best: "",
+    forum_sort_comments: "",
+    forum_search_placeholder: "",
+    forum_results_for_fmt: "",
+    forum_clear_filter: "",
+    forum_trending: "",
+    forum_trending_empty: "",
+    forum_pinned: "",
+    forum_empty_feed: "",
+    forum_load_more: "",
+    forum_load_more_comments: "",
+    forum_anonymous: "",
+    forum_verified: "",
+    forum_posted_anonymously: "",
+    forum_votes: "",
+    forum_views: "",
+    forum_comments: "",
+    forum_comments_count_fmt: "",
+    forum_upvote: "",
+    forum_downvote: "",
+    forum_post_actions: "",
+    forum_copy_link: "",
+    forum_link_copied: "",
+    forum_edit: "",
+    forum_delete: "",
+    forum_pin: "",
+    forum_unpin: "",
+    forum_post_pinned: "",
+    forum_post_unpinned: "",
+    forum_delete_post_confirm: "",
+    forum_post_deleted: "",
+    forum_edited: "",
+    forum_reply: "",
+    forum_op_badge: "",
+    forum_no_comments: "",
+    forum_comment_placeholder: "",
+    forum_reply_placeholder: "",
+    forum_post_comment: "",
+    forum_comment_anonymously: "",
+    forum_comment_deleted: "",
+    forum_delete_comment_confirm: "",
+    forum_login_link: "",
+    forum_login_to_comment: "",
+    forum_new_post_title: "",
+    forum_edit_post_title: "",
+    forum_title_label: "",
+    forum_title_placeholder: "",
+    forum_title_hint_fmt: "",
+    forum_section_label: "",
+    forum_problem_label: "",
+    forum_problem_none: "",
+    forum_tags_label_fmt: "",
+    forum_tags_placeholder: "",
+    forum_remove_tag_fmt: "",
+    forum_write: "",
+    forum_preview: "",
+    forum_markdown_hint: "",
+    forum_body_label: "",
+    forum_body_placeholder: "",
+    forum_preview_empty: "",
+    forum_post_anonymously: "",
+    forum_publish: "",
+    forum_save: "",
+    forum_post_published: "",
+    forum_post_updated: "",
+    forum_err_login_required: "",
+    forum_err_invalid_title: "",
+    forum_err_invalid_body: "",
+    forum_err_invalid_tag: "",
+    forum_err_too_many_tags: "",
+    forum_err_unknown_problem: "",
+    forum_err_anonymous_not_allowed: "",
+    forum_err_not_found: "",
+    forum_err_generic: "",
     forum_just_now: "",
     forum_minutes_ago_fmt: "",
     forum_hours_ago_fmt: "",
     forum_days_ago_fmt: "",
-    forum_title: "",
-    forum_subtitle: "",
-    forum_no_posts_fmt: "",
     submissions_empty_prefix: "",
     submissions_problem_list_word: "",
     submissions_total_fmt: "",
@@ -1011,9 +1270,6 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     profile_bio_label: "",
     profile_bio_empty: "",
     profile_view_plans_btn: "",
-    forums_coming_soon: "",
-    forums_start_discussion: "",
-    forums_locked_note: "",
     resume_just_now: "",
     resume_minute_ago: "",
     resume_minutes_ago_fmt: "",
@@ -1044,7 +1300,13 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     problems_no_match: "",
     problems_clear_filters: "",
     problems_pro_lock_tooltip: "",
-    problems_filter_done: "",
+    problems_filter_status: "",
+    problems_status_todo: "",
+    problems_status_attempted: "",
+    problems_status_solved: "",
+    problems_col_title: "",
+    problems_search_placeholder: "",
+    problems_solved_count_fmt: "",
     problems_page_indicator_fmt: "",
     problems_page_prev: "",
     problems_page_next: "",
@@ -1055,14 +1317,19 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     breadcrumb_problems: "",
     back_to_problems: "",
     problem_intro_blurb: "",
-    problem_brief_card_title: "",
-    problem_brief_card_desc: "",
-    problem_solutions_title: "",
-    badge_locked: "",
+    problem_tab_description: "",
+    problem_tab_submissions: "",
+    problem_solutions_unlocked_desc: "",
+    problem_solutions_view_btn: "",
+    problem_submissions_empty: "",
+    problem_submission_status_pending: "",
+    problem_submission_status_grading: "",
+    problem_submission_status_failed: "",
+    problem_start_title: "",
+    problem_start_point_files: "",
+    problem_start_point_ai: "",
+    problem_start_point_timer: "",
     problem_solutions_desc: "",
-    problem_discussion_title: "",
-    badge_soon: "",
-    problem_discussion_desc: "",
     dim_label_correctness: "",
     dim_label_decomposition: "",
     dim_label_ai_collab: "",

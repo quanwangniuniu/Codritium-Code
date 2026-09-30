@@ -28,7 +28,7 @@ Codritium/
 ├── sandbox/        # E2B integration helpers
 ├── scripts/        # strip_problem.py and other tooling
 ├── migrations/     # Postgres schema migrations (001-...)
-├── seed/           # initial problem + mock user seed data
+├── seed/           # problem catalog seed data
 ├── docker-compose.yml
 ├── .env            # secrets (never committed)
 ├── .env.example
@@ -48,7 +48,7 @@ COOKIE_SECRET=...
 
 ## Authentication
 
-MVP uses demo cookie session with 5 mock users (no GitHub OAuth yet). Switch user from the avatar dropdown.
+Users can register and sign in with an email address and password. Passwords are stored as bcrypt hashes, and successful authentication uses an HttpOnly signed session cookie. The problem catalog is seeded from `seed/problems`; mock user accounts are no longer seeded.
 
 ## Status
 

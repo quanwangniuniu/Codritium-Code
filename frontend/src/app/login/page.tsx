@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
+import Link from "next/link";
 import { KeyRound, Info } from "lucide-react";
 import { currentUser } from "@/lib/auth";
 import { t } from "@/lib/i18n";
@@ -17,81 +18,91 @@ import { Label } from "@/components/ui/label";
 const API_URL = process.env.CODRITIUM_API_URL ?? "http://localhost:8080";
 const COOKIE_NAME = "codritium_session";
 
-const MOCK_USERS = [
-  { handle: "john", display_name: "John Smith", region: "AU" },
-  { handle: "alice", display_name: "Alice Wang", region: "AU" },
-  { handle: "bob", display_name: "Bob Martinez", region: "US" },
-  { handle: "carol", display_name: "Carol Lee", region: "SG" },
-  { handle: "dan", display_name: "Dan Patel", region: "IN" },
-];
+interface LoginPageProps {
+  searchParams: Promise<{ mode?: string; error?: string; email?: string }>;
+}
 
-export default async function LoginPage() {
+export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const params = await searchParams;
+  const isRegister = params.mode === "register";
   const user = await currentUser();
   if (user) redirect("/problems");
 
-  async function login(formData: FormData) {
+  async function authenticate(formData: FormData) {
     "use server";
-    const handle = String(formData.get("handle") ?? "");
+    const email = String(formData.get("email") ?? "").trim();
     const password = String(formData.get("password") ?? "");
-    if (!handle || !password) {
-      redirect("/login");
+    const mode = isRegister ? "register" : "login";
+    let response: Response | undefined;
+    try {
+      response = await fetch(`${API_URL}/api/auth/${mode}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+    } catch {
+      // Show a form-level error if the API is unavailable.
     }
-    const res = await fetch(
-      `${API_URL}/api/auth/switch?handle=${encodeURIComponent(handle)}`,
-      { method: "POST" },
-    );
-    if (res.ok) {
-      // Backend signs the cookie value (user_id + HMAC) and returns it via
-      // Set-Cookie. The Next.js server has to relay that value to the
-      // browser; without this the dev mock session cookie never reaches
-      // localhost:3000, and every authed fetch comes back 401.
-      const setCookie = res.headers.get("set-cookie") ?? "";
-      const match = setCookie.match(/codritium_session=([^;]+)/);
-      if (match) {
+
+    if (response?.ok) {
+      const setCookie = response.headers.get("set-cookie") ?? "";
+      const pair = setCookie.split(";", 1)[0];
+      const separator = pair.indexOf("=");
+      if (separator >= 0 && pair.slice(0, separator) === COOKIE_NAME) {
         const jar = await cookies();
-        jar.set(COOKIE_NAME, match[1], {
+        jar.set(COOKIE_NAME, pair.slice(separator + 1), {
           httpOnly: true,
           sameSite: "lax",
           path: "/",
           maxAge: 60 * 60 * 24 * 30,
+          secure: process.env.NODE_ENV === "production",
         });
         redirect("/problems");
       }
     }
-    redirect("/login");
+
+    const error =
+      isRegister && response?.status === 409
+        ? "email_exists"
+        : !isRegister && response?.status === 401
+          ? "invalid_credentials"
+          : response?.status === 400
+            ? "invalid_input"
+            : "request_failed";
+    const query = new URLSearchParams({ mode, error, email });
+    redirect(`/login?${query.toString()}`);
   }
+
+  const errorMessage =
+    params.error === "email_exists"
+      ? t("auth_email_exists")
+      : params.error === "invalid_credentials"
+        ? t("auth_invalid_credentials")
+        : params.error === "invalid_input"
+          ? t("auth_invalid_input")
+          : params.error
+            ? t("auth_request_failed")
+            : "";
 
   return (
     <div className="mx-auto max-w-md px-6 py-16">
       <Card>
         <CardHeader>
-          <CardTitle>{t("login_card_title")}</CardTitle>
-          <CardDescription>{t("login_card_desc")}</CardDescription>
+          <CardTitle>{isRegister ? t("register_card_title") : t("login_card_title")}</CardTitle>
+          <CardDescription>{isRegister ? t("register_card_desc") : t("login_card_desc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
-          <form action={login} className="space-y-4">
+          <form action={authenticate} className="space-y-4">
             <div className="space-y-2">
-              <Label>{t("login_account_label")}</Label>
-              <div className="space-y-2">
-                {MOCK_USERS.map((u, idx) => (
-                  <label
-                    key={u.handle}
-                    className="flex items-center gap-3 rounded-md border border-divider p-2 hover:bg-surface-2 cursor-pointer"
-                  >
-                    <input
-                      type="radio"
-                      name="handle"
-                      value={u.handle}
-                      defaultChecked={idx === 0}
-                      className="accent-current"
-                    />
-                    <span className="text-sm">
-                      <span className="font-medium">{u.display_name}</span>
-                      <span className="text-faint"> · @{u.handle} · {u.region}</span>
-                    </span>
-                  </label>
-                ))}
-              </div>
+              <Label htmlFor="email">{t("login_account_label")}</Label>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                defaultValue={params.email ?? ""}
+                required
+              />
             </div>
 
             <div className="space-y-2">
@@ -100,16 +111,35 @@ export default async function LoginPage() {
                 id="password"
                 name="password"
                 type="password"
-                placeholder={t("login_password_placeholder_hint")}
+                autoComplete={isRegister ? "new-password" : "current-password"}
+                minLength={isRegister ? 8 : undefined}
+                maxLength={72}
+                placeholder={isRegister ? t("register_password_hint") : ""}
                 required
               />
             </div>
 
             <Button type="submit" size="lg" className="w-full">
               <KeyRound size={16} className="mr-2" />
-              {t("sign_in")}
+              {isRegister ? t("create_account") : t("sign_in")}
             </Button>
           </form>
+
+          {errorMessage && (
+            <p role="alert" className="text-sm text-destructive">
+              {errorMessage}
+            </p>
+          )}
+
+          <p className="text-center text-sm text-muted">
+            {isRegister ? t("login_prompt") : t("register_prompt")} {" "}
+            <Link
+              href={isRegister ? "/login" : "/login?mode=register"}
+              className="font-medium text-ink underline underline-offset-4"
+            >
+              {isRegister ? t("sign_in") : t("create_account")}
+            </Link>
+          </p>
 
           <div className="flex items-start gap-2 rounded-md border border-divider p-3 text-xs text-muted">
             <Info size={14} className="mt-0.5 flex-shrink-0" />

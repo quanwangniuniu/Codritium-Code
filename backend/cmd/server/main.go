@@ -133,6 +133,7 @@ func main() {
 		Agents:       agentRegistry,
 	}
 	commentsDeps := handlers.CommentsDeps{Pool: database.Pool}
+	forumDeps := handlers.ForumDeps{Pool: database.Pool}
 	notesDeps := handlers.NotesDeps{Pool: database.Pool}
 	replyDeps := handlers.ReplyDeps{Pool: database.Pool}
 
@@ -151,12 +152,14 @@ func main() {
 		oauthStateStore, userStore, sessionMgr)
 	emailAuth := auth.NewEmailHandler(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPFrom,
 		cfg.PublicURL, magicLinkStore, userStore, sessionMgr)
+	passwordAuth := auth.NewPasswordAuthHandler(database.Pool, cfg.CookieSecret, cookieOpts)
 
 	// Public (no auth)
 	mux.HandleFunc("GET /api/health", handlers.Health())
 	mux.HandleFunc("GET /api/anthropic/ping", handlers.AnthropicPing(deps))
 	mux.HandleFunc("GET /api/e2b/ping", handlers.E2BPing(deps))
-	mux.HandleFunc("POST /api/auth/switch", devOnly(cfg.Env, auth.SwitchUser(database.Pool, cfg.CookieSecret, cookieOpts)))
+	mux.HandleFunc("POST /api/auth/register", passwordAuth.Register)
+	mux.HandleFunc("POST /api/auth/login", passwordAuth.Login)
 	mux.HandleFunc("POST /api/auth/logout", auth.Logout(cookieOpts))
 
 	// Three-way login (Google + GitHub + email magic link).
@@ -212,6 +215,22 @@ func main() {
 	mux.Handle("POST /api/comments/{id}/vote", authMiddleware(handlers.VoteComment(commentsDeps)))
 	mux.Handle("DELETE /api/comments/{id}", authMiddleware(handlers.DeleteComment(commentsDeps)))
 
+	// Community forum. Reads are public (the middleware leaves signed-out
+	// users nil); writes require a session, enforced in the handlers.
+	mux.Handle("GET /api/forum/posts", authMiddleware(handlers.ListForumPosts(forumDeps)))
+	mux.Handle("GET /api/forum/pinned", authMiddleware(handlers.ListPinnedForumPosts(forumDeps)))
+	mux.Handle("GET /api/forum/trending", authMiddleware(handlers.ListTrendingForumPosts(forumDeps)))
+	mux.Handle("POST /api/forum/posts", authMiddleware(handlers.CreateForumPost(forumDeps)))
+	mux.Handle("GET /api/forum/posts/{id}", authMiddleware(handlers.GetForumPost(forumDeps)))
+	mux.Handle("PUT /api/forum/posts/{id}", authMiddleware(handlers.UpdateForumPost(forumDeps)))
+	mux.Handle("DELETE /api/forum/posts/{id}", authMiddleware(handlers.DeleteForumPost(forumDeps)))
+	mux.Handle("POST /api/forum/posts/{id}/vote", authMiddleware(handlers.VoteForumPost(forumDeps)))
+	mux.Handle("POST /api/forum/posts/{id}/pin", authMiddleware(handlers.PinForumPost(forumDeps)))
+	mux.Handle("GET /api/forum/posts/{id}/comments", authMiddleware(handlers.ListForumComments(forumDeps)))
+	mux.Handle("POST /api/forum/posts/{id}/comments", authMiddleware(handlers.CreateForumComment(forumDeps)))
+	mux.Handle("POST /api/forum/comments/{id}/vote", authMiddleware(handlers.VoteForumComment(forumDeps)))
+	mux.Handle("DELETE /api/forum/comments/{id}", authMiddleware(handlers.DeleteForumComment(forumDeps)))
+
 	// Candidate notes (private to the session owner; share publishes a comment).
 	mux.Handle("GET /api/sessions/{id}/notes", authMiddleware(handlers.ListNotes(notesDeps)))
 	mux.Handle("POST /api/sessions/{id}/notes", authMiddleware(handlers.CreateNote(notesDeps)))
@@ -257,7 +276,7 @@ func withCORS(h http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 		}
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		if r.Method == "OPTIONS" {
@@ -274,19 +293,6 @@ func withLogging(h http.Handler) http.Handler {
 		h.ServeHTTP(w, r)
 		log.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
 	})
-}
-
-// devOnly returns 404 unless ENV=dev. Use to gate handlers that exist for
-// local iteration (mock login, fixture resetters) and must never be callable
-// in staging or prod, regardless of CORS or auth posture.
-func devOnly(env string, h http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if env != "dev" {
-			http.NotFound(w, r)
-			return
-		}
-		h(w, r)
-	}
 }
 
 // graderSandboxRunner adapts grader.RunPytest to llm.SandboxRunner so the
