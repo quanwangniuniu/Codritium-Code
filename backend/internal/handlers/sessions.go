@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net/http"
 
+	"codritium/backend/internal/problems"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -56,7 +58,7 @@ func PostSession(deps SessionsDeps) http.HandlerFunc {
 		}
 		difficulty, err := lookupDifficulty(r.Context(), deps.Pool, req.ChallengeSlug)
 		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
+			if errors.Is(err, problems.ErrNotFound) {
 				http.Error(w, "challenge not found", http.StatusNotFound)
 				return
 			}
@@ -96,11 +98,11 @@ func PostSession(deps SessionsDeps) http.HandlerFunc {
 }
 
 func lookupDifficulty(ctx context.Context, pool *pgxpool.Pool, slug string) (string, error) {
-	var d string
-	err := pool.QueryRow(ctx,
-		`SELECT difficulty FROM problems WHERE slug = $1`, slug,
-	).Scan(&d)
-	return d, err
+	p, err := problems.Store{Pool: pool}.Get(ctx, slug)
+	if err != nil {
+		return "", err
+	}
+	return p.Difficulty, nil
 }
 
 func findReusableSession(ctx context.Context, pool *pgxpool.Pool, handle, slug string) (uuid.UUID, string, bool, error) {

@@ -12,6 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"codritium/backend/internal/problems"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -544,8 +546,7 @@ func (req *forumPostRequest) validate(ctx context.Context, pool *pgxpool.Pool) s
 		if slug == "" || req.Section != "problems" {
 			req.ProblemSlug = nil
 		} else {
-			var exists bool
-			if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM problems WHERE slug = $1)`, slug).Scan(&exists); err != nil || !exists {
+			if exists, err := (problems.Store{Pool: pool}).Exists(ctx, slug); err != nil || !exists {
 				return "unknown_problem"
 			}
 			req.ProblemSlug = &slug

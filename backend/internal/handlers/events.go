@@ -39,11 +39,12 @@ var frontendEmittableKinds = map[string]struct{}{
 // caller owns the session.
 //
 // Responses:
-//   204 — accepted and persisted
-//   400 — bad JSON / unknown or backend-only kind / payload decode fails
-//   401 — no auth cookie
-//   403 — caller is not the candidate on that session
-//   404 — session_id not found
+//
+//	204 — accepted and persisted
+//	400 — bad JSON / unknown or backend-only kind / payload decode fails
+//	401 — no auth cookie
+//	403 — caller is not the candidate on that session
+//	404 — session_id not found
 func PostEvent(deps EventsDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.FromContext(r.Context())

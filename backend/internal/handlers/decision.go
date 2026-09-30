@@ -56,11 +56,12 @@ type decisionRequest struct {
 // keyed by (session, tool_use_id) and only the session's owner may decide.
 //
 // Responses:
-//   204 — pending decision found and notified
-//   400 — invalid JSON, bad session_id, missing tool_use_id, or decision
-//         not in {approve, reject, modify}
-//   401 — no auth cookie
-//   404 — session not owned by caller, or no pending Wait for that id
+//
+//	204 — pending decision found and notified
+//	400 — invalid JSON, bad session_id, missing tool_use_id, or decision
+//	      not in {approve, reject, modify}
+//	401 — no auth cookie
+//	404 — session not owned by caller, or no pending Wait for that id
 func PostDecision(deps DecisionDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.FromContext(r.Context())

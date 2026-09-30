@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +9,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"codritium/backend/internal/platform/httpx"
 
 	"github.com/google/uuid"
 	"google.golang.org/genai"
@@ -80,7 +81,6 @@ func main() {
 		Anthropic: anthClient,
 		E2B:       e2bClient,
 	}
-	probDeps := handlers.ProblemDeps{Pool: database.Pool}
 	decisionWaiter := llm.NewDecisionWaiter()
 	decisionDeps := handlers.DecisionDeps{Waiter: decisionWaiter, Sessions: handlers.PGSessionOwner{Pool: database.Pool}}
 	eventStore := events.NewStore(database.Pool)
@@ -110,7 +110,8 @@ func main() {
 	}
 
 	sandbox := grader.Sandbox{Python: cfg.Paths.SandboxPython, Script: cfg.Paths.SandboxScript}
-	agentFactory := buildAgentFactory(database, streamClient, eventStore, textBroadcaster, decisionWaiter, sandbox)
+	problemStore := problems.Store{Pool: database.Pool}
+	agentFactory := buildAgentFactory(problemStore, streamClient, eventStore, textBroadcaster, decisionWaiter, sandbox)
 	agentRegistry := llm.NewAgentRegistry(agentFactory)
 	chatJailbreak := llm.NewChatJailbreakClassifier()
 	chatV2Deps := handlers.ChatV2Deps{
@@ -175,8 +176,12 @@ func main() {
 	mux.HandleFunc("GET /api/auth/github/callback", githubAuth.Callback)
 	mux.HandleFunc("POST /api/auth/email/request", emailAuth.Request)
 	mux.HandleFunc("GET /api/auth/email/verify", emailAuth.Verify)
-	mux.Handle("GET /api/problems", authMiddleware(http.HandlerFunc(handlers.ListProblems(probDeps))))
-	mux.Handle("GET /api/problems/{slug}", authMiddleware(http.HandlerFunc(handlers.GetProblem(probDeps))))
+	rt := httpx.NewRouter(mux, authMiddleware)
+	for _, m := range []httpx.Module{
+		problems.Handler{Store: problemStore},
+	} {
+		m.Routes(rt)
+	}
 	mux.Handle("GET /api/challenges/{slug}/official-reply", authMiddleware(handlers.GetOfficialReply(replyDeps)))
 	mux.Handle("GET /api/me/replays/{slug}", authMiddleware(handlers.GetMyReplay(replyDeps)))
 
@@ -339,30 +344,14 @@ func (g graderSandboxRunner) RunPytest(ctx context.Context, files map[string]str
 // test file path from the problems table; wires the engine-neutral
 // stream client + DecisionWaiter + events store; locks the visible
 // test path via DenyRule.
-func buildAgentFactory(pool *db.DB, stream llm.LLMStreamClient, store *events.Store, text *llm.TextBroadcaster, waiter *llm.DecisionWaiter, sandbox grader.Sandbox) llm.AgentFactory {
+func buildAgentFactory(problemStore problems.Store, stream llm.LLMStreamClient, store *events.Store, text *llm.TextBroadcaster, waiter *llm.DecisionWaiter, sandbox grader.Sandbox) llm.AgentFactory {
 	return func(ctx context.Context, sessionID uuid.UUID, slug string) (*llm.Agent, error) {
-		var readme, hiddenTestFile string
-		var starterJSON []byte
-		err := pool.Pool.QueryRow(ctx, `
-			SELECT readme_md, hidden_test_file, starter_files::text
-			FROM problems WHERE slug = $1`, slug,
-		).Scan(&readme, &hiddenTestFile, &starterJSON)
+		prob, err := problemStore.Get(ctx, slug)
 		if err != nil {
 			return nil, err
 		}
-
-		// starter_files is { filename → { variant → content } } in the
-		// seed JSON; flatten to the "as-is" variant for V0.
-		var allFiles map[string]map[string]string
-		if err := json.Unmarshal(starterJSON, &allFiles); err != nil {
-			return nil, err
-		}
-		files := map[string]string{}
-		for name, variants := range allFiles {
-			if c, ok := variants["as-is"]; ok {
-				files[name] = c
-			}
-		}
+		readme, hiddenTestFile := prob.ReadmeMD, prob.HiddenTestFile
+		files := prob.Starter.Variant(problems.VariantAsIs)
 
 		systemPrompt := buildSystemPrompt(readme, files, hiddenTestFile)
 

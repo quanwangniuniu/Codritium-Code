@@ -24,8 +24,8 @@ type StreamDeps struct {
 // SessionStream is GET /api/sessions/{id}/stream. It is a long-lived SSE
 // connection that pushes two SSE event types (chat_loop_skeleton §6):
 //
-//   event: agent_event   ← 16 structured event kinds (closed set)
-//   event: message       ← assistant streaming text deltas (free text)
+//	event: agent_event   ← 16 structured event kinds (closed set)
+//	event: message       ← assistant streaming text deltas (free text)
 //
 // Frontend subscribes once per session; one EventSource handles both
 // streams. Spec §5 keeps text off session_events; the text path goes

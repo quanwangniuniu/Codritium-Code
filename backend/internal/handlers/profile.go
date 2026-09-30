@@ -10,6 +10,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"codritium/backend/internal/problems"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"codritium/backend/internal/auth"
@@ -180,28 +182,15 @@ func buildProfile(ctx context.Context, pool *pgxpool.Pool, u *auth.User, now tim
 
 func loadSolved(ctx context.Context, pool *pgxpool.Pool, u *auth.User, p *profileResponse) error {
 	// Totals per difficulty / category over the published catalog.
-	diffTotals := map[string]int{}
-	catTotals := map[string]int{}
-	rows, err := pool.Query(ctx, `SELECT difficulty, category FROM problems WHERE status = 'published'`)
+	diffTotals, catTotals, err := problems.Store{Pool: pool}.CatalogTotals(ctx)
 	if err != nil {
 		return err
 	}
-	for rows.Next() {
-		var d, c string
-		if err := rows.Scan(&d, &c); err != nil {
-			rows.Close()
-			return err
-		}
-		diffTotals[d]++
-		catTotals[c]++
-		p.Solved.Total++
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
+	for _, n := range diffTotals {
+		p.Solved.Total += n
 	}
 
-	rows, err = pool.Query(ctx, `
+	rows, err := pool.Query(ctx, `
 		SELECT pr.slug, pr.title, pr.category, pr.difficulty,
 		       MAX(s.final_score)::float8, MIN(s.graded_at)
 		FROM submissions s

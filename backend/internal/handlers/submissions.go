@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"codritium/backend/internal/problems"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/genai"
@@ -103,36 +105,20 @@ func Submit(deps SubmissionDeps) http.HandlerFunc {
 		}
 
 		// Resolve problem.
-		var problemID uuid.UUID
-		var problemTitle, readmeMD, difficulty, hiddenTestFile, hiddenTestContent string
-		var sampleTestFile, sampleTestContent *string
-		var starterJSON []byte
-		err := deps.Pool.QueryRow(ctx, `
-			SELECT id, title, readme_md, difficulty,
-			       hidden_test_file, COALESCE(hidden_test_content,''),
-			       sample_test_filename, sample_test_content,
-			       starter_files::text
-			FROM problems WHERE slug=$1`, req.ProblemSlug,
-		).Scan(&problemID, &problemTitle, &readmeMD, &difficulty,
-			&hiddenTestFile, &hiddenTestContent,
-			&sampleTestFile, &sampleTestContent,
-			&starterJSON)
+		prob, err := problems.Store{Pool: deps.Pool}.Get(ctx, req.ProblemSlug)
 		if err != nil {
 			http.Error(w, "problem not found", http.StatusNotFound)
 			return
 		}
-
-		// Decode starter files (variant-aware).
-		var allStarters map[string]map[string]string
-		_ = json.Unmarshal(starterJSON, &allStarters)
-		starter := map[string]string{}
-		for name, variants := range allStarters {
-			if v, ok := variants[req.Variant]; ok {
-				starter[name] = v
-			} else if v, ok := variants["as-is"]; ok {
-				starter[name] = v
-			}
+		problemID, err := uuid.Parse(prob.ID)
+		if err != nil {
+			http.Error(w, "problem not found", http.StatusNotFound)
+			return
 		}
+		problemTitle, readmeMD, difficulty := prob.Title, prob.ReadmeMD, prob.Difficulty
+		hiddenTestFile, hiddenTestContent := prob.HiddenTestFile, prob.HiddenTestContent
+		sampleTestFile, sampleTestContent := prob.SampleTestFilename, prob.SampleTestContent
+		starter := prob.Starter.Variant(req.Variant)
 
 		// Step 1: sample_test gate. When the problem has a sample test bundled,
 		// run it first; on failure return 422 with the visible diagnostic so the

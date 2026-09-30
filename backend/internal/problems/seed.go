@@ -41,21 +41,6 @@ func SeedFromDir(ctx context.Context, pool *pgxpool.Pool, dir string) error {
 		return fmt.Errorf("read seed dir: %w", err)
 	}
 
-	// Lazy migration retained for fresh databases that boot before 0009 runs
-	// the matching IF NOT EXISTS ALTERs. Idempotent.
-	if _, err := pool.Exec(ctx, `
-		ALTER TABLE problems
-		ADD COLUMN IF NOT EXISTS hidden_test_content TEXT
-	`); err != nil {
-		return fmt.Errorf("ensure hidden_test_content column: %w", err)
-	}
-	if _, err := pool.Exec(ctx, `
-		ALTER TABLE problems
-		ADD COLUMN IF NOT EXISTS soul_prebake TEXT NOT NULL DEFAULT ''
-	`); err != nil {
-		return fmt.Errorf("ensure soul_prebake column: %w", err)
-	}
-
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
