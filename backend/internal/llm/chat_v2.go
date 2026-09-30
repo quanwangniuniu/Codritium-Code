@@ -292,37 +292,96 @@ type pendingBuilder struct {
 func (a *Agent) handleToolUse(ctx context.Context, sessionID uuid.UUID, turnIndex int, tu pendingToolUse) error {
 	if tu.Name == "FileEdit" {
 		path, pathOK := tu.Input["path"].(string)
-		content, contentOK := tu.Input["content"].(string)
+		legacyContent, legacyOK := tu.Input["content"].(string)
+		newText, newTextOK := tu.Input["new_text"].(string)
 
-		if !pathOK || path == "" || !contentOK || content == "" {
+		recordInvalidEdit := func(detail string) {
+			output, _ := json.Marshal(map[string]string{
+				"error":  "invalid FileEdit",
+				"detail": detail,
+			})
 			a.recordMessage(ctx, sessionID, Message{
 				Role: "tool",
 				Content: []ContentBlock{{
 					Kind: "tool_result",
 					ToolResult: &ContentToolResult{
 						ToolUseID: tu.ID,
-						Output:    `{"error":"invalid FileEdit","detail":"path and non-empty content are required; call FileEdit again with the complete replacement file contents"}`,
+						Output:    string(output),
 						IsError:   true,
 					},
 				}},
 			})
+		}
+
+		if !pathOK || path == "" {
+			recordInvalidEdit("path is required")
+			return nil
+		}
+
+		// Accept the old complete-file format temporarily so existing stored
+		// conversations and tests remain compatible during the migration.
+		if !legacyOK && !newTextOK {
+			recordInvalidEdit(
+				"new_text is required; for an existing file also provide exact old_text",
+			)
+			return nil
+		}
+		if legacyOK && legacyContent == "" {
+			recordInvalidEdit("legacy content cannot be empty")
 			return nil
 		}
 
 		if a.Workspace != nil {
-			if existing, exists := a.Workspace.Files[path]; exists && existing == content {
-				a.recordMessage(ctx, sessionID, Message{
-					Role: "tool",
-					Content: []ContentBlock{{
-						Kind: "tool_result",
-						ToolResult: &ContentToolResult{
-							ToolUseID: tu.ID,
-							Output:    fmt.Sprintf(`{"error":"no-op edit","detail":"proposed content for %s is identical to current workspace; choose different content or pick a different tool"}`, path),
-							IsError:   true,
-						},
-					}},
-				})
-				return nil
+			current, exists := a.Workspace.Files[path]
+
+			if legacyOK {
+				if exists && current == legacyContent {
+					recordInvalidEdit(
+						fmt.Sprintf(
+							"proposed content for %s is identical to the current file",
+							path,
+						),
+					)
+					return nil
+				}
+			} else if exists {
+				oldText, oldTextOK := tu.Input["old_text"].(string)
+				if !oldTextOK || oldText == "" {
+					recordInvalidEdit(
+						"old_text is required when editing an existing file",
+					)
+					return nil
+				}
+
+				matches := strings.Count(current, oldText)
+				if matches == 0 {
+					recordInvalidEdit(
+						"old_text was not found; read the latest file and try again",
+					)
+					return nil
+				}
+				if matches > 1 {
+					recordInvalidEdit(
+						"old_text matched more than once; include more surrounding context",
+					)
+					return nil
+				}
+				if oldText == newText {
+					recordInvalidEdit("the proposed edit would not change the file")
+					return nil
+				}
+			} else {
+				oldText, _ := tu.Input["old_text"].(string)
+				if oldText != "" {
+					recordInvalidEdit(
+						"cannot replace old_text in a file that does not exist",
+					)
+					return nil
+				}
+				if newText == "" {
+					recordInvalidEdit("new file content cannot be empty")
+					return nil
+				}
 			}
 		}
 	}

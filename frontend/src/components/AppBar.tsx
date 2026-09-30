@@ -12,10 +12,14 @@ export function AppBar({
   timer,
   onSubmit,
   problemTitle,
+  submitting,
+  submitDisabled,
 }: {
   timer: string;
   onSubmit: () => void;
   problemTitle: string;
+  submitting: boolean;
+  submitDisabled: boolean;
 }) {
   useLocale();
   return (
@@ -85,6 +89,8 @@ export function AppBar({
 
       <button
         onClick={onSubmit}
+        disabled={submitDisabled}
+        aria-busy={submitting}
         style={{
           fontSize: 12,
           color: "#ffffff",
@@ -95,6 +101,8 @@ export function AppBar({
           display: "inline-flex",
           alignItems: "center",
           gap: 6,
+          cursor: submitDisabled ? "not-allowed" : "pointer",
+          opacity: submitDisabled ? 0.65 : 1,
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.background = "var(--accent-hover)";
@@ -104,7 +112,7 @@ export function AppBar({
         }}
       >
         <Play size={12} strokeWidth={2} />
-        <span>{t("submit")}</span>
+        <span>{submitting ? "Submitting…" : t("submit")}</span>
       </button>
     </header>
   );

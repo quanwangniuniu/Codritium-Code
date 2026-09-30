@@ -53,6 +53,7 @@ export default function ProblemWorkspacePage() {
 
   const [activity, setActivity] = useState<ActivityView>("files");
   const [chatBusy, setChatBusy] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [readmeFloating, setReadmeFloating] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [sideWidth, setSideWidth] = useState(280);
@@ -171,23 +172,47 @@ export default function ProblemWorkspacePage() {
 
           const inputPath =
             typeof input.path === "string" ? input.path : undefined;
-          const proposedContent =
+          const legacyContent =
             typeof input.content === "string" ? input.content : undefined;
+          const oldText =
+            typeof input.old_text === "string" ? input.old_text : undefined;
+          const newText =
+            typeof input.new_text === "string" ? input.new_text : undefined;
 
           const path =
             inputPath ?? parseEditPath(summary) ?? parseReadPath(summary);
+          const currentContent = path ? fileContents[path] : undefined;
+
+          let proposedContent: string | undefined;
+
+          if (tool === "FileEdit") {
+            if (legacyContent !== undefined) {
+              // Compatibility with previously stored complete-file edits.
+              proposedContent = legacyContent;
+            } else if (newText !== undefined) {
+              if (currentContent === undefined) {
+                // Creating a new file.
+                proposedContent = newText;
+              } else if (
+                oldText !== undefined &&
+                currentContent.includes(oldText)
+              ) {
+                // Existing file: calculate the final editor content from the
+                // targeted replacement proposed by Qwen.
+                proposedContent = currentContent.replace(oldText, newText);
+              }
+            }
+          } else if (currentContent !== undefined) {
+            proposedContent = currentContent;
+          }
+
           const patch: PendingPatch = {
             toolUseId,
             tool,
             inputSummary: summary,
             path: path ?? undefined,
-            oldContent: path ? fileContents[path] : undefined,
-            newContent:
-              tool === "FileEdit"
-                ? proposedContent
-                : path
-                  ? fileContents[path]
-                  : undefined,
+            oldContent: currentContent,
+            newContent: proposedContent,
             auto,
           };
           if (!auto) {
@@ -388,42 +413,87 @@ export default function ProblemWorkspacePage() {
 
   // ── pending patch resolution (PatchPreview → callback) ────────────────
   const handlePatchResolved = useCallback(
-    (toolUseId: string, kind: DecisionKind, result: { path?: string; content?: string } | null) => {
-      setPending((prev) => prev.filter((p) => p.toolUseId !== toolUseId));
+    (
+      toolUseId: string,
+      kind: DecisionKind,
+      result: { path?: string; content?: string } | null,
+    ) => {
+      setPending((prev) =>
+        prev.filter((p) => p.toolUseId !== toolUseId),
+      );
+
+      const destinationPaneId = targetPaneId();
+
       setSession((prev) => {
-        const updatedMessages = prev.messages.map((m) =>
-          m.kind === "patch" && m.pending.toolUseId === toolUseId
-            ? { ...m, resolved: { kind } }
-            : m,
+        const updatedMessages = prev.messages.map((message) =>
+          message.kind === "patch" &&
+            message.pending.toolUseId === toolUseId
+            ? { ...message, resolved: { kind } }
+            : message,
         );
-        if (kind !== "reject" && result?.path && result.content !== undefined) {
-          const path = result.path;
-          const content = result.content;
-          const newContents = { ...prev.fileContents, [path]: content };
-          const basePanes =
-            prev.editorPanes && prev.editorPanes.length > 0
-              ? prev.editorPanes
-              : legacyToPanes(prev.openTabs, prev.activeTab);
-          const nextPanes = basePanes.map((pane) => ({
-            ...pane,
-            tabs: pane.tabs.map((tab) =>
-              tab.name === path
-                ? { ...tab, dirty: content !== prev.originalContents[path] }
-                : tab,
-            ),
-          }));
-          return {
-            ...prev,
-            messages: updatedMessages,
-            fileContents: newContents,
-            editorPanes: nextPanes,
-            openTabs: nextPanes[0]?.tabs ?? prev.openTabs,
-          };
+
+        if (
+          kind === "reject" ||
+          !result?.path ||
+          result.content === undefined
+        ) {
+          return { ...prev, messages: updatedMessages };
         }
-        return { ...prev, messages: updatedMessages };
+
+        const path = result.path;
+        const content = result.content;
+        const dirty = content !== prev.originalContents[path];
+        const newContents = {
+          ...prev.fileContents,
+          [path]: content,
+        };
+
+        const basePanes =
+          prev.editorPanes && prev.editorPanes.length > 0
+            ? prev.editorPanes
+            : legacyToPanes(prev.openTabs, prev.activeTab);
+
+        const nextPanes = basePanes.map((pane) => {
+          const updatedTabs = pane.tabs.map((tab) =>
+            tab.name === path ? { ...tab, dirty } : tab,
+          );
+
+          if (pane.id !== destinationPaneId) {
+            return {
+              ...pane,
+              tabs: updatedTabs,
+            };
+          }
+
+          const alreadyOpen = updatedTabs.some(
+            (tab) => tab.name === path,
+          );
+          const tabs = alreadyOpen
+            ? updatedTabs
+            : [...updatedTabs, { name: path, dirty }];
+
+          return {
+            ...pane,
+            tabs,
+            activeTab: path,
+          };
+        });
+
+        return {
+          ...prev,
+          messages: updatedMessages,
+          fileContents: newContents,
+          editorPanes: nextPanes,
+          openTabs: nextPanes[0]?.tabs ?? prev.openTabs,
+          activeTab: nextPanes[0]?.activeTab ?? prev.activeTab,
+        };
       });
+
+      if (kind !== "reject" && result?.path) {
+        focusRestore.remember(destinationPaneId);
+      }
     },
-    [setSession],
+    [focusRestore, setSession, targetPaneId],
   );
 
   const handleApply = (codeBlock: string) => {
@@ -455,7 +525,10 @@ export default function ProblemWorkspacePage() {
   };
 
   const handleSubmit = async () => {
-    if (!problem) return;
+    if (!problem || submitting || chatBusy || pending.length > 0) return;
+
+    setSubmitting(true);
+
     try {
       const res = await fetch(`${Backend.apiBase}/api/submissions`, {
         method: "POST",
@@ -468,17 +541,42 @@ export default function ProblemWorkspacePage() {
           session_id: sessionId,
         }),
       });
+
       if (!res.ok) {
-        console.error("submit failed:", res.status, await res.text());
-        toast.error(tr("submit_failed"));
+        let message = tr("submit_failed");
+
+        try {
+          const body = (await res.json()) as {
+            error?: string;
+            advice?: string;
+          };
+
+          if (body.error) {
+            message = body.advice
+              ? `${body.error}. ${body.advice}`
+              : body.error;
+          }
+        } catch {
+          // Keep the translated fallback when the server does not return JSON.
+        }
+
+        console.error("submit failed:", res.status, message);
+        toast.error(message);
         return;
       }
+
       const data = await res.json();
-      if (handle) deleteSession(handle, slug);
+
+      if (handle) {
+        deleteSession(handle, slug);
+      }
+
       window.location.href = `/submissions/${data.id}`;
     } catch (e) {
       console.error("submit error:", e);
       toast.error(tr("submit_failed"));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -495,12 +593,17 @@ export default function ProblemWorkspacePage() {
     editorPanes[0]?.activeTab ??
     null;
 
+  const submitDisabled =
+    submitting || chatBusy || pending.length > 0;
+
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
       <AppBar
         timer={timerStr}
         onSubmit={handleSubmit}
         problemTitle={problem?.title ?? slug}
+        submitting={submitting}
+        submitDisabled={submitDisabled}
       />
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
         <ActivityBar active={activity} onChange={setActivity} />

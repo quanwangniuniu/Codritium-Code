@@ -6,6 +6,8 @@ import Editor from "@monaco-editor/react";
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
+  ChevronRight,
   FileSearch,
   Pencil,
   Save,
@@ -210,29 +212,66 @@ function ToolIcon({ tool }: { tool: string }) {
 }
 
 function ToolBody({ pending }: { pending: PendingPatch }) {
+  const [showDiff, setShowDiff] = useState(false);
+
   switch (pending.tool) {
     case "FileEdit":
       return (
-        <div style={{ height: 240, background: "var(--bg-editor)" }}>
-          <DiffEditor
-            height="100%"
-            width="100%"
-            language={langForPath(pending.path)}
-            original={pending.oldContent ?? ""}
-            modified={pending.newContent ?? ""}
-            theme="vs-dark"
-            options={{
-              automaticLayout: true,
-              readOnly: true,
-              renderSideBySide: false,
-              renderOverviewRuler: true,
-              minimap: { enabled: false },
-              scrollBeyondLastLine: false,
-              fontSize: 12,
+        <div style={{ background: "var(--bg-editor)" }}>
+          <button
+            type="button"
+            onClick={() => setShowDiff((current) => !current)}
+            style={{
+              width: "100%",
+              border: 0,
+              padding: "9px 12px",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              background: "transparent",
+              color: "var(--text-dim)",
+              cursor: "pointer",
+              fontSize: 11,
+              textAlign: "left",
             }}
-          />
+          >
+            {showDiff ? (
+              <ChevronDown size={13} strokeWidth={1.7} />
+            ) : (
+              <ChevronRight size={13} strokeWidth={1.7} />
+            )}
+            <span>{showDiff ? "Hide changes" : "Review changes"}</span>
+          </button>
+
+          {showDiff && (
+            <div
+              style={{
+                height: 240,
+                borderTop: "1px solid var(--border)",
+              }}
+            >
+              <DiffEditor
+                height="100%"
+                width="100%"
+                language={langForPath(pending.path)}
+                original={pending.oldContent ?? ""}
+                modified={pending.newContent ?? ""}
+                theme="vs-dark"
+                options={{
+                  automaticLayout: true,
+                  readOnly: true,
+                  renderSideBySide: false,
+                  renderOverviewRuler: true,
+                  minimap: { enabled: false },
+                  scrollBeyondLastLine: false,
+                  fontSize: 12,
+                }}
+              />
+            </div>
+          )}
         </div>
       );
+
     case "Grep":
     case "Glob":
       return (
@@ -241,14 +280,14 @@ function ToolBody({ pending }: { pending: PendingPatch }) {
             padding: "10px 12px",
             fontSize: 12,
             color: "var(--text)",
-            fontFamily:
-              "ui-monospace, SF Mono, Menlo, monospace",
+            fontFamily: "ui-monospace, SF Mono, Menlo, monospace",
             background: "var(--bg-editor)",
           }}
         >
           {pending.inputSummary}
         </div>
       );
+
     case "RunCommand":
       return (
         <div
@@ -271,10 +310,16 @@ function ToolBody({ pending }: { pending: PendingPatch }) {
             }}
           >
             <AlertTriangle size={11} strokeWidth={1.7} />
-            <span style={{ textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            <span
+              style={{
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+              }}
+            >
               {t("patch_runcommand_warn")}
             </span>
           </div>
+
           <code
             className="mono"
             style={{
@@ -291,9 +336,16 @@ function ToolBody({ pending }: { pending: PendingPatch }) {
           </code>
         </div>
       );
+
     default:
       return (
-        <div style={{ padding: "10px 12px", fontSize: 12, color: "var(--text)" }}>
+        <div
+          style={{
+            padding: "10px 12px",
+            fontSize: 12,
+            color: "var(--text)",
+          }}
+        >
           {pending.inputSummary}
         </div>
       );
