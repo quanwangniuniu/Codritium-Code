@@ -1,4 +1,4 @@
-package handlers
+package agent
 
 import (
 	"context"
@@ -20,20 +20,20 @@ func createSessionFor(t *testing.T, pool *pgxpool.Pool, u *auth.User) uuid.UUID 
 	return testutil.NewSession(t, pool, u, "22-build-rate-limiter-middleware", "medium")
 }
 
-func sendEvent(t *testing.T, deps EventsDeps, u *auth.User, body string) *httptest.ResponseRecorder {
+func sendEvent(t *testing.T, deps Handler, u *auth.User, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/api/events", strings.NewReader(body))
 	req = req.WithContext(auth.WithUser(req.Context(), u))
 	rr := httptest.NewRecorder()
-	PostEvent(deps).ServeHTTP(rr, req)
+	http.HandlerFunc(deps.postEvent).ServeHTTP(rr, req)
 	return rr
 }
 
 func TestPostEvent_Unauthorized(t *testing.T) {
-	deps := EventsDeps{Pool: nil, Events: nil}
+	deps := Handler{Pool: nil, Events: nil}
 	req := httptest.NewRequest(http.MethodPost, "/api/events", strings.NewReader("{}"))
 	rr := httptest.NewRecorder()
-	PostEvent(deps).ServeHTTP(rr, req)
+	http.HandlerFunc(deps.postEvent).ServeHTTP(rr, req)
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("status=%d want 401", rr.Code)
 	}
@@ -42,7 +42,7 @@ func TestPostEvent_Unauthorized(t *testing.T) {
 func TestPostEvent_BadJSON(t *testing.T) {
 	pool := testutil.Pool(t)
 	alice := testutil.NewUser(t, pool, "user")
-	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
+	deps := Handler{Pool: pool, Events: events.NewStore(pool)}
 	rr := sendEvent(t, deps, alice, `{not json`)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d want 400", rr.Code)
@@ -52,7 +52,7 @@ func TestPostEvent_BadJSON(t *testing.T) {
 func TestPostEvent_BadSessionID(t *testing.T) {
 	pool := testutil.Pool(t)
 	alice := testutil.NewUser(t, pool, "user")
-	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
+	deps := Handler{Pool: pool, Events: events.NewStore(pool)}
 	rr := sendEvent(t, deps, alice, `{"session_id":"not-uuid","kind":"ai_output_read","payload":{}}`)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d want 400", rr.Code)
@@ -63,13 +63,13 @@ func TestPostEvent_BackendKindRejected(t *testing.T) {
 	pool := testutil.Pool(t)
 	alice := testutil.NewUser(t, pool, "user")
 	sid := createSessionFor(t, pool, alice)
-	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
+	deps := Handler{Pool: pool, Events: events.NewStore(pool)}
 	body := `{"session_id":"` + sid.String() + `","kind":"tool_use_proposed","payload":{}}`
 	rr := sendEvent(t, deps, alice, body)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d want 400 for backend-only kind", rr.Code)
 	}
-	if !strings.Contains(rr.Body.String(), "kind not allowed") {
+	if !strings.Contains(rr.Body.String(), `"error":"kind_not_allowed"`) {
 		t.Fatalf("body did not mention disallowed kind: %s", rr.Body.String())
 	}
 }
@@ -77,7 +77,7 @@ func TestPostEvent_BackendKindRejected(t *testing.T) {
 func TestPostEvent_UnknownSession(t *testing.T) {
 	pool := testutil.Pool(t)
 	alice := testutil.NewUser(t, pool, "user")
-	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
+	deps := Handler{Pool: pool, Events: events.NewStore(pool)}
 	body := `{"session_id":"` + uuid.NewString() + `","kind":"ai_output_read","payload":{"message_id":"m1","pause_duration_sec":3,"scroll_depth_percent":80,"next_action_kind":"new_prompt"}}`
 	rr := sendEvent(t, deps, alice, body)
 	if rr.Code != http.StatusNotFound {
@@ -90,7 +90,7 @@ func TestPostEvent_CrossUserReturns404(t *testing.T) {
 	alice := testutil.NewUser(t, pool, "user")
 	bob := testutil.NewUser(t, pool, "user")
 	sid := createSessionFor(t, pool, alice)
-	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
+	deps := Handler{Pool: pool, Events: events.NewStore(pool)}
 	// bob tries to emit on alice's session
 	body := `{"session_id":"` + sid.String() + `","kind":"ai_output_read","payload":{"message_id":"m1","pause_duration_sec":3,"scroll_depth_percent":80,"next_action_kind":"new_prompt"}}`
 	rr := sendEvent(t, deps, bob, body)
@@ -103,7 +103,7 @@ func TestPostEvent_AIOutputReadHappy(t *testing.T) {
 	pool := testutil.Pool(t)
 	alice := testutil.NewUser(t, pool, "user")
 	sid := createSessionFor(t, pool, alice)
-	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
+	deps := Handler{Pool: pool, Events: events.NewStore(pool)}
 	body := `{
 		"session_id":"` + sid.String() + `",
 		"kind":"ai_output_read",
@@ -137,7 +137,7 @@ func TestPostEvent_CandidateRevertedEditHappy(t *testing.T) {
 	pool := testutil.Pool(t)
 	alice := testutil.NewUser(t, pool, "user")
 	sid := createSessionFor(t, pool, alice)
-	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
+	deps := Handler{Pool: pool, Events: events.NewStore(pool)}
 	body := `{
 		"session_id":"` + sid.String() + `",
 		"kind":"candidate_reverted_edit",
@@ -158,7 +158,7 @@ func TestPostEvent_UnknownPayloadFieldRejected(t *testing.T) {
 	pool := testutil.Pool(t)
 	alice := testutil.NewUser(t, pool, "user")
 	sid := createSessionFor(t, pool, alice)
-	deps := EventsDeps{Pool: pool, Events: events.NewStore(pool)}
+	deps := Handler{Pool: pool, Events: events.NewStore(pool)}
 	body := `{
 		"session_id":"` + sid.String() + `",
 		"kind":"ai_output_read",

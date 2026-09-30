@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -37,6 +38,7 @@ type Config struct {
 	SMTPPass               string
 	SMTPFrom               string
 	PublicURL              string
+	CORSOrigins            []string
 	Paths                  Paths
 }
 
@@ -114,12 +116,11 @@ func Load() (*Config, error) {
 	}
 
 	switch c.ChatEngine {
-	case "disabled", "gemini", "anthropic":
+	case "disabled", "gemini":
+	case "anthropic":
+		return nil, fmt.Errorf("CHAT_ENGINE=anthropic was removed (it could not use tools); use gemini or disabled")
 	default:
-		return nil, fmt.Errorf(
-			"CHAT_ENGINE must be 'disabled', 'gemini', or 'anthropic', got %q",
-			c.ChatEngine,
-		)
+		return nil, fmt.Errorf("CHAT_ENGINE must be 'disabled' or 'gemini', got %q", c.ChatEngine)
 	}
 
 	if c.GraderEngine == "ollama" {
@@ -141,20 +142,28 @@ func Load() (*Config, error) {
 		)
 	}
 
-	// Claude path is preserved but disabled by default. CHAT_ENGINE=anthropic
-	// or GRADER_ENGINE=anthropic must be paired with CLAUDE_FALLBACK_ENABLED=true,
-	// and that combination then requires ANTHROPIC_API_KEY.
+	// The Claude grader is off by default: GRADER_ENGINE=anthropic must be
+	// paired with CLAUDE_FALLBACK_ENABLED=true, which requires ANTHROPIC_API_KEY.
 	if !c.ClaudeFallbackEnabled {
-		if c.ChatEngine == "anthropic" {
-			return nil, fmt.Errorf("CHAT_ENGINE=anthropic requires CLAUDE_FALLBACK_ENABLED=true")
-		}
 		if c.GraderEngine == "anthropic" {
 			return nil, fmt.Errorf("GRADER_ENGINE=anthropic requires CLAUDE_FALLBACK_ENABLED=true")
 		}
 	}
-	claudeActive := c.ClaudeFallbackEnabled || c.ChatEngine == "anthropic" || c.GraderEngine == "anthropic"
+	claudeActive := c.ClaudeFallbackEnabled || c.GraderEngine == "anthropic"
 	if claudeActive && c.AnthropicAPIKey == "" {
 		return nil, fmt.Errorf("ANTHROPIC_API_KEY is required when the Claude path is active")
+	}
+
+	// Browser origins allowed to call the API with cookies: CORS_ORIGINS
+	// (comma-separated), else PUBLIC_URL plus the local dev ports.
+	if v := os.Getenv("CORS_ORIGINS"); v != "" {
+		for _, o := range strings.Split(v, ",") {
+			if o = strings.TrimSpace(o); o != "" {
+				c.CORSOrigins = append(c.CORSOrigins, o)
+			}
+		}
+	} else {
+		c.CORSOrigins = []string{c.PublicURL, "http://localhost:3000", "http://localhost:3012"}
 	}
 
 	return c, nil

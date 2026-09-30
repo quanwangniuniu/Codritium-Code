@@ -1,4 +1,4 @@
-package handlers
+package agent
 
 import (
 	"bytes"
@@ -24,8 +24,8 @@ func (f fakeOwner) SessionOwnedBy(_ context.Context, id uuid.UUID, _ *auth.User)
 
 var decisionSession = uuid.MustParse("11111111-1111-1111-1111-111111111111")
 
-func decisionDeps(w *llm.DecisionWaiter) DecisionDeps {
-	return DecisionDeps{Waiter: w, Sessions: fakeOwner{owned: decisionSession}}
+func decisionDeps(w *llm.DecisionWaiter) Handler {
+	return Handler{Waiter: w, Sessions: fakeOwner{owned: decisionSession}}
 }
 
 func authedRequest(t *testing.T, method, path, body string) *http.Request {
@@ -37,7 +37,7 @@ func authedRequest(t *testing.T, method, path, body string) *http.Request {
 
 func TestPostDecision_Unauthorized(t *testing.T) {
 	waiter := llm.NewDecisionWaiter()
-	h := PostDecision(decisionDeps(waiter))
+	h := http.HandlerFunc((decisionDeps(waiter)).postDecision)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/decision", strings.NewReader(`{}`))
 	rr := httptest.NewRecorder()
@@ -49,7 +49,7 @@ func TestPostDecision_Unauthorized(t *testing.T) {
 }
 
 func TestPostDecision_BadJSON(t *testing.T) {
-	h := PostDecision(decisionDeps(llm.NewDecisionWaiter()))
+	h := http.HandlerFunc((decisionDeps(llm.NewDecisionWaiter()).postDecision))
 	req := authedRequest(t, http.MethodPost, "/api/decision", `{not json`)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -59,7 +59,7 @@ func TestPostDecision_BadJSON(t *testing.T) {
 }
 
 func TestPostDecision_MissingToolUseID(t *testing.T) {
-	h := PostDecision(decisionDeps(llm.NewDecisionWaiter()))
+	h := http.HandlerFunc((decisionDeps(llm.NewDecisionWaiter()).postDecision))
 	req := authedRequest(t, http.MethodPost, "/api/decision", `{"session_id":"11111111-1111-1111-1111-111111111111","decision":"approve"}`)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -69,7 +69,7 @@ func TestPostDecision_MissingToolUseID(t *testing.T) {
 }
 
 func TestPostDecision_BadDecisionKind(t *testing.T) {
-	h := PostDecision(decisionDeps(llm.NewDecisionWaiter()))
+	h := http.HandlerFunc((decisionDeps(llm.NewDecisionWaiter()).postDecision))
 	req := authedRequest(t, http.MethodPost, "/api/decision",
 		`{"session_id":"11111111-1111-1111-1111-111111111111","tool_use_id":"tu-1","decision":"yes"}`)
 	rr := httptest.NewRecorder()
@@ -80,7 +80,7 @@ func TestPostDecision_BadDecisionKind(t *testing.T) {
 }
 
 func TestPostDecision_NoPendingWaitReturns404(t *testing.T) {
-	h := PostDecision(decisionDeps(llm.NewDecisionWaiter()))
+	h := http.HandlerFunc((decisionDeps(llm.NewDecisionWaiter()).postDecision))
 	req := authedRequest(t, http.MethodPost, "/api/decision",
 		`{"session_id":"11111111-1111-1111-1111-111111111111","tool_use_id":"tu-not-waiting","decision":"approve"}`)
 	rr := httptest.NewRecorder()
@@ -92,7 +92,7 @@ func TestPostDecision_NoPendingWaitReturns404(t *testing.T) {
 
 func TestPostDecision_RoundTrip(t *testing.T) {
 	waiter := llm.NewDecisionWaiter()
-	h := PostDecision(decisionDeps(waiter))
+	h := http.HandlerFunc((decisionDeps(waiter)).postDecision)
 
 	// Start a Wait in a goroutine; capture the decision it receives.
 	got := make(chan llm.Decision, 1)
@@ -149,7 +149,7 @@ func TestPostDecision_RoundTrip(t *testing.T) {
 
 func TestPostDecision_OtherUsersSessionIsNotFound(t *testing.T) {
 	waiter := llm.NewDecisionWaiter()
-	h := PostDecision(decisionDeps(waiter))
+	h := http.HandlerFunc((decisionDeps(waiter)).postDecision)
 
 	// A decision is pending in someone else's session with the same tool id.
 	other := uuid.New()
@@ -175,7 +175,7 @@ func TestPostDecision_OtherUsersSessionIsNotFound(t *testing.T) {
 }
 
 func TestPostDecision_MissingSessionID(t *testing.T) {
-	h := PostDecision(decisionDeps(llm.NewDecisionWaiter()))
+	h := http.HandlerFunc((decisionDeps(llm.NewDecisionWaiter()).postDecision))
 	req := authedRequest(t, http.MethodPost, "/api/decision", `{"tool_use_id":"tu-1","decision":"approve"}`)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)

@@ -3,7 +3,6 @@
 package account
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -80,17 +79,13 @@ func (h Handler) updateMe(w http.ResponseWriter, r *http.Request) {
 		httpx.JSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
 	var req updateMeRequest
-	if err := dec.Decode(&req); err != nil {
-		httpx.JSON(w, http.StatusBadRequest, map[string]any{"error": "bad_json"})
+	if !httpx.DecodeWith(w, r, &req, httpx.DecodeOptions{MaxBytes: 8 << 10, Strict: true}) {
 		return
 	}
 	next := *u
 	if err := applyProfileUpdate(&next, req); err != nil {
-		httpx.JSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		httpx.BadRequest(w, err.Error(), fieldMessages[err.Error()])
 		return
 	}
 	_, err := h.Pool.Exec(r.Context(), `
@@ -126,4 +121,10 @@ func applyProfileUpdate(u *auth.User, req updateMeRequest) error {
 		u.Region = v
 	}
 	return nil
+}
+
+var fieldMessages = map[string]string{
+	"invalid_display_name": "Display name must be 1-50 characters.",
+	"invalid_bio":          "Bio must be at most 280 characters.",
+	"invalid_region":       "Location must be at most 40 characters.",
 }

@@ -1,8 +1,9 @@
+// Command server runs the Codritium API.
 package main
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -10,38 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"codritium/backend/internal/grading"
-	"codritium/backend/internal/submissions"
-
-	"codritium/backend/internal/account"
-	"codritium/backend/internal/profile"
-	"codritium/backend/internal/replay"
-
-	"codritium/backend/internal/community/comments"
-	"codritium/backend/internal/community/forum"
-	"codritium/backend/internal/community/notes"
-
-	"codritium/backend/internal/problems/seed"
-
-	"codritium/backend/internal/sessions"
-
-	"codritium/backend/internal/platform/httpx"
-
-	"github.com/google/uuid"
-	"google.golang.org/genai"
-
-	"codritium/backend/internal/anthropic"
-	"codritium/backend/internal/auth"
+	"codritium/backend/internal/app"
 	"codritium/backend/internal/config"
-	"codritium/backend/internal/db"
-	"codritium/backend/internal/e2b"
-	"codritium/backend/internal/events"
-	"codritium/backend/internal/grader"
-	"codritium/backend/internal/handlers"
-	"codritium/backend/internal/llm"
-	"codritium/backend/internal/migrate"
-	"codritium/backend/internal/problems"
-	"codritium/backend/internal/tips"
 )
 
 func main() {
@@ -49,336 +20,34 @@ func main() {
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	log.Printf("startup: env=%s chat_engine=%s grader_engine=%s claude_fallback_enabled=%v",
-		cfg.Env, cfg.ChatEngine, cfg.GraderEngine, cfg.ClaudeFallbackEnabled)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	database, err := db.New(ctx, cfg.DatabaseURL)
+	a, err := app.New(ctx, cfg)
 	if err != nil {
-		log.Fatalf("db connect: %v", err)
+		log.Fatalf("startup: %v", err)
 	}
-	defer database.Close()
-
-	if err := migrate.Run(ctx, database.Pool, cfg.Paths.Migrations, cfg.Paths.Seed); err != nil {
-		log.Fatalf("migrate: %v", err)
-	}
-
-	if err := seed.FromDir(ctx, database.Pool, cfg.Paths.ProblemsSeed); err != nil {
-		log.Fatalf("seed problems: %v", err)
-	}
-
-	anthClient := anthropic.New(cfg.AnthropicAPIKey)
-	e2bClient := e2b.New(cfg.E2BAPIKey)
-	ollamaClient := grader.NewOllamaClient(
-		cfg.OllamaBaseURL,
-		cfg.OllamaModel,
-		time.Duration(cfg.OllamaTimeoutSec)*time.Second,
-	)
-
-	// genai.Client has no Close() in v1.57.0 — its HTTP transport is reused
-	// for the process lifetime and cleaned up by GC, so no explicit shutdown.
-	var geminiClient *genai.Client
-	if cfg.GoogleAPIKey != "" {
-		geminiClient, err = genai.NewClient(ctx, &genai.ClientConfig{
-			APIKey:  cfg.GoogleAPIKey,
-			Backend: genai.BackendGeminiAPI,
-		})
-		if err != nil {
-			log.Fatalf("gemini client: %v", err)
-		}
-		log.Printf("gemini client initialized (engine=%s)", cfg.GraderEngine)
-	}
-
-	deps := handlers.HealthDeps{
-		Anthropic: anthClient,
-		E2B:       e2bClient,
-	}
-	decisionWaiter := llm.NewDecisionWaiter()
-	decisionDeps := handlers.DecisionDeps{Waiter: decisionWaiter, Sessions: sessions.Store{Pool: database.Pool}}
-	eventStore := events.NewStore(database.Pool)
-	eventsDeps := handlers.EventsDeps{Pool: database.Pool, Events: eventStore}
-	textBroadcaster := llm.NewTextBroadcaster()
-	streamDeps := handlers.StreamDeps{Pool: database.Pool, Events: eventStore, Text: textBroadcaster}
-
-	// Active chat engine: Gemini by default. CHAT_ENGINE=anthropic activates
-	// the preserved Claude path and requires CLAUDE_FALLBACK_ENABLED=true
-	// (enforced in config.Load).
-	chatEngine := cfg.ChatEngine
-	var streamClient llm.LLMStreamClient
-
-	switch chatEngine {
-	case "disabled":
-		log.Printf("chat engine disabled")
-	case "anthropic":
-		streamClient = llm.NewClaudeStream(anthClient)
-		log.Printf("chat engine: anthropic (claude_stream)")
-	case "gemini":
-		if geminiClient == nil {
-			log.Fatalf("CHAT_ENGINE=gemini but GOOGLE_API_KEY not set")
-		}
-		streamClient = llm.NewGeminiStream(geminiClient)
-		log.Printf("chat engine: gemini (gemini_stream)")
-	}
-
-	sandbox := grader.Sandbox{Python: cfg.Paths.SandboxPython, Script: cfg.Paths.SandboxScript}
-	problemStore := problems.Store{Pool: database.Pool}
-	agentFactory := buildAgentFactory(problemStore, streamClient, eventStore, textBroadcaster, decisionWaiter, sandbox)
-	agentRegistry := llm.NewAgentRegistry(agentFactory)
-	chatJailbreak := llm.NewChatJailbreakClassifier()
-	chatV2Deps := handlers.ChatV2Deps{
-		Pool:      database.Pool,
-		Registry:  agentRegistry,
-		Jailbreak: chatJailbreak,
-	}
-
-	var tipsAgent *tips.Agent
-	tipsFilter := tips.NewDefaultFilter()
-	if geminiClient != nil {
-		tipsAgent = tips.New(geminiClient, "")
-		tipsFilter.Classifier = tips.NewGeminiClassifier(geminiClient, "")
-		log.Printf("tips agent enabled (gemini); multiturn filter active with classifier")
-	} else {
-		log.Printf("tips agent disabled — GOOGLE_API_KEY not set")
-	}
-	tipsDeps := handlers.TipsDeps{Pool: database.Pool, Agent: tipsAgent, Filter: tipsFilter}
-	gradeEngine, err := grader.NewEngine(cfg.GraderEngine, grader.Clients{
-		Anthropic: anthClient, Gemini: geminiClient, Ollama: ollamaClient,
-	})
-	if err != nil {
-		log.Fatalf("grader: %v", err)
-	}
-	gradingSvc := &grading.Service{Pool: database.Pool, Sandbox: sandbox, Engine: gradeEngine}
-
-	mux := http.NewServeMux()
-	authMiddleware := auth.Middleware(database.Pool, cfg.CookieSecret)
-
-	// Three-way login wiring per login-tech impl-spec.
-	oauthStateStore := auth.NewSQLOAuthStateStore(database.Pool)
-	magicLinkStore := auth.NewSQLMagicLinkTokenStore(database.Pool)
-	userStore := auth.NewSQLUserStore(database.Pool)
-	cookieOpts := auth.CookieOptions{Domain: cfg.CookieDomain, Secure: cfg.CookieSecure}
-	sessionMgr := auth.NewCookieSessionManager(cfg.CookieSecret, cookieOpts)
-	googleAuth := auth.NewGoogleHandler(cfg.GoogleOAuthClientID, cfg.GoogleOAuthSecret, cfg.GoogleOAuthRedirectURL,
-		oauthStateStore, userStore, sessionMgr)
-	githubAuth := auth.NewGitHubHandler(cfg.GitHubOAuthClientID, cfg.GitHubOAuthSecret, cfg.GitHubOAuthRedirectURL,
-		oauthStateStore, userStore, sessionMgr)
-	emailAuth := auth.NewEmailHandler(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPFrom,
-		cfg.PublicURL, magicLinkStore, userStore, sessionMgr)
-	passwordAuth := auth.NewPasswordAuthHandler(database.Pool, cfg.CookieSecret, cookieOpts)
-
-	// Public (no auth)
-	mux.HandleFunc("GET /api/health", handlers.Health())
-	mux.HandleFunc("GET /api/anthropic/ping", handlers.AnthropicPing(deps))
-	mux.HandleFunc("GET /api/e2b/ping", handlers.E2BPing(deps))
-	mux.HandleFunc("POST /api/auth/register", passwordAuth.Register)
-	mux.HandleFunc("POST /api/auth/login", passwordAuth.Login)
-	mux.HandleFunc("POST /api/auth/logout", auth.Logout(cookieOpts))
-
-	// Three-way login (Google + GitHub + email magic link).
-	mux.HandleFunc("POST /api/auth/google/start", googleAuth.Start)
-	mux.HandleFunc("GET /api/auth/google/callback", googleAuth.Callback)
-	mux.HandleFunc("POST /api/auth/github/start", githubAuth.Start)
-	mux.HandleFunc("GET /api/auth/github/callback", githubAuth.Callback)
-	mux.HandleFunc("POST /api/auth/email/request", emailAuth.Request)
-	mux.HandleFunc("GET /api/auth/email/verify", emailAuth.Verify)
-	rt := httpx.NewRouter(mux, authMiddleware)
-	for _, m := range []httpx.Module{
-		problems.Handler{Store: problemStore},
-		sessions.Handler{Store: sessions.Store{Pool: database.Pool}, Problems: problemStore},
-		forum.Handler{Pool: database.Pool},
-		comments.Handler{Pool: database.Pool},
-		notes.Handler{Pool: database.Pool},
-		account.Handler{Pool: database.Pool},
-		profile.Handler{Pool: database.Pool},
-		replay.Handler{Pool: database.Pool},
-		submissions.Handler{
-			Store:    submissions.Store{Pool: database.Pool},
-			Problems: problemStore,
-			Sessions: sessions.Store{Pool: database.Pool},
-			Sandbox:  sandbox,
-			Grading:  gradingSvc,
-			Agents:   agentRegistry,
-		},
-	} {
-		m.Routes(rt)
-	}
-
-	// Authed routes — wrap each with authMiddleware so r.Context() carries the user.
-	mux.Handle("POST /api/decision", authMiddleware(handlers.PostDecision(decisionDeps)))
-	mux.Handle("POST /api/events", authMiddleware(handlers.PostEvent(eventsDeps)))
-	if cfg.ChatEngine == "disabled" {
-		mux.Handle(
-			"POST /api/chat/v2",
-			authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				http.Error(w, "chat engine disabled", http.StatusServiceUnavailable)
-			})),
-		)
-	} else {
-		mux.Handle(
-			"POST /api/chat/v2",
-			authMiddleware(handlers.PostChatV2(chatV2Deps)),
-		)
-	}
-	mux.Handle("POST /api/tips", authMiddleware(handlers.PostTips(tipsDeps)))
-	mux.Handle("GET /api/tips/messages", authMiddleware(handlers.GetTipsMessages(tipsDeps)))
-	mux.Handle("GET /api/sessions/{id}/stream", authMiddleware(handlers.SessionStream(streamDeps)))
-
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           withCORS(withLogging(mux)),
+		Handler:           a.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-
 	go func() {
-		log.Printf("codritium backend listening on :%s (grader=%s)", cfg.Port, cfg.GraderEngine)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Printf("codritium backend listening on :%s", cfg.Port)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("listen: %v", err)
 		}
 	}()
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	<-sigCh
-
+	<-ctx.Done()
 	log.Println("shutting down")
-	shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer shutCancel()
-	_ = srv.Shutdown(shutCtx)
-	// Let in-flight grading finish; past the deadline, jobs are cancelled
-	// and their submissions marked failed rather than left "grading".
-	gradeCtx, gradeCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer gradeCancel()
-	if err := gradingSvc.Shutdown(gradeCtx); err != nil {
-		log.Printf("grading shutdown: %v", err)
+	httpCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = srv.Shutdown(httpCtx)
+	// In-flight grading gets 30s; past that it is cancelled and marked failed.
+	drainCtx, cancelDrain := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelDrain()
+	if err := a.Shutdown(drainCtx); err != nil {
+		log.Printf("shutdown: %v", err)
 	}
-}
-
-// Allowed origins for browser fetches. Credentials cookies require an exact
-// Access-Control-Allow-Origin match (not a wildcard), so mirror the request
-// Origin when it appears in this set.
-var allowedOrigins = map[string]bool{
-	"http://localhost:3000": true,
-	"http://localhost:3012": true,
-}
-
-func withCORS(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origin := r.Header.Get("Origin")
-		if allowedOrigins[origin] {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Vary", "Origin")
-		}
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		h.ServeHTTP(w, r)
-	})
-}
-
-func withLogging(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		h.ServeHTTP(w, r)
-		log.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
-	})
-}
-
-// graderSandboxRunner adapts grader.RunPytest to llm.SandboxRunner so the
-// candidate-facing RunTests tool reuses the same E2B path the post-submission
-// grader uses. Hidden test content is left empty — the candidate runs tests
-// they wrote themselves, and those tests are part of `files`. The sandbox
-// wrapper drops `files` into the workspace then invokes pytest against
-// `testFile` directly.
-type graderSandboxRunner struct{ sandbox grader.Sandbox }
-
-func (g graderSandboxRunner) RunPytest(ctx context.Context, files map[string]string, testFile string) (llm.SandboxResult, error) {
-	out, err := g.sandbox.RunPytest(ctx, grader.SandboxInput{
-		CandidateFiles:     files,
-		HiddenTestFilename: testFile,
-		TimeoutSec:         60,
-	})
-	if err != nil {
-		return llm.SandboxResult{}, err
-	}
-	if out == nil {
-		return llm.SandboxResult{}, fmt.Errorf("sandbox returned nil result for %s", testFile)
-	}
-	names := make([]string, 0, len(out.TestResults))
-	for _, t := range out.TestResults {
-		names = append(names, t.Name)
-	}
-	return llm.SandboxResult{
-		Passed:           out.PassCount,
-		Failed:           out.FailCount,
-		VisibleTestNames: names,
-		DurationMs:       int64(out.DurationSec * 1000),
-		Stdout:           out.Stdout,
-	}, nil
-}
-
-// buildAgentFactory returns the closure the AgentRegistry uses to
-// construct a fresh Agent the first time a candidate hits chat_v2 on
-// a session. Loads the challenge's README / starter files / hidden
-// test file path from the problems table; wires the engine-neutral
-// stream client + DecisionWaiter + events store; locks the visible
-// test path via DenyRule.
-func buildAgentFactory(problemStore problems.Store, stream llm.LLMStreamClient, store *events.Store, text *llm.TextBroadcaster, waiter *llm.DecisionWaiter, sandbox grader.Sandbox) llm.AgentFactory {
-	return func(ctx context.Context, sessionID uuid.UUID, slug string) (*llm.Agent, error) {
-		prob, err := problemStore.Get(ctx, slug)
-		if err != nil {
-			return nil, err
-		}
-		readme, hiddenTestFile := prob.ReadmeMD, prob.HiddenTestFile
-		files := prob.Starter.Variant(problems.VariantAsIs)
-
-		systemPrompt := buildSystemPrompt(readme, files, hiddenTestFile)
-
-		// Per-session scratch directory used by the Grep / Glob / RunCommand
-		// tools. The hidden test file is never materialized; the runtime tools
-		// also enforce Deny rules over the in-memory workspace.
-		tmpFS, tmpErr := llm.NewSessionTmpFS(sessionID, []string{hiddenTestFile})
-		if tmpErr != nil {
-			log.Printf("session tmpfs init failed for %s: %v", sessionID, tmpErr)
-		}
-
-		return &llm.Agent{
-			Stream:       stream,
-			Events:       store,
-			Text:         text,
-			Waiter:       waiter,
-			Tools:        llm.NewDefaultRegistry(),
-			Workspace:    &llm.Workspace{Files: files},
-			Sandbox:      graderSandboxRunner{sandbox: sandbox},
-			TmpFS:        tmpFS,
-			SystemPrompt: systemPrompt,
-			Deny: []llm.DenyRule{
-				{Tool: "FileEdit", PathPattern: hiddenTestFile, Reason: "hidden test file is protected"},
-				{Tool: "FileRead", PathPattern: hiddenTestFile, Reason: "hidden test file is protected"},
-				{Tool: "Grep", PathPattern: hiddenTestFile, Reason: "hidden test file is protected"},
-				{Tool: "Glob", PathPattern: hiddenTestFile, Reason: "hidden test file is protected"},
-			},
-		}, nil
-	}
-}
-
-func buildSystemPrompt(readme string, files map[string]string, hiddenTest string) string {
-	var fileList string
-	for name := range files {
-		fileList += "  - " + name + "\n"
-	}
-	return "You are the candidate-agent inside Codritium. The user is a software engineering candidate" +
-		" working on the following problem. Follow their lead — do not auto-execute changes. Every FileEdit" +
-		" you propose must be reviewed by the candidate before it lands.\n\n" +
-		"Problem README:\n" + readme + "\n\n" +
-		"Workspace files (visible):\n" + fileList + "\n" +
-		"There is no pre-supplied test file. To verify your changes you (or the candidate) must create a pytest" +
-		" file (e.g. `test_my.py`) via FileEdit, then call RunTests with that path. The hidden test " + hiddenTest +
-		" is invisible to you and protected from access — do not try to read or modify it."
 }
