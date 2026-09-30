@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { Lightbulb, Send, AtSign } from "lucide-react";
+import { Lightbulb } from "lucide-react";
 import { workspaceApi, type TipsMessage } from "@/features/workspace/api";
 import { toast } from "@/shared/lib/toast";
 import { t } from "@/shared/i18n";
+import { useComposer } from "../hooks/useComposer";
+import { ChatComposer } from "./ChatComposer";
 
 // Tints used to mark the tutor surface visually distinct from the agent
 // surface. R12 cursor research recommends "diff lives where the cursor
@@ -47,20 +49,9 @@ export function TipsView({
   onTipsTouched?: () => void;
 }) {
   const [rows, setRows] = useState<LocalRow[]>([]);
-  const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
-  const [queue, setQueue] = useState<string[]>([]);
-  const [mention, setMention] = useState<{ query: string; start: number } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const prevBusyRef = useRef(busy);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const streamingKeyRef = useRef<string | null>(null);
-
-  const mentionMatches = (() => {
-    if (!mention) return [];
-    const q = mention.query.toLowerCase();
-    return availableFiles.filter((f) => f.toLowerCase().includes(q)).slice(0, 6);
-  })();
 
   // Hydrate persisted tutor conversation when the session id resolves
   // or changes (resume path covers refresh + cross-device practice).
@@ -147,83 +138,13 @@ export function TipsView({
     [sessionId, fileContents],
   );
 
-  // Drain queued messages when the model finishes the current turn.
-  useEffect(() => {
-    const wasBusy = prevBusyRef.current;
-    prevBusyRef.current = busy;
-    if (wasBusy && !busy && queue.length > 0) {
-      const [next, ...rest] = queue;
-      setQueue(rest);
-      void send(next);
-    }
-  }, [busy, queue, send]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const v = text.trim();
-    if (!v || submitted) return;
-    setText("");
-    setMention(null);
-    onTipsTouched?.();
-    if (busy) {
-      setQueue((q) => [...q, v]);
-      return;
-    }
-    void send(v);
-  };
-
-  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value;
-    setText(val);
-    const caret = e.target.selectionStart ?? val.length;
-    const before = val.slice(0, caret);
-    const at = before.lastIndexOf("@");
-    if (at < 0) {
-      setMention(null);
-      return;
-    }
-    const between = before.slice(at + 1);
-    if (between.includes(" ") || between.includes("\n")) {
-      setMention(null);
-      return;
-    }
-    setMention({ query: between, start: at });
-  };
-
-  const pickMention = (name: string) => {
-    if (!mention || !textareaRef.current) return;
-    const caret = textareaRef.current.selectionStart ?? text.length;
-    const head = text.slice(0, mention.start);
-    const tail = text.slice(caret);
-    const replaced = `${head}@${name} ${tail}`;
-    setText(replaced);
-    setMention(null);
-    requestAnimationFrame(() => {
-      if (textareaRef.current) {
-        const pos = head.length + name.length + 2;
-        textareaRef.current.focus();
-        textareaRef.current.setSelectionRange(pos, pos);
-      }
-    });
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (mention && mentionMatches.length > 0) {
-      if (e.key === "Tab" || e.key === "Enter") {
-        e.preventDefault();
-        pickMention(mentionMatches[0]);
-        return;
-      }
-      if (e.key === "Escape") {
-        setMention(null);
-        return;
-      }
-    }
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit(e as unknown as React.FormEvent);
-    }
-  };
+  const composer = useComposer({
+    busy,
+    onSend: send,
+    files: availableFiles,
+    disabled: submitted,
+    onSubmitted: onTipsTouched,
+  });
 
   const placeholder = submitted ? t("tutor_submitted") : t("ask_tutor");
 
@@ -328,113 +249,20 @@ export function TipsView({
             {t("tutor_thinking")}
           </div>
         )}
-        {queue.length > 0 && (
+        {composer.queue.length > 0 && (
           <div style={{ color: AMBER_ACCENT, fontSize: 11.5 }}>
-            queued: {queue.length}
+            queued: {composer.queue.length}
           </div>
         )}
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-        style={{
-          padding: 10,
-          borderTop: `1px solid ${AMBER_BORDER}`,
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-          position: "relative",
-        }}
-      >
-        {mention && mentionMatches.length > 0 && (
-          <div
-            style={{
-              position: "absolute",
-              bottom: "100%",
-              left: 10,
-              right: 10,
-              background: "var(--bg-side)",
-              border: `1px solid ${AMBER_BORDER}`,
-              borderRadius: 6,
-              padding: 4,
-              display: "flex",
-              flexDirection: "column",
-              gap: 2,
-              maxHeight: 180,
-              overflowY: "auto",
-              zIndex: 10,
-            }}
-          >
-            {mentionMatches.map((m, idx) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => pickMention(m)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "4px 6px",
-                  borderRadius: 4,
-                  background: idx === 0 ? "var(--bg-tab)" : "transparent",
-                  color: "var(--text)",
-                  fontSize: 12,
-                  textAlign: "left",
-                  fontFamily: "var(--font-jetbrains-mono), ui-monospace, monospace",
-                }}
-              >
-                <AtSign size={11} color={AMBER_ACCENT} />
-                {m}
-              </button>
-            ))}
-          </div>
-        )}
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={handleTextChange}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder}
-          disabled={submitted}
-          rows={3}
-          style={{
-            width: "100%",
-            background: "var(--bg-app)",
-            color: "var(--text)",
-            border: `1px solid ${submitted ? "var(--border-soft)" : AMBER_BORDER}`,
-            borderRadius: 6,
-            padding: "8px 10px",
-            fontSize: 12.5,
-            fontFamily: "inherit",
-            resize: "none",
-            outline: "none",
-            opacity: submitted ? 0.6 : 1,
-          }}
-        />
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button
-            type="submit"
-            disabled={submitted || !text.trim()}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-              padding: "5px 10px",
-              borderRadius: 5,
-              border: "none",
-              background:
-                submitted || !text.trim() ? "var(--bg-tab)" : AMBER_ACCENT,
-              color: submitted || !text.trim() ? "var(--text-muted)" : "#1a1100",
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: submitted || !text.trim() ? "not-allowed" : "pointer",
-            }}
-          >
-            <Send size={12} strokeWidth={2.2} />
-            {busy ? "Queue" : "Send"}
-          </button>
-        </div>
-      </form>
+      <ChatComposer
+        composer={composer}
+        variant="tutor"
+        busy={busy}
+        placeholder={placeholder}
+        disabled={submitted}
+      />
     </section>
   );
 }

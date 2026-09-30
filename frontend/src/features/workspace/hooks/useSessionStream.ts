@@ -2,14 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { workspaceApi } from "@/features/workspace/api";
-
-export interface StreamEnvelope {
-  session_id: string;
-  seq: number;
-  kind: string;
-  emitted_at: string;
-  payload: Record<string, unknown>;
-}
+import type { StreamEnvelope } from "../types";
 
 export interface UseSessionStreamOpts {
   onEnvelope?: (env: StreamEnvelope) => void;

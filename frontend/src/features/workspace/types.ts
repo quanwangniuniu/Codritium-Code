@@ -60,3 +60,12 @@ export type PatchMessage = {
 };
 
 export type ChatMessage = TextMessage | PatchMessage;
+
+// One structured event from GET /api/sessions/{id}/stream ("agent_event").
+export interface StreamEnvelope {
+  session_id: string;
+  seq: number;
+  kind: string;
+  emitted_at: string;
+  payload: Record<string, unknown>;
+}
