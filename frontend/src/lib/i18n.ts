@@ -190,9 +190,7 @@ type LocaleKey =
   | "streak_active_today"
   | "streak_last_active_fmt"
   | "no_activity_recorded"
-  | "streak_longest_label"
   | "streak_all_time_best"
-  | "tier_label"
   | "tier_pro"
   | "tier_free"
   | "pro_tier_desc"
@@ -208,13 +206,6 @@ type LocaleKey =
   | "profile_category_feature_build"
   | "profile_category_security"
   | "profile_category_company_premium"
-  | "profile_activity_title"
-  | "profile_activity_desc"
-  | "profile_current_label"
-  | "profile_total_label"
-  | "profile_category_mastery_label"
-  | "profile_submission_history_title"
-  | "profile_find_problem_btn"
   // forum
   | "forum_section_interview_label"
   | "forum_section_career_label"
@@ -317,16 +308,11 @@ type LocaleKey =
   | "nav_problems"
   | "nav_forum"
   | "nav_forums"
-  | "nav_dashboard"
   | "nav_profile"
   | "nav_notifications"
   | "menu_plans"
   // dashboard
-  | "dashboard_subtitle"
   // profile identity
-  | "profile_bio_label"
-  | "profile_bio_empty"
-  | "profile_view_plans_btn"
   // forums placeholder
   // ResumeOrFresh
   | "resume_just_now"
@@ -423,12 +409,6 @@ type LocaleKey =
   // landing
   // feature cards (six)
   // profile + tier + credits + badge
-  | "tier_standard"
-  | "tier_max"
-  | "credits_label"
-  | "credits_placeholder_desc"
-  | "badge_early_access_title"
-  | "badge_early_access_desc"
   // comments
   | "comments_title"
   | "comments_empty"
@@ -537,12 +517,125 @@ type LocaleKey =
   | "home_hiring_body"
   | "home_hiring_link"
   | "home_footer_copyright"
-  | "home_footer_contact";
+  | "home_footer_contact"
+  // profile page
+  | "prof_member_since"
+  | "prof_edit_btn"
+  | "prof_edit_title"
+  | "prof_edit_name"
+  | "prof_edit_name_required"
+  | "prof_edit_bio"
+  | "prof_edit_bio_placeholder"
+  | "prof_edit_region"
+  | "prof_edit_region_placeholder"
+  | "prof_edit_save"
+  | "prof_edit_saving"
+  | "prof_edit_saved"
+  | "prof_edit_failed"
+  | "prof_community_title"
+  | "prof_stat_posts"
+  | "prof_stat_comments"
+  | "prof_stat_upvotes"
+  | "prof_last_week"
+  | "prof_tracks_title"
+  | "prof_strengths_title"
+  | "prof_strength_strong"
+  | "prof_strength_developing"
+  | "prof_strength_focus"
+  | "prof_strength_samples"
+  | "prof_not_enough_data"
+  | "prof_solved_label"
+  | "prof_attempting"
+  | "prof_badges_title"
+  | "prof_badge_next"
+  | "prof_badge_locked"
+  | "prof_badge_early"
+  | "prof_badge_first"
+  | "prof_badge_ten"
+  | "prof_badge_streak"
+  | "prof_badge_tracks"
+  | "prof_badge_ninety"
+  | "prof_badge_fifty"
+  | "prof_activity_title"
+  | "prof_active_days"
+  | "prof_current_streak"
+  | "prof_max_streak"
+  | "prof_day_tooltip"
+  | "prof_tabs_label"
+  | "prof_tab_recent"
+  | "prof_tab_solved"
+  | "prof_tab_posts"
+  | "prof_tab_all"
+  | "prof_view_all"
+  | "prof_status_grading"
+  | "prof_status_failed"
+  | "prof_best_score"
+  | "prof_empty_submissions"
+  | "prof_empty_solved"
+  | "prof_empty_posts"
+  | "prof_empty_cta"
+  | "prof_empty_posts_cta";
 
 type Locale = "en" | "zh";
 
 const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
   en: {
+    prof_member_since: "Joined {date}",
+    prof_edit_btn: "Edit profile",
+    prof_edit_title: "Edit profile",
+    prof_edit_name: "Display name",
+    prof_edit_name_required: "Display name can't be empty.",
+    prof_edit_bio: "Bio",
+    prof_edit_bio_placeholder: "What are you practicing for?",
+    prof_edit_region: "Location",
+    prof_edit_region_placeholder: "City or country",
+    prof_edit_save: "Save",
+    prof_edit_saving: "Saving…",
+    prof_edit_saved: "Profile updated",
+    prof_edit_failed: "Couldn't save your profile. Please try again.",
+    prof_community_title: "Community stats",
+    prof_stat_posts: "Posts",
+    prof_stat_comments: "Comments",
+    prof_stat_upvotes: "Upvotes",
+    prof_last_week: "Last week",
+    prof_tracks_title: "Tracks",
+    prof_strengths_title: "Strengths",
+    prof_strength_strong: "Strong",
+    prof_strength_developing: "Developing",
+    prof_strength_focus: "Needs work",
+    prof_strength_samples: "Average of {n} graded submissions",
+    prof_not_enough_data: "Not enough data",
+    prof_solved_label: "Solved",
+    prof_attempting: "{n} Attempting",
+    prof_badges_title: "Badges",
+    prof_badge_next: "Next badge",
+    prof_badge_locked: "(locked)",
+    prof_badge_early: "Early Access",
+    prof_badge_first: "First Submission",
+    prof_badge_ten: "10 Problems Solved",
+    prof_badge_streak: "7-Day Streak",
+    prof_badge_tracks: "Every Track",
+    prof_badge_ninety: "Score 90+",
+    prof_badge_fifty: "50 Problems Solved",
+    prof_activity_title: "submissions in the past year",
+    prof_active_days: "Active days:",
+    prof_current_streak: "Current streak:",
+    prof_max_streak: "Max streak:",
+    prof_day_tooltip: "{n} submissions on {date}",
+    prof_tabs_label: "Profile activity",
+    prof_tab_recent: "Recent",
+    prof_tab_solved: "Solved",
+    prof_tab_posts: "Posts",
+    prof_tab_all: "All submissions",
+    prof_view_all: "View all submissions",
+    prof_status_grading: "Grading",
+    prof_status_failed: "Failed",
+    prof_best_score: "Best {n}",
+    prof_empty_submissions: "No submissions yet",
+    prof_empty_solved: "No solved problems yet",
+    prof_empty_posts: "You haven't posted in the forums yet",
+    prof_empty_cta: "Find a problem",
+    prof_empty_posts_cta: "Write your first post",
     home_hero_eyebrow: "Practice for AI-enabled interviews",
     home_hero_title: "Show how you think with AI.",
     home_hero_blurb: "Solve real engineering problems with an AI agent in the editor. Codritium scores more than the code you ship: it grades how you direct the agent, verify its work, and explain your decisions.",
@@ -760,9 +853,7 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     streak_active_today: "Active today.",
     streak_last_active_fmt: "Last active {days} day{s} ago.",
     no_activity_recorded: "No activity recorded.",
-    streak_longest_label: "Longest",
     streak_all_time_best: "All-time best.",
-    tier_label: "Tier",
     tier_pro: "Pro",
     tier_free: "Free tier",
     pro_tier_desc: "Pro unlocks Sprint Interview content, full 5-dimension scoring, and submission trace archival.",
@@ -777,13 +868,6 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     profile_category_feature_build: "Feature build",
     profile_category_security: "Security",
     profile_category_company_premium: "Company premium",
-    profile_activity_title: "Activity",
-    profile_activity_desc: "Daily submission heatmap. 10 problems in a day saturates the scale. Streaks lock if a daily submission scores below 60.",
-    profile_current_label: "Current",
-    profile_total_label: "Total",
-    profile_category_mastery_label: "Category mastery",
-    profile_submission_history_title: "Submission history",
-    profile_find_problem_btn: "Find a problem",
     forum_section_interview_label: "Interview",
     forum_section_career_label: "Career",
     forum_section_compensation_label: "Compensation",
@@ -883,14 +967,9 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     nav_problems: "Problems",
     nav_forum: "Forum",
     nav_forums: "Forums",
-    nav_dashboard: "Dashboard",
     nav_profile: "Profile",
     nav_notifications: "Notifications",
     menu_plans: "Plans",
-    dashboard_subtitle: "Your practice activity — streak, scores, and submission history.",
-    profile_bio_label: "About",
-    profile_bio_empty: "No bio yet.",
-    profile_view_plans_btn: "View plans",
     resume_just_now: "just now",
     resume_minute_ago: "1 minute ago",
     resume_minutes_ago_fmt: "{n} minutes ago",
@@ -978,12 +1057,6 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     submission_meta_prompts: "Prompts",
     submission_meta_id: "Submission ID",
     submission_meta_lines_changed: "Lines changed",
-    tier_standard: "Standard",
-    tier_max: "Max",
-    credits_label: "Credits",
-    credits_placeholder_desc: "Credits will fund per-problem add-ons in a future release.",
-    badge_early_access_title: "Early Access",
-    badge_early_access_desc: "Thanks for being one of the first candidates on Codritium.",
     comments_title: "Discussion",
     comments_empty: "Be the first to share what worked.",
     comments_post_placeholder: "Share what you learned…",
@@ -1031,6 +1104,62 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
   // empty so t("key", { locale: "zh" }) doesn't crash; the switcher will
   // populate them in a dedicated i18n track.
   zh: {
+    prof_member_since: "",
+    prof_edit_btn: "",
+    prof_edit_title: "",
+    prof_edit_name: "",
+    prof_edit_name_required: "",
+    prof_edit_bio: "",
+    prof_edit_bio_placeholder: "",
+    prof_edit_region: "",
+    prof_edit_region_placeholder: "",
+    prof_edit_save: "",
+    prof_edit_saving: "",
+    prof_edit_saved: "",
+    prof_edit_failed: "",
+    prof_community_title: "",
+    prof_stat_posts: "",
+    prof_stat_comments: "",
+    prof_stat_upvotes: "",
+    prof_last_week: "",
+    prof_tracks_title: "",
+    prof_strengths_title: "",
+    prof_strength_strong: "",
+    prof_strength_developing: "",
+    prof_strength_focus: "",
+    prof_strength_samples: "",
+    prof_not_enough_data: "",
+    prof_solved_label: "",
+    prof_attempting: "",
+    prof_badges_title: "",
+    prof_badge_next: "",
+    prof_badge_locked: "",
+    prof_badge_early: "",
+    prof_badge_first: "",
+    prof_badge_ten: "",
+    prof_badge_streak: "",
+    prof_badge_tracks: "",
+    prof_badge_ninety: "",
+    prof_badge_fifty: "",
+    prof_activity_title: "",
+    prof_active_days: "",
+    prof_current_streak: "",
+    prof_max_streak: "",
+    prof_day_tooltip: "",
+    prof_tabs_label: "",
+    prof_tab_recent: "",
+    prof_tab_solved: "",
+    prof_tab_posts: "",
+    prof_tab_all: "",
+    prof_view_all: "",
+    prof_status_grading: "",
+    prof_status_failed: "",
+    prof_best_score: "",
+    prof_empty_submissions: "",
+    prof_empty_solved: "",
+    prof_empty_posts: "",
+    prof_empty_cta: "",
+    prof_empty_posts_cta: "",
     home_hero_eyebrow: "",
     home_hero_title: "",
     home_hero_blurb: "",
@@ -1248,9 +1377,7 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     streak_active_today: "",
     streak_last_active_fmt: "",
     no_activity_recorded: "",
-    streak_longest_label: "",
     streak_all_time_best: "",
-    tier_label: "",
     tier_pro: "",
     tier_free: "",
     pro_tier_desc: "",
@@ -1265,13 +1392,6 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     profile_category_feature_build: "",
     profile_category_security: "",
     profile_category_company_premium: "",
-    profile_activity_title: "",
-    profile_activity_desc: "",
-    profile_current_label: "",
-    profile_total_label: "",
-    profile_category_mastery_label: "",
-    profile_submission_history_title: "",
-    profile_find_problem_btn: "",
     forum_section_interview_label: "",
     forum_section_career_label: "",
     forum_section_compensation_label: "",
@@ -1371,14 +1491,9 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     nav_problems: "",
     nav_forum: "",
     nav_forums: "",
-    nav_dashboard: "",
     nav_profile: "",
     nav_notifications: "",
     menu_plans: "",
-    dashboard_subtitle: "",
-    profile_bio_label: "",
-    profile_bio_empty: "",
-    profile_view_plans_btn: "",
     resume_just_now: "",
     resume_minute_ago: "",
     resume_minutes_ago_fmt: "",
@@ -1466,12 +1581,6 @@ const STRINGS: Record<Locale, Record<LocaleKey, string>> = {
     submission_meta_prompts: "",
     submission_meta_id: "",
     submission_meta_lines_changed: "",
-    tier_standard: "",
-    tier_max: "",
-    credits_label: "",
-    credits_placeholder_desc: "",
-    badge_early_access_title: "",
-    badge_early_access_desc: "",
     comments_title: "",
     comments_empty: "",
     comments_post_placeholder: "",

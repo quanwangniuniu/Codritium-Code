@@ -184,6 +184,9 @@ func main() {
 		handlers.WriteUserJSON(w, u)
 	})
 	mux.Handle("GET /api/me", authMiddleware(meHandler))
+	profileDeps := handlers.ProfileDeps{Pool: database.Pool}
+	mux.Handle("PATCH /api/me", authMiddleware(handlers.UpdateMe(profileDeps)))
+	mux.Handle("GET /api/me/profile", authMiddleware(handlers.GetMyProfile(profileDeps)))
 	mux.Handle("POST /api/submissions", authMiddleware(handlers.Submit(subDeps)))
 	mux.Handle("GET /api/submissions/{id}", authMiddleware(handlers.GetSubmission(subDeps)))
 	mux.Handle("DELETE /api/submissions/{id}", authMiddleware(handlers.DeleteSubmission(subDeps)))

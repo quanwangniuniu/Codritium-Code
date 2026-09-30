@@ -15,6 +15,7 @@ import type {
   PublicSolution,
   Submission,
   User,
+  ProfileData,
 } from "@/lib/types";
 
 // --- Problem adapter ----------------------------------------------------
@@ -352,6 +353,12 @@ export async function listUserProblemSubmissions(
   // Backend has no per-problem filter; client-side filter on the full list.
   const all = await listUserSubmissions("");
   return all.filter((s) => s.problem_id === problemId);
+}
+
+// --- Profile ----------------------------------------------------------
+
+export async function getMyProfile(): Promise<ProfileData | null> {
+  return apiJSON<ProfileData>("/api/me/profile");
 }
 
 // --- Stubs: backend does not implement these endpoints yet ------------

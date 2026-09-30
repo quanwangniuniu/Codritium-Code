@@ -23,8 +23,8 @@ export async function Nav() {
               {t("nav_forums")}
             </Link>
             {user && (
-              <Link href="/dashboard" className="nav-pill">
-                {t("nav_dashboard")}
+              <Link href="/profile" className="nav-pill">
+                {t("nav_profile")}
               </Link>
             )}
           </nav>
