@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 
+	"codritium/backend/internal/platform/httpx"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -170,3 +172,17 @@ func Logout(opts CookieOptions) http.HandlerFunc {
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
+
+// Require returns the signed-in user, or writes the standard 401 and
+// returns false.
+func Require(w http.ResponseWriter, r *http.Request) (*User, bool) {
+	u := FromContext(r.Context())
+	if u == nil {
+		httpx.Unauthorized(w)
+		return nil, false
+	}
+	return u, true
+}
+
+// IsAdmin reports whether u has the admin role.
+func (u *User) IsAdmin() bool { return u != nil && u.Role == "admin" }

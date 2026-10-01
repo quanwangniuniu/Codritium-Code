@@ -208,8 +208,8 @@ func TestRunTurn_ToolUseApproveRoundtrip(t *testing.T) {
 	// Notify approve once Wait has registered.
 	go func() {
 		for i := 0; i < 100; i++ {
-			if waiter.Pending("tu-1") {
-				waiter.Notify("tu-1", Decision{Kind: "approve"})
+			if waiter.Pending(DecisionKey(sid, "tu-1")) {
+				waiter.Notify(DecisionKey(sid, "tu-1"), Decision{Kind: "approve"})
 				return
 			}
 			time.Sleep(5 * time.Millisecond)
@@ -274,8 +274,8 @@ func TestRunTurn_ToolUseRejected(t *testing.T) {
 
 	go func() {
 		for i := 0; i < 100; i++ {
-			if waiter.Pending("tu-2") {
-				waiter.Notify("tu-2", Decision{Kind: "reject", Reason: "use sliding window instead"})
+			if waiter.Pending(DecisionKey(sid, "tu-2")) {
+				waiter.Notify(DecisionKey(sid, "tu-2"), Decision{Kind: "reject", Reason: "use sliding window instead"})
 				return
 			}
 			time.Sleep(5 * time.Millisecond)
@@ -344,8 +344,8 @@ func TestRunTurn_DenyRuleBlocksFileEdit(t *testing.T) {
 
 	go func() {
 		for i := 0; i < 100; i++ {
-			if waiter.Pending("tu-3") {
-				waiter.Notify("tu-3", Decision{Kind: "approve"})
+			if waiter.Pending(DecisionKey(sid, "tu-3")) {
+				waiter.Notify(DecisionKey(sid, "tu-3"), Decision{Kind: "approve"})
 				return
 			}
 			time.Sleep(5 * time.Millisecond)
@@ -445,8 +445,8 @@ func TestRunTurn_MaxIterationsTrips(t *testing.T) {
 			default:
 			}
 			for _, id := range []string{"tu-loop-1", "tu-loop-2", "tu-loop-3", "tu-loop-4"} {
-				if waiter.Pending(id) {
-					waiter.Notify(id, Decision{Kind: "approve"})
+				if waiter.Pending(DecisionKey(sid, id)) {
+					waiter.Notify(DecisionKey(sid, id), Decision{Kind: "approve"})
 				}
 			}
 			time.Sleep(2 * time.Millisecond)
@@ -499,9 +499,9 @@ func TestRunTurn_NoOpFileEditBypassed(t *testing.T) {
 	// Guard: if the waiter ever sees a Wait for tu-noop, the test fails.
 	go func() {
 		for i := 0; i < 60; i++ {
-			if waiter.Pending("tu-noop") {
+			if waiter.Pending(DecisionKey(sid, "tu-noop")) {
 				t.Errorf("waiter received tu-noop — short-circuit should have skipped propose+wait")
-				waiter.Notify("tu-noop", Decision{Kind: "approve"})
+				waiter.Notify(DecisionKey(sid, "tu-noop"), Decision{Kind: "approve"})
 				return
 			}
 			time.Sleep(10 * time.Millisecond)
@@ -650,9 +650,9 @@ func TestRunTurn_FileReadAutoApproved(t *testing.T) {
 	// Guard: waiter must never see tu-read because FileRead is auto-approved.
 	go func() {
 		for i := 0; i < 60; i++ {
-			if waiter.Pending("tu-read") {
+			if waiter.Pending(DecisionKey(sid, "tu-read")) {
 				t.Errorf("waiter received tu-read — FileRead should have been auto-approved")
-				waiter.Notify("tu-read", Decision{Kind: "approve"})
+				waiter.Notify(DecisionKey(sid, "tu-read"), Decision{Kind: "approve"})
 				return
 			}
 			time.Sleep(10 * time.Millisecond)

@@ -61,23 +61,15 @@ func GetOfficialReply(deps ReplyDeps) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if u.Role != "admin" {
-			var graded bool
-			if err := deps.Pool.QueryRow(r.Context(), `
-				SELECT EXISTS(
-				  SELECT 1 FROM candidate_sessions
-				  WHERE candidate_id = $1 AND challenge_id = $2 AND graded_at IS NOT NULL
-				)`, u.Handle, slug).Scan(&graded); err != nil {
-				http.Error(w, "gate check: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
-			if !graded {
-				writeJSON(w, http.StatusForbidden, map[string]any{
-					"error":          "must_complete_problem",
-					"challenge_slug": slug,
-				})
-				return
-			}
+		if err := requireGradedOrAdmin(r, deps.Pool, u, slug); errors.Is(err, errNotGraded) {
+			writeJSON(w, http.StatusForbidden, map[string]any{
+				"error":          "must_complete_problem",
+				"challenge_slug": slug,
+			})
+			return
+		} else if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
 		}
 		var (
 			source        string

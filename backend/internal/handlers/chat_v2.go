@@ -21,8 +21,8 @@ type ChatV2Deps struct {
 }
 
 type chatV2Request struct {
-	SessionID string            `json:"session_id"`
-	Message   string            `json:"message"`
+	SessionID string `json:"session_id"`
+	Message   string `json:"message"`
 	// Files is the candidate's current workspace snapshot. When non-empty
 	// it overrides the Agent's cached workspace before RunTurn — the
 	// candidate may have made manual edits in the editor that the
@@ -98,9 +98,7 @@ func PostChatV2(deps ChatV2Deps) http.HandlerFunc {
 		// The frontend is the source of truth — they may have edited the
 		// editor manually since the last tool_result landed.
 		if len(req.Files) > 0 && agent.Workspace != nil {
-			for path, content := range req.Files {
-				agent.Workspace.Files[path] = content
-			}
+			agent.Workspace.Merge(req.Files)
 		}
 
 		// Bump turn counter on the session row up-front so concurrent chats

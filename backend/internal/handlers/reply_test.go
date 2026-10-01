@@ -11,10 +11,11 @@ import (
 
 	"codritium/backend/internal/auth"
 	"codritium/backend/internal/events"
+	"codritium/backend/internal/platform/testutil"
 )
 
 func TestGetMyReplayCombinesMessagesAndEventsInSequence(t *testing.T) {
-	pool := setupSessionsPool(t)
+	pool := testutil.Pool(t)
 	handle := "replay-" + uuid.NewString()
 	sessionID := createSessionFor(t, pool, handle)
 	store := events.NewStore(pool)

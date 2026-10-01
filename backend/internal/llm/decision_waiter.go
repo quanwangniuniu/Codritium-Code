@@ -7,7 +7,16 @@ import (
 	"context"
 	"errors"
 	"sync"
+
+	"github.com/google/uuid"
 )
+
+// DecisionKey scopes a pending decision to one session so tool_use ids from
+// different sessions (or providers that reuse ids) can never collide, and a
+// decision can only reach the session it was proposed in.
+func DecisionKey(sessionID uuid.UUID, toolUseID string) string {
+	return sessionID.String() + "/" + toolUseID
+}
 
 // Decision is the candidate's verdict on one ToolUseProposed.
 type Decision struct {
@@ -35,7 +44,8 @@ func (d Decision) IsValid() bool {
 
 // DecisionWaiter is the rendezvous between the chat goroutine (Wait) and
 // the HTTP handler that receives the candidate's POST /api/decision
-// (Notify). One pending entry per outstanding tool_use_id.
+// (Notify). One pending entry per outstanding key; callers build keys
+// with DecisionKey.
 //
 // v0.8 is single-machine, so the pending map is in-process memory. v1.0
 // will swap this for Redis pub/sub (see HANDOFF §5).

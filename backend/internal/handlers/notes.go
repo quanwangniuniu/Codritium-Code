@@ -19,12 +19,12 @@ type NotesDeps struct {
 }
 
 type noteItem struct {
-	ID                 uuid.UUID  `json:"id"`
-	SessionID          uuid.UUID  `json:"session_id"`
-	Body               string     `json:"body"`
-	SharedToCommentID  *uuid.UUID `json:"shared_to_comment_id,omitempty"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
+	ID                uuid.UUID  `json:"id"`
+	SessionID         uuid.UUID  `json:"session_id"`
+	Body              string     `json:"body"`
+	SharedToCommentID *uuid.UUID `json:"shared_to_comment_id,omitempty"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
 // ListNotes returns every note the caller has attached to the given session.
@@ -232,16 +232,19 @@ func ShareNote(deps NotesDeps) http.HandlerFunc {
 		}
 		if already != nil {
 			writeJSON(w, http.StatusConflict, map[string]any{
-				"error":             "already_shared",
-				"existing_comment":  *already,
+				"error":            "already_shared",
+				"existing_comment": *already,
 			})
 			return
 		}
-		if err := requireGradedOrAdmin(r, deps.Pool, u, challenge); err != nil {
+		if err := requireGradedOrAdmin(r, deps.Pool, u, challenge); errors.Is(err, errNotGraded) {
 			writeJSON(w, http.StatusForbidden, map[string]any{
 				"error":          "must_complete_problem",
 				"challenge_slug": challenge,
 			})
+			return
+		} else if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 

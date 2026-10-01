@@ -46,11 +46,11 @@ func main() {
 	}
 	defer database.Close()
 
-	if err := migrate.Run(ctx, database.Pool, "../migrations", "../seed"); err != nil {
+	if err := migrate.Run(ctx, database.Pool, cfg.Paths.Migrations, cfg.Paths.Seed); err != nil {
 		log.Fatalf("migrate: %v", err)
 	}
 
-	if err := problems.SeedFromDir(ctx, database.Pool, "../seed/problems"); err != nil {
+	if err := problems.SeedFromDir(ctx, database.Pool, cfg.Paths.ProblemsSeed); err != nil {
 		log.Fatalf("seed problems: %v", err)
 	}
 
@@ -82,7 +82,7 @@ func main() {
 	}
 	probDeps := handlers.ProblemDeps{Pool: database.Pool}
 	decisionWaiter := llm.NewDecisionWaiter()
-	decisionDeps := handlers.DecisionDeps{Waiter: decisionWaiter}
+	decisionDeps := handlers.DecisionDeps{Waiter: decisionWaiter, Sessions: handlers.PGSessionOwner{Pool: database.Pool}}
 	eventStore := events.NewStore(database.Pool)
 	eventsDeps := handlers.EventsDeps{Pool: database.Pool, Events: eventStore}
 	textBroadcaster := llm.NewTextBroadcaster()
@@ -102,7 +102,18 @@ func main() {
 		)
 		log.Printf("IDE assistant: ollama model=%s", cfg.OllamaModel)
 	}
-	agentFactory := buildAgentFactory(database, streamClient, eventStore, textBroadcaster, decisionWaiter)
+	sandbox := grader.Sandbox{
+		Python: cfg.Paths.SandboxPython,
+		Script: cfg.Paths.SandboxScript,
+	}
+	agentFactory := buildAgentFactory(
+		database,
+		streamClient,
+		eventStore,
+		textBroadcaster,
+		decisionWaiter,
+		sandbox,
+	)
 	agentRegistry := llm.NewAgentRegistry(agentFactory)
 	chatJailbreak := llm.NewChatJailbreakClassifier()
 	chatV2Deps := handlers.ChatV2Deps{
@@ -130,6 +141,7 @@ func main() {
 		Gemini:       geminiClient,
 		Ollama:       ollamaClient,
 		GraderEngine: cfg.GraderEngine,
+		Sandbox:      sandbox,
 		Agents:       agentRegistry,
 	}
 	commentsDeps := handlers.CommentsDeps{Pool: database.Pool}
@@ -184,6 +196,9 @@ func main() {
 		handlers.WriteUserJSON(w, u)
 	})
 	mux.Handle("GET /api/me", authMiddleware(meHandler))
+	profileDeps := handlers.ProfileDeps{Pool: database.Pool}
+	mux.Handle("PATCH /api/me", authMiddleware(handlers.UpdateMe(profileDeps)))
+	mux.Handle("GET /api/me/profile", authMiddleware(handlers.GetMyProfile(profileDeps)))
 	mux.Handle("POST /api/submissions", authMiddleware(handlers.Submit(subDeps)))
 	mux.Handle("GET /api/submissions/{id}", authMiddleware(handlers.GetSubmission(subDeps)))
 	mux.Handle("DELETE /api/submissions/{id}", authMiddleware(handlers.DeleteSubmission(subDeps)))
@@ -276,7 +291,7 @@ func withCORS(h http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 		}
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		if r.Method == "OPTIONS" {
@@ -301,10 +316,10 @@ func withLogging(h http.Handler) http.Handler {
 // they wrote themselves, and those tests are part of `files`. The sandbox
 // wrapper drops `files` into the workspace then invokes pytest against
 // `testFile` directly.
-type graderSandboxRunner struct{}
+type graderSandboxRunner struct{ sandbox grader.Sandbox }
 
-func (graderSandboxRunner) RunPytest(ctx context.Context, files map[string]string, testFile string) (llm.SandboxResult, error) {
-	out, err := grader.RunPytest(ctx, grader.SandboxInput{
+func (g graderSandboxRunner) RunPytest(ctx context.Context, files map[string]string, testFile string) (llm.SandboxResult, error) {
+	out, err := g.sandbox.RunPytest(ctx, grader.SandboxInput{
 		CandidateFiles:     files,
 		HiddenTestFilename: testFile,
 		TimeoutSec:         60,
@@ -334,7 +349,7 @@ func (graderSandboxRunner) RunPytest(ctx context.Context, files map[string]strin
 // test file path from the problems table; wires the engine-neutral
 // stream client + DecisionWaiter + events store; locks the visible
 // test path via DenyRule.
-func buildAgentFactory(pool *db.DB, stream llm.LLMStreamClient, store *events.Store, text *llm.TextBroadcaster, waiter *llm.DecisionWaiter) llm.AgentFactory {
+func buildAgentFactory(pool *db.DB, stream llm.LLMStreamClient, store *events.Store, text *llm.TextBroadcaster, waiter *llm.DecisionWaiter, sandbox grader.Sandbox) llm.AgentFactory {
 	return func(ctx context.Context, sessionID uuid.UUID, slug string) (*llm.Agent, error) {
 		var readme, hiddenTestFile string
 		var starterJSON []byte
@@ -376,7 +391,7 @@ func buildAgentFactory(pool *db.DB, stream llm.LLMStreamClient, store *events.St
 			Waiter:       waiter,
 			Tools:        llm.NewDefaultRegistry(),
 			Workspace:    &llm.Workspace{Files: files},
-			Sandbox:      graderSandboxRunner{},
+			Sandbox:      graderSandboxRunner{sandbox: sandbox},
 			TmpFS:        tmpFS,
 			SystemPrompt: systemPrompt,
 			Deny: []llm.DenyRule{

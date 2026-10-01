@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -39,9 +38,15 @@ type SandboxOutput struct {
 	Error       string       `json:"error,omitempty"`
 }
 
-// RunPytest invokes the E2B-backed Python wrapper at ../sandbox/run_pytest.py.
-// The Go process must be launched with cwd=backend/, so the sandbox dir is at ../sandbox.
-func RunPytest(ctx context.Context, input SandboxInput) (*SandboxOutput, error) {
+// Sandbox runs candidate code through the E2B-backed Python wrapper
+// (sandbox/run_pytest.py). Paths come from config.Paths.
+type Sandbox struct {
+	Python string // interpreter with the e2b package installed
+	Script string // path to run_pytest.py
+}
+
+// RunPytest invokes the wrapper with input on stdin and parses its JSON.
+func (s Sandbox) RunPytest(ctx context.Context, input SandboxInput) (*SandboxOutput, error) {
 	if input.TimeoutSec == 0 {
 		input.TimeoutSec = 60
 	}
@@ -50,14 +55,7 @@ func RunPytest(ctx context.Context, input SandboxInput) (*SandboxOutput, error) 
 		return nil, err
 	}
 
-	pythonBin, err := filepath.Abs("../sandbox/.venv/bin/python")
-	if err != nil {
-		return nil, err
-	}
-	scriptPath, err := filepath.Abs("../sandbox/run_pytest.py")
-	if err != nil {
-		return nil, err
-	}
+	pythonBin, scriptPath := s.Python, s.Script
 
 	cctx, cancel := context.WithTimeout(ctx, time.Duration(input.TimeoutSec+90)*time.Second)
 	defer cancel()

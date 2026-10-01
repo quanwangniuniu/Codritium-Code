@@ -78,7 +78,7 @@ func TestAgentRegistry_DropCancelsBlockedTurn(t *testing.T) {
 		done <- res
 	}()
 	deadline := time.Now().Add(2 * time.Second)
-	for !waiter.Pending("tu-block") {
+	for !waiter.Pending(DecisionKey(sid, "tu-block")) {
 		if time.Now().After(deadline) {
 			t.Fatal("turn never blocked on the decision")
 		}

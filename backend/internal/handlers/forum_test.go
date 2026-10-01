@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,44 +8,10 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"codritium/backend/internal/auth"
+	"codritium/backend/internal/platform/testutil"
 )
-
-// newForumUser inserts a real users row (forum tables reference users) and
-// removes it — with every forum row it owns, via ON DELETE CASCADE — when
-// the test finishes.
-func newForumUser(t *testing.T, pool *pgxpool.Pool, role string) *auth.User {
-	t.Helper()
-	u := &auth.User{ID: uuid.New(), Role: role}
-	u.Handle = "forumtest_" + u.ID.String()[:8]
-	u.DisplayName = u.Handle
-	if _, err := pool.Exec(context.Background(),
-		`INSERT INTO users (id, handle, display_name, role) VALUES ($1, $2, $3, $4)`,
-		u.ID, u.Handle, u.DisplayName, role); err != nil {
-		t.Fatalf("insert user: %v", err)
-	}
-	t.Cleanup(func() {
-		_, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id = $1`, u.ID)
-	})
-	return u
-}
-
-// forumCall invokes a handler directly. id fills the {id} path value.
-func forumCall(t *testing.T, h http.HandlerFunc, method, target, id string, u *auth.User, body string) *httptest.ResponseRecorder {
-	t.Helper()
-	req := httptest.NewRequest(method, target, strings.NewReader(body))
-	if id != "" {
-		req.SetPathValue("id", id)
-	}
-	if u != nil {
-		req = req.WithContext(auth.WithUser(req.Context(), u))
-	}
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
-	return rr
-}
 
 func decodeForum[T any](t *testing.T, rr *httptest.ResponseRecorder) T {
 	t.Helper()
@@ -55,13 +20,6 @@ func decodeForum[T any](t *testing.T, rr *httptest.ResponseRecorder) T {
 		t.Fatalf("decode: %v; status=%d body=%s", err, rr.Code, rr.Body.String())
 	}
 	return v
-}
-
-func wantStatus(t *testing.T, rr *httptest.ResponseRecorder, want int) {
-	t.Helper()
-	if rr.Code != want {
-		t.Fatalf("status=%d want %d; body=%s", rr.Code, want, rr.Body.String())
-	}
 }
 
 // uniqueTag keeps each test's feed queries scoped to its own posts.
@@ -100,7 +58,7 @@ func TestForum_WritesRequireLogin(t *testing.T) {
 }
 
 func TestForum_CreateValidation(t *testing.T) {
-	pool := setupSessionsPool(t)
+	pool := testutil.Pool(t)
 	deps := ForumDeps{Pool: pool}
 	alice := newForumUser(t, pool, "user")
 	cases := map[string]struct {
@@ -131,7 +89,7 @@ func TestForum_CreateValidation(t *testing.T) {
 }
 
 func TestForum_PostLifecycleAndOwnership(t *testing.T) {
-	pool := setupSessionsPool(t)
+	pool := testutil.Pool(t)
 	deps := ForumDeps{Pool: pool}
 	alice := newForumUser(t, pool, "user")
 	bob := newForumUser(t, pool, "user")
@@ -171,7 +129,7 @@ func TestForum_PostLifecycleAndOwnership(t *testing.T) {
 }
 
 func TestForum_AnonymousHidesAuthor(t *testing.T) {
-	pool := setupSessionsPool(t)
+	pool := testutil.Pool(t)
 	deps := ForumDeps{Pool: pool}
 	alice := newForumUser(t, pool, "user")
 	bob := newForumUser(t, pool, "user")
@@ -217,7 +175,7 @@ func TestForum_AnonymousHidesAuthor(t *testing.T) {
 }
 
 func TestForum_VotesUpdateCounters(t *testing.T) {
-	pool := setupSessionsPool(t)
+	pool := testutil.Pool(t)
 	deps := ForumDeps{Pool: pool}
 	alice := newForumUser(t, pool, "user")
 	bob := newForumUser(t, pool, "user")
@@ -255,7 +213,7 @@ func TestForum_VotesUpdateCounters(t *testing.T) {
 }
 
 func TestForum_CommentsAndReplies(t *testing.T) {
-	pool := setupSessionsPool(t)
+	pool := testutil.Pool(t)
 	deps := ForumDeps{Pool: pool}
 	alice := newForumUser(t, pool, "user")
 	bob := newForumUser(t, pool, "user")
@@ -313,7 +271,7 @@ func TestForum_CommentsAndReplies(t *testing.T) {
 }
 
 func TestForum_FeedFiltersSortAndSearch(t *testing.T) {
-	pool := setupSessionsPool(t)
+	pool := testutil.Pool(t)
 	deps := ForumDeps{Pool: pool}
 	alice := newForumUser(t, pool, "user")
 	bob := newForumUser(t, pool, "user")
@@ -381,7 +339,7 @@ func TestForum_FeedFiltersSortAndSearch(t *testing.T) {
 }
 
 func TestForum_PinIsAdminOnly(t *testing.T) {
-	pool := setupSessionsPool(t)
+	pool := testutil.Pool(t)
 	deps := ForumDeps{Pool: pool}
 	alice := newForumUser(t, pool, "user")
 	admin := newForumUser(t, pool, "admin")
@@ -423,7 +381,7 @@ func TestForumExcerpt(t *testing.T) {
 }
 
 func TestForum_TrendingOnlyReadPosts(t *testing.T) {
-	pool := setupSessionsPool(t)
+	pool := testutil.Pool(t)
 	deps := ForumDeps{Pool: pool}
 	alice := newForumUser(t, pool, "user")
 	bob := newForumUser(t, pool, "user")

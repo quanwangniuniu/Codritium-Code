@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -21,19 +22,19 @@ type CommentsDeps struct {
 }
 
 type commentItem struct {
-	ID             uuid.UUID  `json:"id"`
-	ProblemSlug    string     `json:"problem_slug"`
-	UserID         uuid.UUID  `json:"user_id"`
-	UserHandle     string     `json:"user_handle"`
-	UserDisplay    string     `json:"user_display_name"`
-	UserAvatarURL  string     `json:"user_avatar_url"`
-	UserTier       string     `json:"user_tier"`
-	Body           string     `json:"body"`
-	Upvotes        int        `json:"upvotes"`
-	Downvotes      int        `json:"downvotes"`
-	ParentID       *uuid.UUID `json:"parent_id,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
-	MyVote         int        `json:"my_vote"`
+	ID            uuid.UUID  `json:"id"`
+	ProblemSlug   string     `json:"problem_slug"`
+	UserID        uuid.UUID  `json:"user_id"`
+	UserHandle    string     `json:"user_handle"`
+	UserDisplay   string     `json:"user_display_name"`
+	UserAvatarURL string     `json:"user_avatar_url"`
+	UserTier      string     `json:"user_tier"`
+	Body          string     `json:"body"`
+	Upvotes       int        `json:"upvotes"`
+	Downvotes     int        `json:"downvotes"`
+	ParentID      *uuid.UUID `json:"parent_id,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	MyVote        int        `json:"my_vote"`
 }
 
 // ListComments returns a page of comments for a problem, newest first. The
@@ -52,11 +53,14 @@ func ListComments(deps CommentsDeps) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if err := requireGradedOrAdmin(r, deps.Pool, u, slug); err != nil {
+		if err := requireGradedOrAdmin(r, deps.Pool, u, slug); errors.Is(err, errNotGraded) {
 			writeJSON(w, http.StatusForbidden, map[string]any{
 				"error":          "must_complete_problem",
 				"challenge_slug": slug,
 			})
+			return
+		} else if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 
@@ -154,11 +158,14 @@ func CreateComment(deps CommentsDeps) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if err := requireGradedOrAdmin(r, deps.Pool, u, slug); err != nil {
+		if err := requireGradedOrAdmin(r, deps.Pool, u, slug); errors.Is(err, errNotGraded) {
 			writeJSON(w, http.StatusForbidden, map[string]any{
 				"error":          "must_complete_problem",
 				"challenge_slug": slug,
 			})
+			return
+		} else if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 		var req createCommentRequest
@@ -333,26 +340,37 @@ func DeleteComment(deps CommentsDeps) http.HandlerFunc {
 	}
 }
 
+// errNotGraded means the caller has no graded submission for the problem.
+var errNotGraded = errors.New("not graded")
+
 // requireGradedOrAdmin returns nil if the caller is admin or has at least one
-// graded session on this problem; otherwise returns an error the caller maps
-// to a 403.
+// graded submission for this problem, errNotGraded if not, or a query error.
 func requireGradedOrAdmin(r *http.Request, pool *pgxpool.Pool, u *auth.User, slug string) error {
 	if u.Role == "admin" {
 		return nil
 	}
-	var ok bool
-	if err := pool.QueryRow(r.Context(), `
-		SELECT EXISTS(
-		  SELECT 1 FROM candidate_sessions
-		  WHERE candidate_id = $1 AND challenge_id = $2 AND graded_at IS NOT NULL
-		)`, u.Handle, slug,
-	).Scan(&ok); err != nil {
+	ok, err := hasGradedSubmission(r.Context(), pool, u, slug)
+	if err != nil {
 		return err
 	}
 	if !ok {
-		return errors.New("not graded")
+		return errNotGraded
 	}
 	return nil
+}
+
+// hasGradedSubmission reports whether the user has a graded submission for
+// the problem. Grading marks the submission row itself, so this — not
+// candidate_sessions.graded_at, which nothing sets — is the source of truth.
+func hasGradedSubmission(ctx context.Context, pool *pgxpool.Pool, u *auth.User, slug string) (bool, error) {
+	var ok bool
+	err := pool.QueryRow(ctx, `
+		SELECT EXISTS(
+		  SELECT 1 FROM submissions s JOIN problems p ON p.id = s.problem_id
+		  WHERE s.user_id = $1 AND p.slug = $2 AND s.status = 'graded'
+		)`, u.ID, slug,
+	).Scan(&ok)
+	return ok, err
 }
 
 func voteDeltas(prev, next int) (upDelta, downDelta int) {
