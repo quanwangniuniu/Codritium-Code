@@ -700,6 +700,90 @@ func contains(xs []string, want string) bool {
 	return false
 }
 
+func TestRunTurn_StopsRepeatedIdenticalRead(t *testing.T) {
+	pool := newTestPool(t)
+	sid := newTestSession(t, pool)
+	store := events.NewStore(pool)
+
+	repeatedRead := func(id string) []NormalizedChunk {
+		return []NormalizedChunk{
+			{
+				Kind:        "tool_use_start",
+				ToolUseID:   id,
+				ToolUseName: "FileRead",
+			},
+			{
+				Kind:           "tool_use_input_delta",
+				ToolUseID:      id,
+				InputJSONDelta: `{"path":"answer.py"}`,
+			},
+			{
+				Kind:      "tool_use_stop",
+				ToolUseID: id,
+			},
+			{
+				Kind:       "message_stop",
+				StopReason: "tool_use",
+			},
+		}
+	}
+
+	stream := &scriptedStream{
+		scripts: [][]NormalizedChunk{
+			repeatedRead("tu-read-1"),
+			repeatedRead("tu-read-2"),
+			repeatedRead("tu-read-3"),
+			repeatedRead("tu-read-4"),
+		},
+	}
+
+	agent := &Agent{
+		Stream: stream,
+		Events: store,
+		Waiter: NewDecisionWaiter(),
+		Tools:  NewDefaultRegistry(),
+		Workspace: &Workspace{
+			Files: map[string]string{
+				"answer.py": "print('hello')",
+			},
+		},
+	}
+
+	result, err := agent.RunTurn(
+		context.Background(),
+		sid,
+		1,
+		"inspect the file",
+	)
+	if err != nil {
+		t.Fatalf("RunTurn: %v", err)
+	}
+	if result.Reason != "max_turns" {
+		t.Fatalf("reason=%q want max_turns", result.Reason)
+	}
+	if result.Iterations != 4 {
+		t.Fatalf("iterations=%d want 4", result.Iterations)
+	}
+
+	var proposals int
+	err = pool.QueryRow(
+		context.Background(),
+		`SELECT count(*) FROM session_events
+		 WHERE session_id=$1 AND kind='tool_use_proposed'`,
+		sid,
+	).Scan(&proposals)
+	if err != nil {
+		t.Fatalf("count proposals: %v", err)
+	}
+	if proposals != maxRepeatedAutoToolCalls {
+		t.Fatalf(
+			"proposals=%d want %d",
+			proposals,
+			maxRepeatedAutoToolCalls,
+		)
+	}
+}
+
 // silence unused-import warnings on errors package without separate file
 var _ = errors.New
 
@@ -799,4 +883,44 @@ func TestAnthropicBlocks(t *testing.T) {
 	if got[2]["type"] != "tool_result" || got[2]["tool_use_id"] != "tu-1" || got[2]["content"] != "ok" || got[2]["is_error"] != true {
 		t.Fatalf("tool_result block = %v", got[2])
 	}
+}
+
+func TestSummarizeInput_FileEditUsesNewText(t *testing.T) {
+	got := summarizeInput("FileEdit", map[string]any{
+		"path":     "answer.py",
+		"old_text": "before",
+		"new_text": "after",
+	})
+
+	if got != "Edit answer.py (5 bytes)" {
+		t.Fatalf("summary=%q", got)
+	}
+}
+
+func TestNormalizeFileEditNewText(t *testing.T) {
+	t.Run("converts multiline escaped text", func(t *testing.T) {
+		input := `first line\nsecond line\nthird line`
+		want := "first line\nsecond line\nthird line"
+
+		if got := normalizeFileEditNewText(input); got != want {
+			t.Fatalf("normalizeFileEditNewText()=%q want %q", got, want)
+		}
+	})
+
+	t.Run("converts escaped newline before indentation", func(t *testing.T) {
+		input := `before\n        if value:`
+		want := "before\n        if value:"
+
+		if got := normalizeFileEditNewText(input); got != want {
+			t.Fatalf("normalizeFileEditNewText()=%q want %q", got, want)
+		}
+	})
+
+	t.Run("preserves escaped newline inside one-line code", func(t *testing.T) {
+		input := `print("\n")`
+
+		if got := normalizeFileEditNewText(input); got != input {
+			t.Fatalf("normalizeFileEditNewText()=%q want unchanged %q", got, input)
+		}
+	})
 }

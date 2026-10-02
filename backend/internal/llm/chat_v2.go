@@ -84,7 +84,10 @@ type RunResult struct {
 	Usage      events.TokenUsage
 }
 
-const defaultMaxIterations = 50
+const (
+	defaultMaxIterations     = 20
+	maxRepeatedAutoToolCalls = 3
+)
 
 // RunTurn consumes one user message and runs the agent until either the
 // model stops asking for tools (normal exit) or a guard / failure trips
@@ -116,6 +119,9 @@ func (a *Agent) RunTurn(ctx context.Context, sessionID uuid.UUID, turnIndex int,
 
 	usage := events.TokenUsage{}
 	iter := 0
+
+	lastAutoToolKey := ""
+	repeatedAutoToolCalls := 0
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -154,8 +160,58 @@ func (a *Agent) RunTurn(ctx context.Context, sessionID uuid.UUID, turnIndex int,
 
 		// 4) each tool_use: propose → wait decision → execute (unless rejected)
 		for _, tu := range pending {
+			if isReadClassTool(tu.Name) {
+				key := tu.Name + ":" + hashFor(tu.Input)
+				if key == lastAutoToolKey {
+					repeatedAutoToolCalls++
+				} else {
+					lastAutoToolKey = key
+					repeatedAutoToolCalls = 1
+				}
+
+				if repeatedAutoToolCalls > maxRepeatedAutoToolCalls {
+					output, _ := json.Marshal(map[string]any{
+						"error": "repeated identical read blocked",
+						"detail": fmt.Sprintf(
+							"%s was called repeatedly with the same input; use the existing result, choose a different tool, or finish the task",
+							tu.Name,
+						),
+					})
+
+					a.recordMessage(ctx, sessionID, Message{
+						Role: "tool",
+						Content: []ContentBlock{{
+							Kind: "tool_result",
+							ToolResult: &ContentToolResult{
+								ToolUseID: tu.ID,
+								Output:    string(output),
+								IsError:   true,
+							},
+						}},
+					})
+
+					return a.completeMaxTurns(
+						ctx,
+						sessionID,
+						turnIndex,
+						iter,
+						usage,
+					)
+				}
+			} else {
+				lastAutoToolKey = ""
+				repeatedAutoToolCalls = 0
+			}
+
 			if err := a.handleToolUse(ctx, sessionID, turnIndex, tu); err != nil {
-				return a.completeAborted(ctx, sessionID, turnIndex, iter, usage, "tool_use: "+err.Error())
+				return a.completeAborted(
+					ctx,
+					sessionID,
+					turnIndex,
+					iter,
+					usage,
+					"tool_use: "+err.Error(),
+				)
 			}
 		}
 		// loop back: model will see new tool_result messages on next iteration
@@ -300,6 +356,14 @@ func (a *Agent) handleToolUse(ctx context.Context, sessionID uuid.UUID, turnInde
 		path, pathOK := tu.Input["path"].(string)
 		legacyContent, legacyOK := tu.Input["content"].(string)
 		newText, newTextOK := tu.Input["new_text"].(string)
+
+		if newTextOK {
+			normalizedText := normalizeFileEditNewText(newText)
+			if normalizedText != newText {
+				newText = normalizedText
+				tu.Input["new_text"] = normalizedText
+			}
+		}
 
 		recordInvalidEdit := func(detail string) {
 			output, _ := json.Marshal(map[string]string{
@@ -551,6 +615,36 @@ func addUsage(a, b events.TokenUsage) events.TokenUsage {
 
 // ─── helpers ────────────────────────────────────────────────────────────
 
+// ─── helpers ────────────────────────────────────────────────────────────
+
+func normalizeFileEditNewText(text string) string {
+	// Real multiline content needs no conversion.
+	if strings.Contains(text, "\n") {
+		return text
+	}
+
+	const escapedNewline = `\n`
+	if !strings.Contains(text, escapedNewline) {
+		return text
+	}
+
+	// Multiple escaped newlines normally mean Qwen double-escaped a
+	// multiline file. A single escaped newline followed by indentation
+	// normally means a multiline code replacement.
+	shouldNormalize := strings.Count(text, escapedNewline) >= 2
+	if !shouldNormalize {
+		_, after, found := strings.Cut(text, escapedNewline)
+		shouldNormalize = found &&
+			(strings.HasPrefix(after, " ") || strings.HasPrefix(after, "\t"))
+	}
+
+	if !shouldNormalize {
+		return text
+	}
+
+	return strings.ReplaceAll(text, escapedNewline, "\n")
+}
+
 const excerptCap = 200
 
 func excerpt(s string) string {
@@ -580,6 +674,9 @@ func summarizeInput(toolName string, input map[string]any) string {
 	case "FileEdit":
 		path, _ := input["path"].(string)
 		content, _ := input["content"].(string)
+		if newText, ok := input["new_text"].(string); ok {
+			content = newText
+		}
 		return fmt.Sprintf("Edit %s (%d bytes)", path, len(content))
 	case "FileRead":
 		path, _ := input["path"].(string)

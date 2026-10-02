@@ -415,8 +415,10 @@ func buildSystemPrompt(readme string, files map[string]string, hiddenTest string
 		"1. Inspect the relevant files with FileRead, Grep, or Glob before editing.\n" +
 		"2. Use FileEdit to make focused changes directly in the workspace.\n" +
 		"3. After an approved edit, run the relevant tests when possible.\n" +
-		"4. Read every tool result and continue fixing or testing until the task is complete.\n" +
-		"5. When the work is complete, give a short summary of the changes and test results.\n\n" +
+		"4. Read every tool result before choosing the next action.\n" +
+		"5. If a test fails, use its error output to make the next focused change, then rerun the test.\n" +
+		"6. If a test passes, do not reread unchanged files or call more tools unnecessarily. Immediately give a short summary of the changes and test result.\n" +
+		"7. Never repeat the same FileRead, Grep, or Glob call with identical arguments unless the workspace has changed since the previous call.\n\n" +
 		"Do not paste large replacement files into the chat response. Use FileEdit for code changes. " +
 		"Do not ask the user whether you should read files, edit code, or run tests. Call the appropriate tool directly; " +
 		"the application will request approval automatically when required. " +

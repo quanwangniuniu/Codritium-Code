@@ -29,6 +29,8 @@ func NewOllamaStream(baseURL, model string, timeout time.Duration) *OllamaStream
 	}
 }
 
+const ollamaContextWindow = 8192
+
 type ollamaStreamRequest struct {
 	Model    string                `json:"model"`
 	Messages []ollamaStreamMessage `json:"messages"`
@@ -41,6 +43,7 @@ type ollamaStreamRequest struct {
 type ollamaStreamOptions struct {
 	Temperature float64 `json:"temperature"`
 	NumPredict  int     `json:"num_predict,omitempty"`
+	NumCtx      int     `json:"num_ctx,omitempty"`
 }
 
 type ollamaStreamMessage struct {
@@ -101,6 +104,7 @@ func (o *OllamaStream) StreamTurn(ctx context.Context, req TurnRequest) (StreamR
 		Options: ollamaStreamOptions{
 			Temperature: 0.2,
 			NumPredict:  req.MaxOutputTokens,
+			NumCtx:      ollamaContextWindow,
 		},
 	}
 

@@ -43,6 +43,14 @@ func TestOllamaStreamStreamsTextAndUsage(t *testing.T) {
 			)
 		}
 
+		if request.Options.NumCtx != ollamaContextWindow {
+			t.Errorf(
+				"num_ctx = %d, want %d",
+				request.Options.NumCtx,
+				ollamaContextWindow,
+			)
+		}
+
 		if len(request.Messages) != 2 {
 			t.Errorf("messages = %d, want 2", len(request.Messages))
 		} else {

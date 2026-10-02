@@ -2,11 +2,13 @@
 
 import { PanelLayout, type PaneDescriptor } from "./PanelLayout";
 import { EditorPane } from "./EditorPane";
-import type { EditorPaneState } from "@/features/workspace/types";
+import type { EditorDiffPreview, EditorPaneState, } from "@/features/workspace/types";
 
 export interface EditorAreaSplitProps {
   panes: EditorPaneState[];
   fileContents: Record<string, string>;
+  diffPreview?: EditorDiffPreview | null;
+  onDiffPreviewChange?: (toolUseId: string, content: string) => void;
   readmeMD?: string;
   readmeFloating?: boolean;
   onToggleReadmeFloat?: () => void;
@@ -22,6 +24,8 @@ export interface EditorAreaSplitProps {
 export function EditorAreaSplit({
   panes,
   fileContents,
+  diffPreview,
+  onDiffPreviewChange,
   readmeMD,
   readmeFloating,
   onToggleReadmeFloat,
@@ -44,6 +48,8 @@ export function EditorAreaSplit({
         tabs={pane.tabs}
         activeTab={pane.activeTab}
         fileContents={fileContents}
+        diffPreview={diffPreview}
+        onDiffPreviewChange={onDiffPreviewChange}
         readmeMD={readmeMD}
         readmeFloating={readmeFloating}
         onToggleReadmeFloat={onToggleReadmeFloat}
