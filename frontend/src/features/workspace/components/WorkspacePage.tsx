@@ -97,11 +97,11 @@ export function WorkspacePage() {
 
   const diffPreview = previewPatch
     ? {
-      toolUseId: previewPatch.toolUseId,
-      path: previewPatch.path!,
-      original: previewPatch.oldContent!,
-      modified: previewPatch.newContent!,
-    }
+        toolUseId: previewPatch.toolUseId,
+        path: previewPatch.path!,
+        original: previewPatch.oldContent!,
+        modified: previewPatch.newContent!,
+      }
     : null;
 
   const { submit, submitting } = useSubmitSolution({

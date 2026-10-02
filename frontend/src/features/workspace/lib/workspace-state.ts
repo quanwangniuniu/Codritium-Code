@@ -12,7 +12,10 @@ import type {
 
 // Sessions persisted before split panes existed only carry openTabs /
 // activeTab; treat them as a single "main" pane.
-export function legacyToPanes(openTabs: OpenTab[], activeTab: string | null): EditorPaneState[] {
+export function legacyToPanes(
+  openTabs: OpenTab[],
+  activeTab: string | null,
+): EditorPaneState[] {
   return [{ id: "main", tabs: openTabs, activeTab }];
 }
 
@@ -59,18 +62,14 @@ export function patchFromProposal(
   const summary = String(env.payload.input_summary ?? "");
   const rawInput = env.payload.input;
   const input =
-    rawInput &&
-      typeof rawInput === "object" &&
-      !Array.isArray(rawInput)
+    rawInput && typeof rawInput === "object" && !Array.isArray(rawInput)
       ? (rawInput as Record<string, unknown>)
       : {};
 
   const inputPath =
-    typeof input.path === "string" && input.path
-      ? input.path
-      : null;
+    typeof input.path === "string" && input.path ? input.path : null;
   const path = inputPath ?? parseToolPath(summary);
-  const oldContent = path ? fileContents[path] ?? "" : undefined;
+  const oldContent = path ? (fileContents[path] ?? "") : undefined;
 
   let newContent = oldContent;
 
@@ -79,14 +78,10 @@ export function patchFromProposal(
       // Backwards compatibility for stored full-file FileEdit calls.
       newContent = input.content;
     } else if (typeof input.new_text === "string") {
-      const oldText =
-        typeof input.old_text === "string" ? input.old_text : "";
+      const oldText = typeof input.old_text === "string" ? input.old_text : "";
 
       if (oldText) {
-        newContent = (oldContent ?? "").replace(
-          oldText,
-          input.new_text,
-        );
+        newContent = (oldContent ?? "").replace(oldText, input.new_text);
       } else {
         // An empty old_text means that FileEdit is creating a new file.
         newContent = input.new_text;
@@ -115,13 +110,12 @@ export function markPatchResolved(
   approvedChange?: { path: string; content: string },
 ): ChatMessage[] {
   return messages.map((message) =>
-    message.kind === "patch" &&
-      message.pending.toolUseId === toolUseId
+    message.kind === "patch" && message.pending.toolUseId === toolUseId
       ? {
-        ...message,
-        resolved: { kind },
-        ...(approvedChange ? { approvedChange } : {}),
-      }
+          ...message,
+          resolved: { kind },
+          ...(approvedChange ? { approvedChange } : {}),
+        }
       : message,
   );
 }
@@ -137,12 +131,11 @@ export function attachToolResult(
   },
 ): ChatMessage[] {
   return messages.map((message) =>
-    message.kind === "patch" &&
-      message.pending.toolUseId === toolUseId
+    message.kind === "patch" && message.pending.toolUseId === toolUseId
       ? {
-        ...message,
-        toolResult: result,
-      }
+          ...message,
+          toolResult: result,
+        }
       : message,
   );
 }
@@ -158,16 +151,11 @@ export function applyToolResult(
     durationMs?: number;
   },
 ): ProblemSession {
-  const messages = attachToolResult(
-    session.messages,
-    toolUseId,
-    result,
-  );
+  const messages = attachToolResult(session.messages, toolUseId, result);
 
   const patchMessage = messages.find(
     (message) =>
-      message.kind === "patch" &&
-      message.pending.toolUseId === toolUseId,
+      message.kind === "patch" && message.pending.toolUseId === toolUseId,
   );
 
   const nextSession = {
@@ -195,7 +183,9 @@ export function applyToolResult(
 export function updateTextMessage(
   messages: ChatMessage[],
   id: string,
-  fn: (m: Exclude<ChatMessage, { kind: "patch" }>) => Exclude<ChatMessage, { kind: "patch" }>,
+  fn: (
+    m: Exclude<ChatMessage, { kind: "patch" }>,
+  ) => Exclude<ChatMessage, { kind: "patch" }>,
 ): ChatMessage[] {
   return messages.map((m) => (m.kind !== "patch" && m.id === id ? fn(m) : m));
 }

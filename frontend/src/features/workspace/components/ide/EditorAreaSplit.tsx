@@ -2,7 +2,10 @@
 
 import { PanelLayout, type PaneDescriptor } from "./PanelLayout";
 import { EditorPane } from "./EditorPane";
-import type { EditorDiffPreview, EditorPaneState, } from "@/features/workspace/types";
+import type {
+  EditorDiffPreview,
+  EditorPaneState,
+} from "@/features/workspace/types";
 
 export interface EditorAreaSplitProps {
   panes: EditorPaneState[];
@@ -55,9 +58,7 @@ export function EditorAreaSplit({
         onToggleReadmeFloat={onToggleReadmeFloat}
         onActivateTab={(name) => onActivateTab(pane.id, name)}
         onCloseTab={(name) => onCloseTab(pane.id, name)}
-        onContentChange={(name, value) =>
-          onContentChange(pane.id, name, value)
-        }
+        onContentChange={(name, value) => onContentChange(pane.id, name, value)}
         onSplitRight={() => onSplitFrom(pane.id)}
         onClosePane={panes.length > 1 ? () => onClosePane(pane.id) : undefined}
         canSplit={canSplit}

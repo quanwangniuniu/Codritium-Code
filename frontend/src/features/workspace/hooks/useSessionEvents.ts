@@ -2,8 +2,17 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { workspaceApi } from "@/features/workspace/api";
-import { applyToolResult, markPatchResolved, patchFromProposal, updateTextMessage, } from "@/features/workspace/lib/workspace-state";
-import type { ChatMessage, PendingPatch, StreamEnvelope } from "@/features/workspace/types";
+import {
+  applyToolResult,
+  markPatchResolved,
+  patchFromProposal,
+  updateTextMessage,
+} from "@/features/workspace/lib/workspace-state";
+import type {
+  ChatMessage,
+  PendingPatch,
+  StreamEnvelope,
+} from "@/features/workspace/types";
 import { t } from "@/shared/i18n";
 import { toast } from "@/shared/lib/toast";
 import type { SetSessionFn } from "./useProblemSession";
@@ -28,7 +37,9 @@ export function useSessionEvents({
   onDecided,
 }: SessionEventsOptions) {
   const [busy, setBusy] = useState(false);
-  const [streamingAssistantId, setStreamingAssistantId] = useState<string | null>(null);
+  const [streamingAssistantId, setStreamingAssistantId] = useState<
+    string | null
+  >(null);
 
   const onEnvelope = useCallback(
     (env: StreamEnvelope) => {
@@ -63,9 +74,7 @@ export function useSessionEvents({
             durationMs,
           };
 
-          setSession((prev) =>
-            applyToolResult(prev, toolUseId, result),
-          );
+          setSession((prev) => applyToolResult(prev, toolUseId, result));
           break;
         }
         case "candidate_approved":
@@ -81,11 +90,7 @@ export function useSessionEvents({
           onDecided(id);
           setSession((prev) => ({
             ...prev,
-            messages: markPatchResolved(
-              prev.messages,
-              id,
-              decisionKind,
-            ),
+            messages: markPatchResolved(prev.messages, id, decisionKind),
           }));
           break;
         }
@@ -93,10 +98,14 @@ export function useSessionEvents({
           if (streamingAssistantId) {
             setSession((prev) => ({
               ...prev,
-              messages: updateTextMessage(prev.messages, streamingAssistantId, (m) => ({
-                ...m,
-                streaming: false,
-              })),
+              messages: updateTextMessage(
+                prev.messages,
+                streamingAssistantId,
+                (m) => ({
+                  ...m,
+                  streaming: false,
+                }),
+              ),
             }));
             setStreamingAssistantId(null);
           }
@@ -113,16 +122,23 @@ export function useSessionEvents({
       if (!streamingAssistantId) return;
       setSession((prev) => ({
         ...prev,
-        messages: updateTextMessage(prev.messages, streamingAssistantId, (m) => ({
-          ...m,
-          content: m.content + delta,
-        })),
+        messages: updateTextMessage(
+          prev.messages,
+          streamingAssistantId,
+          (m) => ({
+            ...m,
+            content: m.content + delta,
+          }),
+        ),
       }));
     },
     [streamingAssistantId, setSession],
   );
 
-  const streamOpts = useMemo(() => ({ onEnvelope, onTextDelta }), [onEnvelope, onTextDelta]);
+  const streamOpts = useMemo(
+    () => ({ onEnvelope, onTextDelta }),
+    [onEnvelope, onTextDelta],
+  );
   useSessionStream(sessionId, streamOpts);
 
   const send = async (text: string) => {
@@ -130,10 +146,22 @@ export function useSessionEvents({
       toast.warn("Session not ready yet. Try again in a moment.");
       return;
     }
-    const userMsg: ChatMessage = { id: `u-${Date.now()}`, role: "user", content: text };
+    const userMsg: ChatMessage = {
+      id: `u-${Date.now()}`,
+      role: "user",
+      content: text,
+    };
     const assistantId = `a-${Date.now()}`;
-    const assistantMsg: ChatMessage = { id: assistantId, role: "assistant", content: "", streaming: true };
-    setSession((prev) => ({ ...prev, messages: [...prev.messages, userMsg, assistantMsg] }));
+    const assistantMsg: ChatMessage = {
+      id: assistantId,
+      role: "assistant",
+      content: "",
+      streaming: true,
+    };
+    setSession((prev) => ({
+      ...prev,
+      messages: [...prev.messages, userMsg, assistantMsg],
+    }));
     setStreamingAssistantId(assistantId);
     setBusy(true);
     try {

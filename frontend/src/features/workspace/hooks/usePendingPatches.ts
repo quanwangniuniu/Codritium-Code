@@ -61,9 +61,9 @@ export function usePendingPatches(setSession: SetSessionFn) {
       const approvedChange =
         kind !== "reject" && result?.path && result.content !== undefined
           ? {
-            path: result.path,
-            content: result.content,
-          }
+              path: result.path,
+              content: result.content,
+            }
           : undefined;
 
       setSession((prev) => {

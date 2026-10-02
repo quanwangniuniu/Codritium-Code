@@ -7,7 +7,7 @@ import { IDEPane } from "@/shared/editor/IDEPane";
 import { useMonacoTheme } from "@/shared/editor/useMonacoTheme";
 import { languageForFile } from "@/shared/editor/language";
 import { ReadmeTab } from "@/features/workspace/components/ReadmeTab";
-import type { EditorDiffPreview, OpenTab, } from "@/features/workspace/types";
+import type { EditorDiffPreview, OpenTab } from "@/features/workspace/types";
 
 export const README_TAB = "README.md";
 
@@ -49,8 +49,9 @@ export function EditorPane({
   const monacoTheme = useMonacoTheme();
   const hasActive = activeTab !== null;
   const isReadme = activeTab === README_TAB;
-  const activeContent = activeTab ? fileContents[activeTab] ?? "" : "";
-  const activeDiff = activeTab && diffPreview?.path === activeTab ? diffPreview : null;
+  const activeContent = activeTab ? (fileContents[activeTab] ?? "") : "";
+  const activeDiff =
+    activeTab && diffPreview?.path === activeTab ? diffPreview : null;
 
   return (
     <section
