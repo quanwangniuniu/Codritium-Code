@@ -60,7 +60,7 @@ func Load() (*Config, error) {
 	c := &Config{
 		Env:                    getenv("ENV", "dev"),
 		Port:                   getenv("PORT", "8080"),
-		DatabaseURL:            getenv("DATABASE_URL", "postgres://codritium:codritium@localhost:5434/codritium?sslmode=disable"),
+		DatabaseURL:            getenv("DATABASE_URL", "postgres://codritium:codritium@localhost:5432/codritium?sslmode=disable"),
 		AnthropicAPIKey:        os.Getenv("ANTHROPIC_API_KEY"),
 		GoogleAPIKey:           os.Getenv("GOOGLE_API_KEY"),
 		E2BAPIKey:              os.Getenv("E2B_API_KEY"),

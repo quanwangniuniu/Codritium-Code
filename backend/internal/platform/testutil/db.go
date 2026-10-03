@@ -18,7 +18,7 @@ import (
 
 // DefaultTestDSN is a dedicated database next to the dev one, so tests
 // never touch (or migrate) the database a running dev server uses.
-const DefaultTestDSN = "postgres://codritium:codritium@localhost:5434/codritium_test?sslmode=disable"
+const DefaultTestDSN = "postgres://codritium:codritium@localhost:5432/codritium_test?sslmode=disable"
 
 // openTestDB connects to TEST_DATABASE_URL (or DefaultTestDSN), creating
 // the database if needed, then applies migrations and the problem seed.

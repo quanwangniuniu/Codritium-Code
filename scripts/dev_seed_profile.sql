@@ -1,8 +1,8 @@
 -- DEV ONLY: fills one account with a year of sample practice activity so the
 -- profile page has something to render. Never run against production.
 --
---   docker exec -i codritium_postgres psql -U codritium -d codritium \
---     -v email=you@example.com < scripts/dev_seed_profile.sql
+--   psql -h localhost -U codritium -d codritium \
+--     -v email=you@example.com -f scripts/dev_seed_profile.sql
 --
 -- Re-running adds more rows. To undo, delete the account's submissions,
 -- forum_posts, and comments.
