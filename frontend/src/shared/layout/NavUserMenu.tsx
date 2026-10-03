@@ -5,19 +5,20 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronDown, UserRound, Settings, CreditCard, LogOut } from "lucide-react";
 import { authApi } from "@/features/auth/api";
-import { initialOf } from "@/shared/format";
+import { UserAvatar } from "@/shared/avatar/UserAvatar";
 import { t } from "@/shared/i18n";
 import { useLocale } from "@/shared/i18n/client";
 
 interface NavUserMenuProps {
   displayName: string;
+  handle: string;
   avatarUrl?: string;
 }
 
 // Avatar + dropdown for the website nav (Profile / Settings / Plans / Logout).
 // Client component: the dropdown is interactive and the logout call runs in the
 // browser so the session cookie clears on the backend before we redirect.
-export function NavUserMenu({ displayName, avatarUrl }: NavUserMenuProps) {
+export function NavUserMenu({ displayName, handle, avatarUrl }: NavUserMenuProps) {
   useLocale();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -46,8 +47,6 @@ export function NavUserMenu({ displayName, avatarUrl }: NavUserMenuProps) {
     router.refresh();
   }
 
-  const initial = initialOf(displayName);
-
   const items = [
     { label: t("nav_profile"), href: "/profile", icon: UserRound },
     { label: t("settings_link"), href: "/settings", icon: Settings },
@@ -64,14 +63,7 @@ export function NavUserMenu({ displayName, avatarUrl }: NavUserMenuProps) {
         aria-label={displayName}
         className="flex items-center gap-1 rounded-full pl-0.5 pr-1.5 py-0.5 transition-colors hover:bg-surface-2"
       >
-        <span className="grid h-7 w-7 place-items-center overflow-hidden rounded-full bg-surface-2 text-xs font-semibold text-muted">
-          {avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
-          ) : (
-            initial
-          )}
-        </span>
+        <UserAvatar url={avatarUrl} seed={handle} size={28} />
         <ChevronDown
           size={14}
           strokeWidth={2}

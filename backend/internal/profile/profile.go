@@ -45,6 +45,10 @@ type profileUser struct {
 	AvatarURL   string    `json:"avatar_url"`
 	AvatarColor string    `json:"avatar_color"`
 	MemberSince time.Time `json:"member_since"`
+	WebsiteURL  string    `json:"website_url"`
+	GithubURL   string    `json:"github_url"`
+	LinkedinURL string    `json:"linkedin_url"`
+	XURL        string    `json:"x_url"`
 }
 
 type solvedBucket struct {
@@ -163,8 +167,14 @@ func buildProfile(ctx context.Context, pool *pgxpool.Pool, u *auth.User, now tim
 		SolvedProblems:    []profileSolvedProblem{},
 		RecentPosts:       []profilePost{},
 	}
-	if err := pool.QueryRow(ctx, `SELECT COALESCE(created_at, now()) FROM users WHERE id = $1`, u.ID).
-		Scan(&p.User.MemberSince); err != nil {
+	// Links are public profile data; gender and birthday are deliberately not
+	// part of this read model.
+	if err := pool.QueryRow(ctx, `
+		SELECT COALESCE(created_at, now()), COALESCE(website_url, ''), COALESCE(github_url, ''),
+		       COALESCE(linkedin_url, ''), COALESCE(x_url, '')
+		FROM users WHERE id = $1`, u.ID).
+		Scan(&p.User.MemberSince, &p.User.WebsiteURL, &p.User.GithubURL,
+			&p.User.LinkedinURL, &p.User.XURL); err != nil {
 		return nil, err
 	}
 	steps := []func() error{

@@ -22,6 +22,10 @@ export interface ProfileData {
     avatar_url: string;
     avatar_color: string;
     member_since: string;
+    website_url: string;
+    github_url: string;
+    linkedin_url: string;
+    x_url: string;
   };
   solved: {
     solved: number;
