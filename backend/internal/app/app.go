@@ -11,8 +11,6 @@ import (
 	"net/http"
 	"time"
 
-	geminillm "codritium/backend/internal/llm/gemini"
-
 	"github.com/google/uuid"
 	"google.golang.org/genai"
 
@@ -115,28 +113,57 @@ func (a *App) build(ctx context.Context) error {
 	}
 	a.grading = &grading.Service{Pool: pool, Sandbox: sandbox, Engine: engine}
 
-	// The chat agent exists only when a chat engine is configured.
+	// The coding agent uses the configured local Ollama model. When chat is
+	// disabled, the agent routes remain available but return 503.
 	var agents *llm.AgentRegistry
-	if cfg.ChatEngine == "gemini" {
-		if gemini == nil {
-			return fmt.Errorf("CHAT_ENGINE=gemini needs GOOGLE_API_KEY")
-		}
+	if cfg.ChatEngine == "ollama" {
+		stream := llm.NewOllamaStream(
+			cfg.OllamaBaseURL,
+			cfg.OllamaModel,
+			time.Duration(cfg.OllamaTimeoutSec)*time.Second,
+		)
+
 		tools := llm.NewDefaultRegistry()
 		if cfg.AgentHostCommands {
 			log.Printf("WARNING: AGENT_HOST_COMMANDS=true — the agent can run shell commands on this host")
 			tools = tools.WithHostCommands()
 		}
-		agents = llm.NewAgentRegistry(agent.NewFactory(problemStore, geminillm.New(gemini), eventStore, text, waiter, sandbox, tools))
+
+		agents = llm.NewAgentRegistry(
+			agent.NewFactory(
+				problemStore,
+				stream,
+				eventStore,
+				text,
+				waiter,
+				sandbox,
+				tools,
+			),
+		)
 	}
 
-	// The tutor needs Gemini; without it the tips endpoints answer 503.
-	tipsHandler := tips.Handler{Pool: pool, Filter: tips.NewDefaultFilter()}
-	if gemini != nil {
-		tipsHandler.Agent = tips.New(gemini, "")
-		tipsHandler.Filter.Classifier = tips.NewGeminiClassifier(gemini, "")
+	// The tutor and its safety classifier use the configured local Ollama model.
+	tipsHandler := tips.Handler{
+		Pool:   pool,
+		Filter: tips.NewDefaultFilter(),
+	}
+	if cfg.ChatEngine == "ollama" {
+		tutorStream := llm.NewOllamaStream(
+			cfg.OllamaBaseURL,
+			cfg.OllamaModel,
+			time.Duration(cfg.OllamaTimeoutSec)*time.Second,
+		)
+		tipsHandler.Agent = tips.New(tutorStream, cfg.OllamaModel)
+		tipsHandler.Filter.Classifier = tips.NewOllamaClassifier(tutorStream)
 	}
 
-	log.Printf("startup: env=%s chat=%s grader=%s tips=%v", cfg.Env, cfg.ChatEngine, engine.Name(), gemini != nil)
+	log.Printf(
+		"startup: env=%s chat=%s grader=%s tips=%v",
+		cfg.Env,
+		cfg.ChatEngine,
+		engine.Name(),
+		tipsHandler.Agent != nil,
+	)
 
 	modules := []httpx.Module{
 		authRoutes(cfg, a.db),

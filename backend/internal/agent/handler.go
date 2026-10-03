@@ -26,7 +26,7 @@ type Handler struct {
 }
 
 func (h Handler) Routes(rt *httpx.Router) {
-	rt.Handle("POST /api/chat/v2", h.chat)
+	rt.Handle("POST /api/agent/chat", h.chat)
 	rt.Handle("POST /api/decision", h.postDecision)
 	rt.Handle("POST /api/events", h.postEvent)
 	rt.Handle("GET /api/sessions/{id}/stream", h.sessionStream)
@@ -38,5 +38,5 @@ func (h Handler) chat(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusServiceUnavailable, "chat_disabled", "The AI chat is turned off on this server.")
 		return
 	}
-	h.postChatV2(w, r)
+	h.postAgentChat(w, r)
 }

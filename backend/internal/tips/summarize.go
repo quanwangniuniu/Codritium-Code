@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// SummarizeSessionEvents reads the chat_v2 event stream for a session and
+// SummarizeSessionEvents reads the agent chat event stream for a session and
 // returns a short markdown digest the tips-agent can fold into its system
 // prompt. The summary is rule-based — no LLM call — and is intentionally
 // coarse (counts, not transcripts) so it stays cheap and safe to embed in
@@ -30,26 +30,26 @@ func SummarizeSessionEvents(ctx context.Context, pool *pgxpool.Pool, sessionID u
 	defer rows.Close()
 
 	var (
-		toolUses              int
-		reads                 int
-		edits                 int
-		runTests              int
-		grepGlobCmd           int
-		approves              int
-		modifies              int
-		rejects               int
-		pushbacks             int
-		reverts               int
-		testRuns              int
-		candidateRanTests     int
-		agentRanTests         int
-		lastTestPassed        int
-		lastTestFailed        int
-		hasTestRun            bool
-		planEntered           int
-		planExited            int
-		selfCheckArtifacts    int
-		turnCount             int
+		toolUses           int
+		reads              int
+		edits              int
+		runTests           int
+		grepGlobCmd        int
+		approves           int
+		modifies           int
+		rejects            int
+		pushbacks          int
+		reverts            int
+		testRuns           int
+		candidateRanTests  int
+		agentRanTests      int
+		lastTestPassed     int
+		lastTestFailed     int
+		hasTestRun         bool
+		planEntered        int
+		planExited         int
+		selfCheckArtifacts int
+		turnCount          int
 	)
 
 	for rows.Next() {

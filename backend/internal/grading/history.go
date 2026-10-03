@@ -13,7 +13,7 @@ import (
 
 // loadPromptHistory returns the chat transcript of the submission's
 // session, flattened for the grader. Submissions without a session (or
-// from before chat_v2) have no history.
+// from before agent chat) have no history.
 func loadPromptHistory(ctx context.Context, pool *pgxpool.Pool, submissionID uuid.UUID) ([]grader.PromptHistoryItem, error) {
 	var sessionID *uuid.UUID
 	if err := pool.QueryRow(ctx,

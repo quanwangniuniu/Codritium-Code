@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import dynamic from "next/dynamic";
-import Editor from "@monaco-editor/react";
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
+  ChevronRight,
   FileSearch,
   Pencil,
   Save,
@@ -17,34 +17,22 @@ import { workspaceApi, type DecisionKind } from "@/features/workspace/api";
 import { unifiedDiff, diffStats, type DiffLine } from "@/shared/lib/diff";
 import { toast } from "@/shared/lib/toast";
 import { cn } from "@/shared/lib/cn";
-import { languageForFile } from "@/shared/editor/language";
 import { t } from "@/shared/i18n";
 import { useLocale } from "@/shared/i18n/client";
 import type { PendingPatch, ResolveCallback } from "../types";
 
-const DiffEditor = dynamic(
-  () => import("@monaco-editor/react").then((mod) => mod.DiffEditor),
-  { ssr: false, loading: () => <DiffEditorSkeleton /> },
-);
-
-function DiffEditorSkeleton() {
-  return (
-    <div className="bg-ide-editor px-3.5 py-3 text-[11px] text-ide-text-muted">
-      Loading diff…
-    </div>
-  );
-}
-
 export function PatchPreview({
   pending,
   onResolved,
+  getPendingContent,
 }: {
   pending: PendingPatch;
   onResolved: ResolveCallback;
+  getPendingContent?: (toolUseId: string) => string | undefined;
 }) {
   useLocale();
-  const [mode, setMode] = useState<"view" | "modify">("view");
-  const [modifiedContent, setModifiedContent] = useState<string>(pending.newContent ?? "");
+  const [expanded, setExpanded] = useState(false);
+  const [modifying, setModifying] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -62,7 +50,12 @@ export function PatchPreview({
     if (busy) return;
     setBusy(true);
     try {
-      await workspaceApi.decision(pending.sessionId, pending.toolUseId, kind, opts);
+      await workspaceApi.decision(
+        pending.sessionId,
+        pending.toolUseId,
+        kind,
+        opts,
+      );
       onResolved(pending.toolUseId, kind, result);
     } catch (e) {
       console.error("decision failed:", e);
@@ -72,66 +65,83 @@ export function PatchPreview({
     }
   };
 
-  const onApprove = () =>
-    submit("approve", {}, { path: pending.path, content: pending.newContent });
-  const onReject = () => submit("reject", { reason: reason.trim() }, null);
-  const onSaveModify = () => {
-    const modified = JSON.stringify({ path: pending.path, content: modifiedContent });
-    submit("modify", { modifiedInput: modified }, { path: pending.path, content: modifiedContent });
+  const currentContent = () =>
+    getPendingContent?.(pending.toolUseId) ?? pending.newContent ?? "";
+
+  const onApprove = () => {
+    const content = currentContent();
+
+    submit("approve", {}, { path: pending.path, content });
   };
 
+  const onReject = () => submit("reject", { reason: reason.trim() }, null);
+
+  const onSaveModify = () => {
+    const content = currentContent();
+    const modified = JSON.stringify({
+      path: pending.path,
+      content,
+    });
+
+    submit(
+      "modify",
+      { modifiedInput: modified },
+      { path: pending.path, content },
+    );
+  };
   return (
     <div className="mb-2 overflow-hidden rounded border border-ide-border bg-ide-side">
-      <header
-        className={cn(
-          "flex items-center gap-2 border-b border-ide-border px-2.5 py-1.5 text-[11px] text-ide-text-dim",
-          pending.tool === "RunCommand" && "bg-[rgba(244,162,89,0.10)]",
-        )}
+      <button
+        type="button"
+        onClick={() => setExpanded((current) => !current)}
+        className="flex w-full items-center gap-2 px-2.5 py-2 text-left text-[11px] text-ide-text-dim"
+        aria-expanded={expanded}
       >
         <ToolIcon tool={pending.tool} />
-        <span className="font-semibold text-ide-text-strong">{pending.tool}</span>
-        {pending.path && <span className="mono">{pending.path}</span>}
+
+        <span className="font-semibold text-ide-text-strong">
+          {pending.tool}
+        </span>
+
+        {pending.path && (
+          <span className="mono min-w-0 flex-1 truncate">{pending.path}</span>
+        )}
+
+        {!pending.path && <span className="flex-1" />}
+
+        <span className="text-[10px] text-ide-warn">Pending</span>
+
         {pending.tool === "FileEdit" && (
-          <span className="ml-auto text-[10px]">
+          <span className="text-[10px]">
             <span className="text-ide-good">+{stats.added}</span>{" "}
             <span className="text-ide-bad">-{stats.removed}</span>
           </span>
         )}
-      </header>
 
-      {mode === "view" ? (
-        <ToolBody pending={pending} />
+        {expanded ? (
+          <ChevronDown size={13} strokeWidth={1.7} />
+        ) : (
+          <ChevronRight size={13} strokeWidth={1.7} />
+        )}
+      </button>
+
+      {expanded && <ToolBody pending={pending} />}
+
+      {modifying ? (
+        <ModifyActionBar
+          busy={busy}
+          onSave={onSaveModify}
+          onCancel={() => setModifying(false)}
+        />
       ) : (
-        <div className="h-[240px]">
-          <Editor
-            height="100%"
-            language={languageForFile(pending.path)}
-            theme="vs-dark"
-            value={modifiedContent}
-            onChange={(v) => setModifiedContent(v ?? "")}
-            options={{ minimap: { enabled: false }, fontSize: 12, scrollBeyondLastLine: false }}
-          />
-        </div>
-      )}
-
-      {mode === "view" ? (
         <ActionBar
           busy={busy}
           canModify={pending.tool === "FileEdit"}
           onApprove={onApprove}
-          onModify={() => setMode("modify")}
+          onModify={() => setModifying(true)}
           onReject={onReject}
           reason={reason}
           setReason={setReason}
-        />
-      ) : (
-        <ModifyActionBar
-          busy={busy}
-          onSave={onSaveModify}
-          onCancel={() => {
-            setModifiedContent(pending.newContent ?? "");
-            setMode("view");
-          }}
         />
       )}
     </div>
@@ -141,9 +151,13 @@ export function PatchPreview({
 function ToolIcon({ tool }: { tool: string }) {
   switch (tool) {
     case "Grep":
-      return <Search size={12} strokeWidth={1.7} className="text-ide-text-dim" />;
+      return (
+        <Search size={12} strokeWidth={1.7} className="text-ide-text-dim" />
+      );
     case "Glob":
-      return <FileSearch size={12} strokeWidth={1.7} className="text-ide-text-dim" />;
+      return (
+        <FileSearch size={12} strokeWidth={1.7} className="text-ide-text-dim" />
+      );
     case "RunCommand":
       return <Terminal size={12} strokeWidth={1.7} className="text-ide-warn" />;
     default:
@@ -155,24 +169,8 @@ function ToolBody({ pending }: { pending: PendingPatch }) {
   switch (pending.tool) {
     case "FileEdit":
       return (
-        <div className="h-[240px] bg-ide-editor">
-          <DiffEditor
-            height="100%"
-            width="100%"
-            language={languageForFile(pending.path)}
-            original={pending.oldContent ?? ""}
-            modified={pending.newContent ?? ""}
-            theme="vs-dark"
-            options={{
-              automaticLayout: true,
-              readOnly: true,
-              renderSideBySide: false,
-              renderOverviewRuler: true,
-              minimap: { enabled: false },
-              scrollBeyondLastLine: false,
-              fontSize: 12,
-            }}
-          />
+        <div className="border-t border-ide-border bg-ide-editor px-3 py-2.5 text-xs text-ide-text-dim">
+          {pending.inputSummary}
         </div>
       );
     case "Grep":
@@ -183,8 +181,7 @@ function ToolBody({ pending }: { pending: PendingPatch }) {
             padding: "10px 12px",
             fontSize: 12,
             color: "var(--text)",
-            fontFamily:
-              "ui-monospace, SF Mono, Menlo, monospace",
+            fontFamily: "ui-monospace, SF Mono, Menlo, monospace",
             background: "var(--bg-editor)",
           }}
         >
@@ -313,7 +310,8 @@ function ActionBar({
             disabled={busy}
             className={btnClass("danger")}
           >
-            <X size={12} strokeWidth={1.7} /> {rejectArmed ? t("patch_reject_confirm") : t("patch_reject")}
+            <X size={12} strokeWidth={1.7} />{" "}
+            {rejectArmed ? t("patch_reject_confirm") : t("patch_reject")}
           </button>
         </span>
       </div>
@@ -342,6 +340,8 @@ function ActionBar({
   );
 }
 
+type BtnTone = "primary" | "secondary" | "ghost" | "danger";
+
 function ModifyActionBar({
   busy,
   onSave,
@@ -354,16 +354,20 @@ function ModifyActionBar({
   return (
     <div className="flex gap-1.5 border-t border-ide-border px-2.5 py-2">
       <button onClick={onSave} disabled={busy} className={btnClass("primary")}>
-        <Save size={12} strokeWidth={2} /> {t("patch_save_approve")}
+        <Save size={12} strokeWidth={2} />
+        {t("patch_save_approve")}
       </button>
-      <button onClick={onCancel} disabled={busy} className={btnClass("secondary")}>
+
+      <button
+        onClick={onCancel}
+        disabled={busy}
+        className={btnClass("secondary")}
+      >
         {t("cancel")}
       </button>
     </div>
   );
 }
-
-type BtnTone = "primary" | "secondary" | "ghost" | "danger";
 
 const BTN_TONE: Record<BtnTone, string> = {
   primary: "bg-ide-accent text-white",

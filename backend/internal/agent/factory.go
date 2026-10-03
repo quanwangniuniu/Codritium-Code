@@ -47,7 +47,7 @@ func (g graderSandboxRunner) RunPytest(ctx context.Context, files map[string]str
 }
 
 // buildAgentFactory returns the closure the AgentRegistry uses to
-// construct a fresh Agent the first time a candidate hits chat_v2 on
+// construct a fresh Agent the first time a candidate hits agent chat on
 // a session. Loads the challenge's README / starter files / hidden
 // test file path from the problems table; wires the engine-neutral
 // stream client + DecisionWaiter + events store; locks the visible

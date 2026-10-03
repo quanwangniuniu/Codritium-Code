@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { Sparkles, Check, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Sparkles, X } from "lucide-react";
 import { t } from "@/shared/i18n";
 import { useLocale } from "@/shared/i18n/client";
 import { useComposer } from "../hooks/useComposer";
@@ -20,6 +20,7 @@ export function ChatPanel({
   busy,
   onApply,
   onPatchResolved,
+  getPendingContent,
   availableFiles,
 }: {
   messages: ChatMessage[];
@@ -27,6 +28,7 @@ export function ChatPanel({
   busy: boolean;
   onApply?: (codeBlock: string) => void;
   onPatchResolved?: ResolveCallback;
+  getPendingContent?: (toolUseId: string) => string | undefined;
   availableFiles?: string[];
 }) {
   useLocale();
@@ -71,7 +73,11 @@ export function ChatPanel({
         <span className="flex-1" />
         <span
           className="mono"
-          style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "none" }}
+          style={{
+            fontSize: 10,
+            color: "var(--text-muted)",
+            textTransform: "none",
+          }}
         >
           ⌘ L
         </span>
@@ -97,110 +103,110 @@ export function ChatPanel({
                 key={m.id}
                 message={m}
                 onResolved={onPatchResolved}
+                getPendingContent={getPendingContent}
               />
             );
           }
           return (
-          <div
-            key={m.id}
-            style={{
-              marginBottom: 14,
-              padding: "10px 12px",
-              borderRadius: 6,
-              background:
-                m.role === "user" ? "rgba(0,122,204,0.10)" : "var(--bg-side)",
-              border:
-                m.role === "user"
-                  ? "1px solid rgba(0,122,204,0.30)"
-                  : "1px solid var(--border)",
-              fontSize: 12.5,
-              lineHeight: 1.65,
-              color: "var(--text)",
-            }}
-          >
             <div
+              key={m.id}
               style={{
-                fontSize: 10,
-                color: "var(--text-muted)",
-                marginBottom: 6,
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-                fontWeight: 600,
+                marginBottom: 14,
+                padding: "10px 12px",
+                borderRadius: 6,
+                background:
+                  m.role === "user" ? "rgba(0,122,204,0.10)" : "var(--bg-side)",
+                border:
+                  m.role === "user"
+                    ? "1px solid rgba(0,122,204,0.30)"
+                    : "1px solid var(--border)",
+                fontSize: 12.5,
+                lineHeight: 1.65,
+                color: "var(--text)",
               }}
             >
-              {m.role === "user" ? t("chat_role_you") : t("ai_role")}
-              {m.streaming && (
-                <span className="ml-1.5 text-ide-warn">…</span>
-              )}
-            </div>
-            <ReactMarkdown
-              components={{
-                code: ({ children, className }) => {
-                  const text = String(children);
-                  const isBlock = /\n/.test(text) || className?.startsWith("language-");
-                  if (!isBlock) {
-                    return (
-                      <code
-                        className="mono"
-                        style={{
-                          background: "var(--bg-editor)",
-                          padding: "1px 4px",
-                          borderRadius: 3,
-                          fontSize: 11,
-                          color: "var(--syntax-orange)",
-                        }}
-                      >
-                        {children}
-                      </code>
-                    );
-                  }
-                  return (
-                    <div className="relative my-2">
-                      <pre
-                        className="mono"
-                        style={{
-                          background: "var(--bg-editor)",
-                          padding: "10px 12px",
-                          borderRadius: 4,
-                          fontSize: 11.5,
-                          overflow: "auto",
-                          margin: 0,
-                          border: "1px solid var(--border)",
-                          color: "var(--text)",
-                        }}
-                      >
-                        <code>{text}</code>
-                      </pre>
-                      {onApply && (
-                        <button
-                          onClick={() => onApply(text)}
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "var(--text-muted)",
+                  marginBottom: 6,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  fontWeight: 600,
+                }}
+              >
+                {m.role === "user" ? t("chat_role_you") : t("ai_role")}
+                {m.streaming && <span className="ml-1.5 text-ide-warn">…</span>}
+              </div>
+              <ReactMarkdown
+                components={{
+                  code: ({ children, className }) => {
+                    const text = String(children);
+                    const isBlock =
+                      /\n/.test(text) || className?.startsWith("language-");
+                    if (!isBlock) {
+                      return (
+                        <code
+                          className="mono"
                           style={{
-                            position: "absolute",
-                            top: 6,
-                            right: 6,
-                            padding: "3px 8px",
-                            fontSize: 10.5,
-                            background: "var(--accent)",
-                            color: "#ffffff",
+                            background: "var(--bg-editor)",
+                            padding: "1px 4px",
                             borderRadius: 3,
-                            fontWeight: 600,
+                            fontSize: 11,
+                            color: "var(--syntax-orange)",
                           }}
                         >
-                          {t("chat_apply_btn")}
-                        </button>
-                      )}
-                    </div>
-                  );
-                },
-                p: ({ children }) => <p className="mb-1.5">{children}</p>,
-                ul: ({ children }) => (
-                  <ul className="pl-[18px]">{children}</ul>
-                ),
-              }}
-            >
-              {m.content}
-            </ReactMarkdown>
-          </div>
+                          {children}
+                        </code>
+                      );
+                    }
+                    return (
+                      <div className="relative my-2">
+                        <pre
+                          className="mono"
+                          style={{
+                            background: "var(--bg-editor)",
+                            padding: "10px 12px",
+                            borderRadius: 4,
+                            fontSize: 11.5,
+                            overflow: "auto",
+                            margin: 0,
+                            border: "1px solid var(--border)",
+                            color: "var(--text)",
+                          }}
+                        >
+                          <code>{text}</code>
+                        </pre>
+                        {onApply && (
+                          <button
+                            onClick={() => onApply(text)}
+                            style={{
+                              position: "absolute",
+                              top: 6,
+                              right: 6,
+                              padding: "3px 8px",
+                              fontSize: 10.5,
+                              background: "var(--accent)",
+                              color: "#ffffff",
+                              borderRadius: 3,
+                              fontWeight: 600,
+                            }}
+                          >
+                            {t("chat_apply_btn")}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  },
+                  p: ({ children }) => <p className="mb-1.5">{children}</p>,
+                  ul: ({ children }) => (
+                    <ul className="pl-[18px]">{children}</ul>
+                  ),
+                }}
+              >
+                {m.content}
+              </ReactMarkdown>
+            </div>
           );
         })}
       </div>
@@ -218,10 +224,14 @@ export function ChatPanel({
 function PatchTimelineEntry({
   message,
   onResolved,
+  getPendingContent,
 }: {
   message: PatchMessage;
   onResolved?: ResolveCallback;
+  getPendingContent?: (toolUseId: string) => string | undefined;
 }) {
+  const [expanded, setExpanded] = useState(false);
+
   if (message.resolved) {
     const isReject = message.resolved.kind === "reject";
     const isAuto = message.pending.auto === true;
@@ -229,62 +239,109 @@ function PatchTimelineEntry({
     const label = isAuto
       ? t("patch_label_auto")
       : message.resolved.kind === "approve"
-      ? t("patch_label_approved")
-      : message.resolved.kind === "modify"
-      ? t("patch_label_modified")
-      : t("patch_label_rejected");
+        ? t("patch_label_approved")
+        : message.resolved.kind === "modify"
+          ? t("patch_label_modified")
+          : t("patch_label_rejected");
     return (
-      <div
-        style={{
-          marginBottom: 14,
-          padding: "8px 12px",
-          borderRadius: 6,
-          background: "var(--bg-side)",
-          border: "1px solid var(--border)",
-          fontSize: 11.5,
-          color: "var(--text-dim)",
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-        }}
-      >
-        <Icon
-          size={13}
-          strokeWidth={2}
-          style={{ color: isReject ? "var(--bad)" : isAuto ? "var(--text-muted)" : "var(--good)" }}
-        />
-        <span className="font-semibold text-ide-text">{label}</span>
-        <span className="text-ide-text-muted">
-          {message.pending.tool}
-          {message.pending.path ? ` · ${message.pending.path}` : ""}
-          {message.pending.tool !== "FileRead" && message.pending.tool !== "FileEdit" && message.pending.inputSummary
-            ? ` · ${message.pending.inputSummary}`
-            : ""}
-        </span>
+      <div className="mb-3.5 overflow-hidden rounded border border-ide-border bg-ide-side">
+        <button
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11.5px] text-ide-text-dim"
+          aria-expanded={expanded}
+        >
+          <Icon
+            size={13}
+            strokeWidth={2}
+            style={{
+              color: isReject
+                ? "var(--bad)"
+                : isAuto
+                  ? "var(--text-muted)"
+                  : "var(--good)",
+            }}
+          />
+
+          <span className="font-semibold text-ide-text">
+            {message.pending.tool}
+          </span>
+
+          {message.pending.path && (
+            <span className="mono min-w-0 flex-1 truncate text-ide-text-muted">
+              {message.pending.path}
+            </span>
+          )}
+
+          {!message.pending.path && <span className="flex-1" />}
+
+          <span
+            className={
+              isReject
+                ? "text-ide-bad"
+                : isAuto
+                  ? "text-ide-text-muted"
+                  : "text-ide-good"
+            }
+          >
+            {label}
+          </span>
+
+          {expanded ? (
+            <ChevronDown size={13} strokeWidth={1.7} />
+          ) : (
+            <ChevronRight size={13} strokeWidth={1.7} />
+          )}
+        </button>
+
+        {expanded && (
+          <div className="border-t border-ide-border bg-ide-editor px-3 py-2.5 text-xs">
+            {message.pending.inputSummary && (
+              <div className="text-ide-text-dim">
+                {message.pending.inputSummary}
+              </div>
+            )}
+
+            {message.toolResult && (
+              <div
+                className={
+                  message.pending.inputSummary
+                    ? "mt-2 border-t border-ide-border pt-2"
+                    : ""
+                }
+              >
+                <div
+                  className={
+                    message.toolResult.isError
+                      ? "mb-1.5 font-semibold text-ide-bad"
+                      : "mb-1.5 font-semibold text-ide-good"
+                  }
+                >
+                  {message.toolResult.isError
+                    ? "Tool failed"
+                    : "Tool completed"}
+                  {message.toolResult.durationMs !== undefined &&
+                    ` · ${message.toolResult.durationMs} ms`}
+                </div>
+
+                <pre className="mono max-h-48 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-5 text-ide-text">
+                  {message.toolResult.summary || "No output"}
+                </pre>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="mb-3.5">
-      <div
-        style={{
-          fontSize: 10,
-          color: "var(--text-muted)",
-          marginBottom: 6,
-          textTransform: "uppercase",
-          letterSpacing: "0.05em",
-          fontWeight: 600,
-        }}
-      >
-        {t("ai_role")} · {t("chat_proposed_word")} {message.pending.tool}
-      </div>
-      <PatchPreview
-        pending={message.pending}
-        onResolved={(toolUseId, kind, result) => {
-          onResolved?.(toolUseId, kind, result);
-        }}
-      />
-    </div>
+    <PatchPreview
+      pending={message.pending}
+      getPendingContent={getPendingContent}
+      onResolved={(toolUseId, kind, result) => {
+        onResolved?.(toolUseId, kind, result);
+      }}
+    />
   );
 }

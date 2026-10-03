@@ -12,10 +12,14 @@ export function AppBar({
   timer,
   onSubmit,
   problemTitle,
+  submitting,
+  submitDisabled,
 }: {
   timer: string;
   onSubmit: () => void;
   problemTitle: string;
+  submitting: boolean;
+  submitDisabled: boolean;
 }) {
   useLocale();
   return (
@@ -78,13 +82,21 @@ export function AppBar({
         <span>{timer}</span>
       </div>
 
-      <AppBarButton icon={<BookOpen size={13} strokeWidth={1.7} />} label={t("appbar_readme")} />
-      <AppBarButton icon={<HelpCircle size={13} strokeWidth={1.7} />} label={t("appbar_help")} />
+      <AppBarButton
+        icon={<BookOpen size={13} strokeWidth={1.7} />}
+        label={t("appbar_readme")}
+      />
+      <AppBarButton
+        icon={<HelpCircle size={13} strokeWidth={1.7} />}
+        label={t("appbar_help")}
+      />
 
       <ThemeToggle />
 
       <button
         onClick={onSubmit}
+        disabled={submitDisabled}
+        aria-busy={submitting}
         style={{
           fontSize: 12,
           color: "#ffffff",
@@ -95,6 +107,8 @@ export function AppBar({
           display: "inline-flex",
           alignItems: "center",
           gap: 6,
+          cursor: submitDisabled ? "not-allowed" : "pointer",
+          opacity: submitDisabled ? 0.65 : 1,
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.background = "var(--accent-hover)";
@@ -104,13 +118,19 @@ export function AppBar({
         }}
       >
         <Play size={12} strokeWidth={2} />
-        <span>{t("submit")}</span>
+        <span>{submitting ? "Submitting…" : t("submit")}</span>
       </button>
     </header>
   );
 }
 
-function AppBarButton({ icon, label }: { icon: React.ReactNode; label: string }) {
+function AppBarButton({
+  icon,
+  label,
+}: {
+  icon: React.ReactNode;
+  label: string;
+}) {
   return (
     <button
       style={{

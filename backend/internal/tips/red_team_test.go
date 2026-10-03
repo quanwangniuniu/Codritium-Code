@@ -15,8 +15,8 @@ import (
 type redTeamCase struct {
 	name        string
 	turns       []Turn
-	regexAlone  bool   // true: default patterns block without classifier
-	expectBlock bool   // expected Allow=false
+	regexAlone  bool // true: default patterns block without classifier
+	expectBlock bool // expected Allow=false
 }
 
 var redTeamSuite = []redTeamCase{

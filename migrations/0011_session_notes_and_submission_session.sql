@@ -1,6 +1,6 @@
 -- Codritium 1.0: candidate notes attached to a session, and a foreign key
 -- from submissions back to the candidate session so the grader can pull the
--- chat_v2 conversation from session_messages instead of the legacy
+-- agent chat conversation from session_messages instead of the legacy
 -- submission_events stream.
 
 -- session_notes: free-form markdown a candidate writes while replaying their
@@ -19,7 +19,7 @@ CREATE INDEX IF NOT EXISTS idx_notes_session ON session_notes(session_id);
 CREATE INDEX IF NOT EXISTS idx_notes_user ON session_notes(user_id);
 
 -- submissions.session_id ties a submission to the candidate session that
--- produced its chat_v2 transcript. ON DELETE SET NULL keeps historical
+-- produced its agent chat transcript. ON DELETE SET NULL keeps historical
 -- submissions visible when an upstream session is purged.
 ALTER TABLE submissions
     ADD COLUMN IF NOT EXISTS session_id UUID REFERENCES candidate_sessions(session_id) ON DELETE SET NULL;
