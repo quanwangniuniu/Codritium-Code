@@ -3,7 +3,6 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -15,9 +14,9 @@ import (
 	"codritium/backend/internal/auth"
 )
 
-// ReplyDeps wires the reply endpoints. They read solutions_replies for the
-// official walkthroughs and session_events for the candidate's own run;
-// there is no write path here — generators go through scripts, not HTTP.
+// ReplyDeps wires the read-only replay endpoints. Official walkthroughs
+// come from solutions_replies. Candidate replays combine session_events
+// with the complete transcript stored in session_messages.
 type ReplyDeps struct {
 	Pool *pgxpool.Pool
 }
@@ -129,10 +128,61 @@ func GetOfficialReply(deps ReplyDeps) http.HandlerFunc {
 	}
 }
 
-// GetMyReplay reuses the same envelope shape to play back the candidate's
-// own most recent run on a challenge. Source is session_events; the row
-// for solutions_replies is never consulted here, keeping the two surfaces
-// independent as the 2026-05-20 product decision required.
+// GetSessionReplay returns one replay by session ID.
+// The session must belong to the current user.
+func GetSessionReplay(deps ReplyDeps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := auth.FromContext(r.Context())
+		if u == nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		sessionID, err := uuid.Parse(strings.TrimSpace(r.PathValue("id")))
+		if err != nil {
+			http.Error(w, "invalid session id", http.StatusBadRequest)
+			return
+		}
+
+		var (
+			slug      string
+			startedAt time.Time
+		)
+		err = deps.Pool.QueryRow(r.Context(), `
+			SELECT challenge_id, started_at
+			FROM candidate_sessions
+			WHERE session_id = $1 AND candidate_id = $2`,
+			sessionID,
+			u.Handle,
+		).Scan(&slug, &startedAt)
+
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.Error(w, "session not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			http.Error(
+				w,
+				"lookup session: "+err.Error(),
+				http.StatusInternalServerError,
+			)
+			return
+		}
+
+		writeSessionReplay(
+			w,
+			r,
+			deps,
+			sessionID,
+			slug,
+			startedAt,
+		)
+	}
+}
+
+// GetMyReplay returns the candidate's most recent run on a challenge.
+// Structured events and complete transcript messages share one sequence
+// counter, allowing the replay to return them in their original order.
 func GetMyReplay(deps ReplyDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.FromContext(r.Context())
@@ -167,61 +217,121 @@ func GetMyReplay(deps ReplyDeps) http.HandlerFunc {
 			return
 		}
 
-		rows, err := deps.Pool.Query(r.Context(), `
-			SELECT seq, kind, emitted_at, payload::text
-			FROM session_events
-			WHERE session_id = $1
-			ORDER BY seq ASC`,
+		writeSessionReplay(
+			w,
+			r,
+			deps,
 			sessionID,
+			slug,
+			startedAt,
 		)
-		if err != nil {
-			http.Error(w, "load events: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer rows.Close()
-
-		envelopes := make([]json.RawMessage, 0)
-		for rows.Next() {
-			var (
-				seq       int64
-				kind      string
-				emittedAt time.Time
-				payload   []byte
-			)
-			if err := rows.Scan(&seq, &kind, &emittedAt, &payload); err != nil {
-				http.Error(w, "scan event: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
-			env := userEnvelope{
-				SessionID: sessionID.String(),
-				Seq:       seq,
-				Kind:      kind,
-				EmittedAt: emittedAt.Format(time.RFC3339Nano),
-				Payload:   json.RawMessage(payload),
-			}
-			raw, err := json.Marshal(env)
-			if err != nil {
-				http.Error(w, "encode event: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
-			envelopes = append(envelopes, raw)
-		}
-		if err := rows.Err(); err != nil {
-			http.Error(w, "iterate events: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		writeJSON(w, http.StatusOK, replyResponse{
-			Source:    "user_session",
-			Challenge: slug,
-			SessionID: sessionID.String(),
-			StartedAt: startedAt.Format(time.RFC3339Nano),
-			Envelopes: envelopes,
-		})
 	}
 }
 
-// Compile-time guard that fmt stays referenced even if all error paths
-// switch to errors.New. The import is kept because future payload
-// validators (e.g. kind enum check) will use it.
-var _ = fmt.Sprintf
+func writeSessionReplay(
+	w http.ResponseWriter,
+	r *http.Request,
+	deps ReplyDeps,
+	sessionID uuid.UUID,
+	slug string,
+	startedAt time.Time,
+) {
+	rows, err := deps.Pool.Query(r.Context(), `
+		SELECT seq, kind, emitted_at, payload::text
+		FROM (
+			SELECT
+				seq,
+				kind,
+				emitted_at,
+				payload
+			FROM session_events
+			WHERE session_id = $1
+
+			UNION ALL
+
+			SELECT
+				seq,
+				'chat_message' AS kind,
+				created_at AS emitted_at,
+				jsonb_build_object(
+					'role', role,
+					'content', content
+				) AS payload
+			FROM session_messages
+			WHERE session_id = $1
+		) AS replay_items
+		ORDER BY seq ASC`,
+		sessionID,
+	)
+	if err != nil {
+		http.Error(
+			w,
+			"load events: "+err.Error(),
+			http.StatusInternalServerError,
+		)
+		return
+	}
+	defer rows.Close()
+
+	envelopes := make([]json.RawMessage, 0)
+
+	for rows.Next() {
+		var (
+			seq       int64
+			kind      string
+			emittedAt time.Time
+			payload   []byte
+		)
+
+		if err := rows.Scan(
+			&seq,
+			&kind,
+			&emittedAt,
+			&payload,
+		); err != nil {
+			http.Error(
+				w,
+				"scan event: "+err.Error(),
+				http.StatusInternalServerError,
+			)
+			return
+		}
+
+		envelope := userEnvelope{
+			SessionID: sessionID.String(),
+			Seq:       seq,
+			Kind:      kind,
+			EmittedAt: emittedAt.Format(time.RFC3339Nano),
+			Payload:   json.RawMessage(payload),
+		}
+
+		raw, err := json.Marshal(envelope)
+		if err != nil {
+			http.Error(
+				w,
+				"encode event: "+err.Error(),
+				http.StatusInternalServerError,
+			)
+			return
+		}
+
+		envelopes = append(envelopes, raw)
+	}
+
+	if err := rows.Err(); err != nil {
+		http.Error(
+			w,
+			"iterate events: "+err.Error(),
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, replyResponse{
+		Source:    "user_session",
+		Challenge: slug,
+		SessionID: sessionID.String(),
+		StartedAt: startedAt.Format(time.RFC3339Nano),
+		Envelopes: envelopes,
+	})
+}

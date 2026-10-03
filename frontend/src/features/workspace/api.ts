@@ -50,7 +50,7 @@ export const workspaceApi = {
     message: string,
     files?: Record<string, string>,
   ): Promise<{ turn_index: number; accepted: boolean; session_id: string }> =>
-    apiRequest("/api/chat/v2", {
+    apiRequest("/api/agent/chat", {
       method: "POST",
       json: { session_id: sessionId, message, files: files ?? {} },
     }),

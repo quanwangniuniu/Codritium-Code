@@ -1,11 +1,13 @@
 "use client";
 
+import { DiffEditor } from "@monaco-editor/react";
+
 import { Code2, SplitSquareHorizontal, X, XSquare } from "lucide-react";
 import { IDEPane } from "@/shared/editor/IDEPane";
 import { useMonacoTheme } from "@/shared/editor/useMonacoTheme";
 import { languageForFile } from "@/shared/editor/language";
 import { ReadmeTab } from "@/features/workspace/components/ReadmeTab";
-import type { OpenTab } from "@/features/workspace/types";
+import type { EditorDiffPreview, OpenTab } from "@/features/workspace/types";
 
 export const README_TAB = "README.md";
 
@@ -14,6 +16,8 @@ export interface EditorPaneProps {
   tabs: OpenTab[];
   activeTab: string | null;
   fileContents: Record<string, string>;
+  diffPreview?: EditorDiffPreview | null;
+  onDiffPreviewChange?: (toolUseId: string, content: string) => void;
   readmeMD?: string;
   readmeFloating?: boolean;
   onToggleReadmeFloat?: () => void;
@@ -30,6 +34,8 @@ export function EditorPane({
   tabs,
   activeTab,
   fileContents,
+  diffPreview,
+  onDiffPreviewChange,
   readmeMD = "",
   readmeFloating = false,
   onToggleReadmeFloat,
@@ -43,7 +49,9 @@ export function EditorPane({
   const monacoTheme = useMonacoTheme();
   const hasActive = activeTab !== null;
   const isReadme = activeTab === README_TAB;
-  const activeContent = activeTab ? fileContents[activeTab] ?? "" : "";
+  const activeContent = activeTab ? (fileContents[activeTab] ?? "") : "";
+  const activeDiff =
+    activeTab && diffPreview?.path === activeTab ? diffPreview : null;
 
   return (
     <section
@@ -202,6 +210,36 @@ export function EditorPane({
             readme={readmeMD}
             floating={readmeFloating}
             onToggleFloat={onToggleReadmeFloat ?? (() => undefined)}
+          />
+        ) : hasActive && activeDiff ? (
+          <DiffEditor
+            height="100%"
+            width="100%"
+            language={languageForFile(activeTab)}
+            original={activeDiff.original}
+            modified={activeDiff.modified}
+            theme={monacoTheme}
+            onMount={(editor) => {
+              const modifiedEditor = editor.getModifiedEditor();
+
+              modifiedEditor.onDidChangeModelContent(() => {
+                onDiffPreviewChange?.(
+                  activeDiff.toolUseId,
+                  modifiedEditor.getValue(),
+                );
+              });
+            }}
+            options={{
+              automaticLayout: true,
+              readOnly: false,
+              originalEditable: false,
+              renderSideBySide: false,
+              renderOverviewRuler: true,
+              minimap: { enabled: false },
+              stickyScroll: { enabled: false },
+              scrollBeyondLastLine: false,
+              fontSize: 13,
+            }}
           />
         ) : hasActive ? (
           <IDEPane

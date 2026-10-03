@@ -10,13 +10,10 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// MultiTurnFilter is the L2 conversation-window jailbreak filter applied
-// before any user turn reaches the tips-agent. It implements the C5
-// Hybrid strategy from research/R18_crescendo_defense §10.1: a Go-side
-// regex fast path catches 95%+ of obvious patterns, and a downstream
-// LLM classifier (typically Gemini Flash-Lite) double-checks anything
-// the regex flagged. Microsoft Crescendo's defense paper validated the
-// conversation-window approach over single-turn classification.
+// MultiTurnFilter checks the recent tutor conversation before a user
+// turn reaches the model. Regular expressions catch known patterns, and
+// the configured local model classifies conversations that need a second
+// check.
 type MultiTurnFilter struct {
 	Patterns       []*regexp.Regexp
 	Threshold      int        // hits across LastK turns required to escalate

@@ -209,35 +209,58 @@ func gradeOneDimOllama(
 	dimension DimensionSpec,
 	input GraderInput,
 ) (DimensionScore, error) {
-	text, err := client.chat(
-		ctx,
-		rubricSystem,
-		buildUserPrompt(dimension, input),
-	)
-	if err != nil {
-		return DimensionScore{}, err
-	}
+	basePrompt := buildUserPrompt(dimension, input)
+	var lastErr error
 
-	score := parseDimensionJSON(text)
-	score.Dimension = dimension.Name
+	for attempt := 0; attempt < 2; attempt++ {
+		userPrompt := basePrompt
+		if attempt > 0 {
+			userPrompt += `
 
-	if score.Error != "" {
-		return DimensionScore{}, fmt.Errorf("%s", score.Error)
-	}
-	if score.Reasoning == "" {
-		return DimensionScore{}, fmt.Errorf("response has empty reasoning")
-	}
-	if score.Score == nil {
-		return score, nil
-	}
-	if *score.Score < 1 || *score.Score > 5 {
-		return DimensionScore{}, fmt.Errorf(
-			"score %d is outside the allowed range 1-5",
-			*score.Score,
+Your previous response was invalid. Return exactly one valid JSON object.
+The reasoning field must contain a non-empty explanation based on the provided evidence.
+Use this schema:
+{"score": <integer from 1 to 5, or null>, "reasoning": "<non-empty explanation>"}`
+		}
+
+		text, err := client.chat(
+			ctx,
+			rubricSystem,
+			userPrompt,
 		)
+		if err != nil {
+			lastErr = err
+			if ctx.Err() != nil {
+				return DimensionScore{}, err
+			}
+			continue
+		}
+
+		score := parseDimensionJSON(text)
+		score.Dimension = dimension.Name
+
+		switch {
+		case score.Error != "":
+			lastErr = fmt.Errorf("%s", score.Error)
+
+		case strings.TrimSpace(score.Reasoning) == "":
+			lastErr = fmt.Errorf("response has empty reasoning")
+
+		case score.Score != nil && (*score.Score < 1 || *score.Score > 5):
+			lastErr = fmt.Errorf(
+				"score %d is outside the allowed range 1-5",
+				*score.Score,
+			)
+
+		default:
+			return score, nil
+		}
 	}
 
-	return score, nil
+	return DimensionScore{}, fmt.Errorf(
+		"invalid response after retry: %w",
+		lastErr,
+	)
 }
 
 func hasDimensionEvidence(input GraderInput, dimension string) bool {

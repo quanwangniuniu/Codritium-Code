@@ -14,11 +14,9 @@ import (
 	"codritium/backend/internal/tips"
 )
 
-// TipsDeps is the dependency bundle for the tips endpoints. The Agent
-// talks to Gemini; the Pool reads candidate_sessions joined to problems
-// and reads/writes tips_messages. There is intentionally no chat_v2 /
-// decision_waiter / event store reference — tips-agent is hard-isolated
-// from the candidate coding partner.
+// TipsDeps is the dependency bundle for the tutor endpoints. The Agent
+// uses the configured local Ollama model. Tutor conversations remain
+// isolated from the candidate coding agent and its tool approval flow.
 type TipsDeps struct {
 	Pool   *pgxpool.Pool
 	Agent  *tips.Agent
@@ -130,7 +128,7 @@ func PostTips(deps TipsDeps) http.HandlerFunc {
 			}
 		}
 
-		// Best-effort summary of the chat_v2 session so the tutor sees rough
+		// Best-effort summary of the agent chat session so the tutor sees rough
 		// state of what the candidate has done with the AI agent. A SQL
 		// failure isn't fatal — an empty summary just drops the section.
 		agentSummary, _ := tips.SummarizeSessionEvents(r.Context(), deps.Pool, sessionID)

@@ -379,3 +379,77 @@ func writeOllamaTestResponse(
 		t.Fatalf("encode response: %v", err)
 	}
 }
+
+func TestGradeOneDimOllamaRetriesEmptyReasoning(t *testing.T) {
+	requestCount := 0
+
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			requestCount++
+
+			var request ollamaChatRequest
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+
+			if requestCount == 1 {
+				writeOllamaTestResponse(
+					t,
+					w,
+					`{"score":4,"reasoning":""}`,
+				)
+				return
+			}
+
+			if !strings.Contains(
+				request.Messages[1].Content,
+				"previous response was invalid",
+			) {
+				t.Error("retry prompt does not explain the invalid response")
+			}
+
+			writeOllamaTestResponse(
+				t,
+				w,
+				`{"score":4,"reasoning":"The submitted code satisfies the required behavior."}`,
+			)
+		},
+	))
+	defer server.Close()
+
+	client := NewOllamaClient(
+		server.URL,
+		"qwen-test",
+		time.Second,
+	)
+
+	score, err := gradeOneDimOllama(
+		context.Background(),
+		client,
+		Dimensions[0],
+		GraderInput{
+			ProblemTitle:      "Test problem",
+			ProblemDifficulty: "easy",
+			ProblemReadme:     "Fix the problem.",
+			StarterFiles: map[string]string{
+				"solution.py": "old",
+			},
+			CandidateFiles: map[string]string{
+				"solution.py": "fixed",
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("gradeOneDimOllama returned error: %v", err)
+	}
+
+	if requestCount != 2 {
+		t.Fatalf("request count = %d, want 2", requestCount)
+	}
+	if score.Score == nil || *score.Score != 4 {
+		t.Fatalf("score = %v, want 4", score.Score)
+	}
+	if score.Reasoning == "" {
+		t.Fatal("reasoning is empty after retry")
+	}
+}

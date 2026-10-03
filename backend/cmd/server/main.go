@@ -89,31 +89,34 @@ func main() {
 	sessionsDeps := handlers.SessionsDeps{Pool: database.Pool}
 	streamDeps := handlers.StreamDeps{Pool: database.Pool, Events: eventStore, Text: textBroadcaster}
 
-	// Active chat engine: Gemini by default. CHAT_ENGINE=anthropic activates
-	// the preserved Claude path and requires CLAUDE_FALLBACK_ENABLED=true
-	// (enforced in config.Load).
-	chatEngine := cfg.ChatEngine
 	var streamClient llm.LLMStreamClient
 
-	switch chatEngine {
+	switch cfg.ChatEngine {
 	case "disabled":
-		log.Printf("chat engine disabled")
-	case "anthropic":
-		streamClient = llm.NewClaudeStream(anthClient)
-		log.Printf("chat engine: anthropic (claude_stream)")
-	case "gemini":
-		if geminiClient == nil {
-			log.Fatalf("CHAT_ENGINE=gemini but GOOGLE_API_KEY not set")
-		}
-		streamClient = llm.NewGeminiStream(geminiClient)
-		log.Printf("chat engine: gemini (gemini_stream)")
+		log.Printf("IDE assistant disabled")
+	case "ollama":
+		streamClient = llm.NewOllamaStream(
+			cfg.OllamaBaseURL,
+			cfg.OllamaModel,
+			time.Duration(cfg.OllamaTimeoutSec)*time.Second,
+		)
+		log.Printf("IDE assistant: ollama model=%s", cfg.OllamaModel)
 	}
-
-	sandbox := grader.Sandbox{Python: cfg.Paths.SandboxPython, Script: cfg.Paths.SandboxScript}
-	agentFactory := buildAgentFactory(database, streamClient, eventStore, textBroadcaster, decisionWaiter, sandbox)
+	sandbox := grader.Sandbox{
+		Python: cfg.Paths.SandboxPython,
+		Script: cfg.Paths.SandboxScript,
+	}
+	agentFactory := buildAgentFactory(
+		database,
+		streamClient,
+		eventStore,
+		textBroadcaster,
+		decisionWaiter,
+		sandbox,
+	)
 	agentRegistry := llm.NewAgentRegistry(agentFactory)
 	chatJailbreak := llm.NewChatJailbreakClassifier()
-	chatV2Deps := handlers.ChatV2Deps{
+	agentChatDeps := handlers.AgentChatDeps{
 		Pool:      database.Pool,
 		Registry:  agentRegistry,
 		Jailbreak: chatJailbreak,
@@ -121,12 +124,15 @@ func main() {
 
 	var tipsAgent *tips.Agent
 	tipsFilter := tips.NewDefaultFilter()
-	if geminiClient != nil {
-		tipsAgent = tips.New(geminiClient, "")
-		tipsFilter.Classifier = tips.NewGeminiClassifier(geminiClient, "")
-		log.Printf("tips agent enabled (gemini); multiturn filter active with classifier")
+	if streamClient != nil {
+		tipsAgent = tips.New(streamClient, cfg.OllamaModel)
+		tipsFilter.Classifier = tips.NewOllamaClassifier(streamClient)
+		log.Printf(
+			"tutor enabled: ollama model=%s",
+			cfg.OllamaModel,
+		)
 	} else {
-		log.Printf("tips agent disabled — GOOGLE_API_KEY not set")
+		log.Printf("tutor disabled with IDE assistant")
 	}
 	tipsDeps := handlers.TipsDeps{Pool: database.Pool, Agent: tipsAgent, Filter: tipsFilter}
 	subDeps := handlers.SubmissionDeps{
@@ -179,6 +185,10 @@ func main() {
 	mux.Handle("GET /api/problems/{slug}", authMiddleware(http.HandlerFunc(handlers.GetProblem(probDeps))))
 	mux.Handle("GET /api/challenges/{slug}/official-reply", authMiddleware(handlers.GetOfficialReply(replyDeps)))
 	mux.Handle("GET /api/me/replays/{slug}", authMiddleware(handlers.GetMyReplay(replyDeps)))
+	mux.Handle(
+		"GET /api/sessions/{id}/reply",
+		authMiddleware(handlers.GetSessionReplay(replyDeps)),
+	)
 
 	// Authed routes — wrap each with authMiddleware so r.Context() carries the user.
 	meHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -199,15 +209,15 @@ func main() {
 	mux.Handle("GET /api/me/attempted", authMiddleware(handlers.ListMyAttempted(sessionsDeps)))
 	if cfg.ChatEngine == "disabled" {
 		mux.Handle(
-			"POST /api/chat/v2",
+			"POST /api/agent/chat",
 			authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "chat engine disabled", http.StatusServiceUnavailable)
 			})),
 		)
 	} else {
 		mux.Handle(
-			"POST /api/chat/v2",
-			authMiddleware(handlers.PostChatV2(chatV2Deps)),
+			"POST /api/agent/chat",
+			authMiddleware(handlers.PostAgentChat(agentChatDeps)),
 		)
 	}
 	mux.Handle("POST /api/tips", authMiddleware(handlers.PostTips(tipsDeps)))
@@ -334,7 +344,7 @@ func (g graderSandboxRunner) RunPytest(ctx context.Context, files map[string]str
 }
 
 // buildAgentFactory returns the closure the AgentRegistry uses to
-// construct a fresh Agent the first time a candidate hits chat_v2 on
+// construct a fresh Agent the first time a candidate starts agent chat on
 // a session. Loads the challenge's README / starter files / hidden
 // test file path from the problems table; wires the engine-neutral
 // stream client + DecisionWaiter + events store; locks the visible
@@ -399,12 +409,26 @@ func buildSystemPrompt(readme string, files map[string]string, hiddenTest string
 	for name := range files {
 		fileList += "  - " + name + "\n"
 	}
-	return "You are the candidate-agent inside Codritium. The user is a software engineering candidate" +
-		" working on the following problem. Follow their lead — do not auto-execute changes. Every FileEdit" +
-		" you propose must be reviewed by the candidate before it lands.\n\n" +
+
+	return "You are the coding agent inside Codritium. Work like an IDE coding assistant and complete the user's requested task using the available tools.\n\n" +
+		"Workflow:\n" +
+		"1. Inspect the relevant files with FileRead, Grep, or Glob before editing.\n" +
+		"2. Use FileEdit to make focused changes directly in the workspace.\n" +
+		"3. After an approved edit, run the relevant tests when possible.\n" +
+		"4. Read every tool result before choosing the next action.\n" +
+		"5. If a test fails, use its error output to make the next focused change, then rerun the test.\n" +
+		"6. If a test passes, do not reread unchanged files or call more tools unnecessarily. Immediately give a short summary of the changes and test result.\n" +
+		"7. Never repeat the same FileRead, Grep, or Glob call with identical arguments unless the workspace has changed since the previous call.\n\n" +
+		"Do not paste large replacement files into the chat response. Use FileEdit for code changes. " +
+		"Do not ask the user whether you should read files, edit code, or run tests. Call the appropriate tool directly; " +
+		"the application will request approval automatically when required. " +
+		"If a tool call is rejected, respect the decision, use the rejection reason as feedback, and continue appropriately.\n\n" +
+		"For an existing file, FileEdit must contain path, old_text, and new_text. " +
+		"old_text must exactly match one section of the current file. Keep edits focused and avoid replacing the entire file. " +
+		"For a new file, omit old_text and put the complete file contents in new_text. " +
+		"Never call FileEdit with missing or empty new_text.\n\n" +
 		"Problem README:\n" + readme + "\n\n" +
 		"Workspace files (visible):\n" + fileList + "\n" +
-		"There is no pre-supplied test file. To verify your changes you (or the candidate) must create a pytest" +
-		" file (e.g. `test_my.py`) via FileEdit, then call RunTests with that path. The hidden test " + hiddenTest +
-		" is invisible to you and protected from access — do not try to read or modify it."
+		"There is no pre-supplied visible test file. When useful, create a focused pytest file through FileEdit and run it with RunTests. " +
+		"The hidden test file " + hiddenTest + " is protected. Never try to read, search, or modify it."
 }

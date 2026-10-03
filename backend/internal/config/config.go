@@ -62,7 +62,7 @@ func Load() (*Config, error) {
 		CookieSecret:           os.Getenv("COOKIE_SECRET"),
 		CookieDomain:           os.Getenv("COOKIE_DOMAIN"),
 		GraderEngine:           getenv("GRADER_ENGINE", "gemini"),
-		ChatEngine:             getenv("CHAT_ENGINE", "gemini"),
+		ChatEngine:             getenv("CHAT_ENGINE", "ollama"),
 		OllamaBaseURL:          getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
 		OllamaModel:            getenv("OLLAMA_MODEL", "qwen3:8b"),
 		OllamaTimeoutSec:       getenvInt("OLLAMA_TIMEOUT_SEC", 180),
@@ -114,45 +114,38 @@ func Load() (*Config, error) {
 	}
 
 	switch c.ChatEngine {
-	case "disabled", "gemini", "anthropic":
+	case "disabled", "ollama":
 	default:
 		return nil, fmt.Errorf(
-			"CHAT_ENGINE must be 'disabled', 'gemini', or 'anthropic', got %q",
+			"CHAT_ENGINE must be 'disabled' or 'ollama', got %q",
 			c.ChatEngine,
 		)
 	}
 
-	if c.GraderEngine == "ollama" {
+	if c.GraderEngine == "ollama" || c.ChatEngine == "ollama" {
 		if c.OllamaBaseURL == "" {
-			return nil, fmt.Errorf("OLLAMA_BASE_URL is required for GRADER_ENGINE=ollama")
+			return nil, fmt.Errorf("OLLAMA_BASE_URL is required when Ollama chat or grading is enabled")
 		}
 		if c.OllamaModel == "" {
-			return nil, fmt.Errorf("OLLAMA_MODEL is required for GRADER_ENGINE=ollama")
+			return nil, fmt.Errorf("OLLAMA_MODEL is required when Ollama chat or grading is enabled")
 		}
 		if c.OllamaTimeoutSec <= 0 {
 			return nil, fmt.Errorf("OLLAMA_TIMEOUT_SEC must be greater than zero")
 		}
 	}
 
-	googleActive := c.ChatEngine == "gemini" || c.GraderEngine == "gemini"
+	googleActive := c.GraderEngine == "gemini"
 	if googleActive && c.GoogleAPIKey == "" {
 		return nil, fmt.Errorf(
-			"GOOGLE_API_KEY is required when Gemini chat or grading is enabled",
+			"GOOGLE_API_KEY is required when Gemini grading is enabled",
 		)
 	}
 
-	// Claude path is preserved but disabled by default. CHAT_ENGINE=anthropic
-	// or GRADER_ENGINE=anthropic must be paired with CLAUDE_FALLBACK_ENABLED=true,
-	// and that combination then requires ANTHROPIC_API_KEY.
-	if !c.ClaudeFallbackEnabled {
-		if c.ChatEngine == "anthropic" {
-			return nil, fmt.Errorf("CHAT_ENGINE=anthropic requires CLAUDE_FALLBACK_ENABLED=true")
-		}
-		if c.GraderEngine == "anthropic" {
-			return nil, fmt.Errorf("GRADER_ENGINE=anthropic requires CLAUDE_FALLBACK_ENABLED=true")
-		}
+	// Anthropic grading requires the preserved Claude fallback path.
+	if !c.ClaudeFallbackEnabled && c.GraderEngine == "anthropic" {
+		return nil, fmt.Errorf("GRADER_ENGINE=anthropic requires CLAUDE_FALLBACK_ENABLED=true")
 	}
-	claudeActive := c.ClaudeFallbackEnabled || c.ChatEngine == "anthropic" || c.GraderEngine == "anthropic"
+	claudeActive := c.ClaudeFallbackEnabled || c.GraderEngine == "anthropic"
 	if claudeActive && c.AnthropicAPIKey == "" {
 		return nil, fmt.Errorf("ANTHROPIC_API_KEY is required when the Claude path is active")
 	}

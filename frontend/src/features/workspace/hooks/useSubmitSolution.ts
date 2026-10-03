@@ -1,5 +1,7 @@
 "use client";
 
+import { useCallback, useState } from "react";
+
 import type { ProblemDetail } from "@/features/problems/api";
 import { workspaceApi } from "@/features/workspace/api";
 import { deleteSession } from "@/features/workspace/lib/session-store";
@@ -14,11 +16,21 @@ interface SubmitOptions {
   fileContents: Record<string, string>;
 }
 
-// Submits the workspace for grading, drops the local session and moves to
-// the submission report.
-export function useSubmitSolution({ problem, slug, handle, sessionId, fileContents }: SubmitOptions) {
-  return async () => {
-    if (!problem) return;
+// Submits the workspace for grading and exposes its in-flight state so the
+// UI can prevent duplicate or incomplete submissions.
+export function useSubmitSolution({
+  problem,
+  slug,
+  handle,
+  sessionId,
+  fileContents,
+}: SubmitOptions) {
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = useCallback(async () => {
+    if (!problem || submitting) return;
+
+    setSubmitting(true);
     try {
       const data = await workspaceApi.createSubmission({
         problemSlug: slug,
@@ -26,11 +38,24 @@ export function useSubmitSolution({ problem, slug, handle, sessionId, fileConten
         codeFiles: fileContents,
         sessionId,
       });
+
       if (handle) deleteSession(handle, slug);
       window.location.href = `/submissions/${data.id}`;
     } catch (e) {
       console.error("submit error:", e);
-      toast.error(t("submit_failed"));
+      toast.error(
+        e instanceof Error && e.message ? e.message : t("submit_failed"),
+      );
+      setSubmitting(false);
     }
-  };
+  }, [
+    problem,
+    submitting,
+    slug,
+    fileContents,
+    sessionId,
+    handle,
+  ]);
+
+  return { submit, submitting };
 }

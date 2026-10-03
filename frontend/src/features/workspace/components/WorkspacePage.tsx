@@ -3,11 +3,13 @@
 import { useCallback, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { useRequireAuth } from "@/features/auth/hooks/useRequireAuth";
-import { ActivityBar, type ActivityView } from "@/features/workspace/components/ActivityBar";
+import {
+  ActivityBar,
+  type ActivityView,
+} from "@/features/workspace/components/ActivityBar";
 import { AppBar } from "@/features/workspace/components/AppBar";
 import { FloatingPanel } from "@/features/workspace/components/FloatingPanel";
 import { EditorAreaSplit } from "@/features/workspace/components/ide/EditorAreaSplit";
-import { PendingPatchesPanel } from "@/features/workspace/components/PendingPatchesPanel";
 import { ReadmeBody } from "@/features/workspace/components/ReadmeTab";
 import { RightPanel } from "@/features/workspace/components/RightPanel";
 import { SideBar } from "@/features/workspace/components/SideBar";
@@ -20,6 +22,7 @@ import { useRestoredSessionToast } from "@/features/workspace/hooks/useRestoredS
 import { useSessionEvents } from "@/features/workspace/hooks/useSessionEvents";
 import { useSubmitSolution } from "@/features/workspace/hooks/useSubmitSolution";
 import { useWorkspaceBootstrap } from "@/features/workspace/hooks/useWorkspaceBootstrap";
+import type { PendingPatch } from "@/features/workspace/types";
 import { languageForFile } from "@/shared/editor/language";
 import { formatDuration } from "@/shared/format";
 import { Splitter } from "@/shared/ui/Splitter";
@@ -35,7 +38,12 @@ export function WorkspacePage() {
   const me = useRequireAuth();
   const handle = me?.handle ?? null;
   const { session, setSession } = useProblemSession(handle, slug);
-  const { problem, sessionId } = useWorkspaceBootstrap(handle, slug, forceFresh, setSession);
+  const { problem, sessionId } = useWorkspaceBootstrap(
+    handle,
+    slug,
+    forceFresh,
+    setSession,
+  );
   useRestoredSessionToast(session?.restoredFromStorage, handle, slug);
   const elapsed = useElapsedSeconds(session?.startedAt);
 
@@ -56,14 +64,55 @@ export function WorkspacePage() {
 
   const panes = useEditorPanes(session, setSession);
   const patches = usePendingPatches(setSession);
+  const { selectFile } = panes;
+  const { addPending } = patches;
+
+  const handleProposal = useCallback(
+    (patch: PendingPatch) => {
+      addPending(patch);
+
+      if (patch.tool === "FileEdit" && patch.path) {
+        selectFile(patch.path);
+      }
+    },
+    [addPending, selectFile],
+  );
+
   const chat = useSessionEvents({
     sessionId,
     fileContents,
     setSession,
-    onProposal: patches.addPending,
+    onProposal: handleProposal,
     onDecided: patches.dropPending,
   });
-  const submit = useSubmitSolution({ problem, slug, handle, sessionId, fileContents });
+
+  const previewPatch =
+    patches.pending.find(
+      (patch) =>
+        patch.tool === "FileEdit" &&
+        patch.path &&
+        patch.oldContent !== undefined &&
+        patch.newContent !== undefined,
+    ) ?? null;
+
+  const diffPreview = previewPatch
+    ? {
+        toolUseId: previewPatch.toolUseId,
+        path: previewPatch.path!,
+        original: previewPatch.oldContent!,
+        modified: previewPatch.newContent!,
+      }
+    : null;
+
+  const { submit, submitting } = useSubmitSolution({
+    problem,
+    slug,
+    handle,
+    sessionId,
+    fileContents,
+  });
+
+  const submitDisabled = submitting || chat.busy || patches.pending.length > 0;
 
   if (!me) return null;
 
@@ -71,7 +120,13 @@ export function WorkspacePage() {
 
   return (
     <div className="flex h-screen flex-col">
-      <AppBar timer={formatDuration(elapsed)} onSubmit={submit} problemTitle={problem?.title ?? slug} />
+      <AppBar
+        timer={formatDuration(elapsed)}
+        onSubmit={submit}
+        problemTitle={problem?.title ?? slug}
+        submitting={submitting}
+        submitDisabled={submitDisabled}
+      />
       <div className="flex min-h-0 flex-1">
         <ActivityBar active={activity} onChange={setActivity} />
         <div className="flex min-w-0 shrink-0" style={{ width: sideWidth }}>
@@ -79,7 +134,6 @@ export function WorkspacePage() {
             files={fileNames.map((n) => ({ name: n, type: "file" as const }))}
             activeFile={activeFile}
             onSelectFile={panes.selectFile}
-            extraSlot={<PendingPatchesPanel pending={patches.pending} onResolved={patches.resolvePatch} />}
           />
         </div>
         <Splitter onResize={handleSideResize} />
@@ -87,6 +141,8 @@ export function WorkspacePage() {
           <EditorAreaSplit
             panes={panes.editorPanes}
             fileContents={fileContents}
+            diffPreview={diffPreview}
+            onDiffPreviewChange={patches.updatePendingContent}
             readmeMD={problem?.readme_md ?? ""}
             readmeFloating={readmeFloating}
             onToggleReadmeFloat={() => setReadmeFloating((v) => !v)}
@@ -111,6 +167,7 @@ export function WorkspacePage() {
             busy={chat.busy}
             onApply={panes.applyToActiveTab}
             onPatchResolved={patches.resolvePatch}
+            getPendingContent={patches.getPendingContent}
           />
         </div>
       </div>
@@ -122,7 +179,10 @@ export function WorkspacePage() {
         cursorCol={1}
       />
       {readmeFloating && (
-        <FloatingPanel title="README.md" onClose={() => setReadmeFloating(false)}>
+        <FloatingPanel
+          title="README.md"
+          onClose={() => setReadmeFloating(false)}
+        >
           <div className="px-7 py-6">
             <ReadmeBody readme={problem?.readme_md ?? ""} />
           </div>

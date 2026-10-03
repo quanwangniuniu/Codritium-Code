@@ -33,9 +33,17 @@ export interface PendingPatch {
   auto?: boolean;
 }
 
-// onResolved signature carries the effective content that landed in the
-// workspace so the caller (workspace page) can sync its local files map
-// without re-querying the backend. content is undefined on reject.
+// FileEdit proposal shown in the editor. The original side is read-only,
+// while edits to the modified side update the pending tool decision.
+export interface EditorDiffPreview {
+  toolUseId: string;
+  path: string;
+  original: string;
+  modified: string;
+}
+
+// A resolved decision may carry approved FileEdit content. The content is
+// staged until the backend reports that tool execution succeeded.
 export type ResolveCallback = (
   toolUseId: string,
   kind: DecisionKind,
@@ -57,6 +65,16 @@ export type PatchMessage = {
   id: string;
   pending: PendingPatch;
   resolved?: { kind: "approve" | "modify" | "reject" };
+  // Approved content waiting for a successful backend tool result.
+  approvedChange?: {
+    path: string;
+    content: string;
+  };
+  toolResult?: {
+    summary: string;
+    isError: boolean;
+    durationMs?: number;
+  };
 };
 
 export type ChatMessage = TextMessage | PatchMessage;

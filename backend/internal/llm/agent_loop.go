@@ -1,4 +1,4 @@
-// chat_v2.go — v0.8 candidate-agent main turn loop.
+// agent_loop.go — candidate-agent main turn loop.
 //
 // Spec: PLAN/v0.8/design/chat_loop_skeleton.md
 //
@@ -26,6 +26,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"codritium/backend/internal/agentworkflow"
 	"codritium/backend/internal/events"
 )
 
@@ -84,7 +85,12 @@ type RunResult struct {
 	Usage      events.TokenUsage
 }
 
-const defaultMaxIterations = 50
+const (
+	defaultMaxIterations     = 20
+	maxRepeatedAutoToolCalls = 3
+)
+
+var defaultActionRegistry = agentworkflow.NewDefaultRegistry()
 
 // RunTurn consumes one user message and runs the agent until either the
 // model stops asking for tools (normal exit) or a guard / failure trips
@@ -116,6 +122,9 @@ func (a *Agent) RunTurn(ctx context.Context, sessionID uuid.UUID, turnIndex int,
 
 	usage := events.TokenUsage{}
 	iter := 0
+
+	lastAutoToolKey := ""
+	repeatedAutoToolCalls := 0
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -152,10 +161,64 @@ func (a *Agent) RunTurn(ctx context.Context, sessionID uuid.UUID, turnIndex int,
 			return a.completeNormal(ctx, sessionID, turnIndex, iter, usage)
 		}
 
-		// 4) each tool_use: propose → wait decision → execute (unless rejected)
+		// 4) each tool_use: validate → propose → approve or wait → execute
 		for _, tu := range pending {
+			action, actionExists := defaultActionRegistry.Resolve(agentworkflow.Request{
+				Name:  tu.Name,
+				Input: agentworkflow.Input(tu.Input),
+			})
+			if actionExists && !action.RequiresApproval {
+				key := tu.Name + ":" + hashFor(tu.Input)
+				if key == lastAutoToolKey {
+					repeatedAutoToolCalls++
+				} else {
+					lastAutoToolKey = key
+					repeatedAutoToolCalls = 1
+				}
+
+				if repeatedAutoToolCalls > maxRepeatedAutoToolCalls {
+					output, _ := json.Marshal(map[string]any{
+						"error": "repeated identical read blocked",
+						"detail": fmt.Sprintf(
+							"%s was called repeatedly with the same input; use the existing result, choose a different tool, or finish the task",
+							tu.Name,
+						),
+					})
+
+					a.recordMessage(ctx, sessionID, Message{
+						Role: "tool",
+						Content: []ContentBlock{{
+							Kind: "tool_result",
+							ToolResult: &ContentToolResult{
+								ToolUseID: tu.ID,
+								Output:    string(output),
+								IsError:   true,
+							},
+						}},
+					})
+
+					return a.completeMaxTurns(
+						ctx,
+						sessionID,
+						turnIndex,
+						iter,
+						usage,
+					)
+				}
+			} else {
+				lastAutoToolKey = ""
+				repeatedAutoToolCalls = 0
+			}
+
 			if err := a.handleToolUse(ctx, sessionID, turnIndex, tu); err != nil {
-				return a.completeAborted(ctx, sessionID, turnIndex, iter, usage, "tool_use: "+err.Error())
+				return a.completeAborted(
+					ctx,
+					sessionID,
+					turnIndex,
+					iter,
+					usage,
+					"tool_use: "+err.Error(),
+				)
 			}
 		}
 		// loop back: model will see new tool_result messages on next iteration
@@ -173,11 +236,11 @@ func (a *Agent) recordMessage(ctx context.Context, sessionID uuid.UUID, msg Mess
 	}
 	content, err := json.Marshal(anthropicBlocks(msg.Content))
 	if err != nil {
-		log.Printf("chat_v2: marshal transcript message for %s: %v", sessionID, err)
+		log.Printf("agent loop: marshal transcript message for %s: %v", sessionID, err)
 		return
 	}
 	if err := a.Events.AppendMessage(ctx, sessionID, msg.Role, content); err != nil {
-		log.Printf("chat_v2: persist transcript message for %s: %v", sessionID, err)
+		log.Printf("agent loop: persist transcript message for %s: %v", sessionID, err)
 	}
 }
 
@@ -292,38 +355,47 @@ type pendingBuilder struct {
 	input strings.Builder
 }
 
-// handleToolUse runs the three-step "propose → wait → execute" path for
-// one pending tool_use. Even on reject, a tool_result message is appended
-// to the running history so the model can react on the next iteration.
+// handleToolUse resolves and validates one action, records its proposal,
+// obtains an automatic or candidate decision, and executes it when approved.
+// Even on reject, a tool_result is appended so the model can react.
 func (a *Agent) handleToolUse(ctx context.Context, sessionID uuid.UUID, turnIndex int, tu pendingToolUse) error {
-	if tu.Name == "FileEdit" {
-		path, pOK := tu.Input["path"].(string)
-		content, cOK := tu.Input["content"].(string)
-		if pOK && cOK && a.Workspace != nil {
-			if existing, exists := a.Workspace.Get(path); exists && existing == content {
-				a.recordMessage(ctx, sessionID, Message{
-					Role: "tool",
-					Content: []ContentBlock{{
-						Kind: "tool_result",
-						ToolResult: &ContentToolResult{
-							ToolUseID: tu.ID,
-							Output:    fmt.Sprintf(`{"error":"no-op edit","detail":"proposed content for %s is identical to current workspace; choose different content or pick a different tool"}`, path),
-							IsError:   true,
-						},
-					}},
-				})
-				return nil
-			}
-		}
+	action, actionExists := defaultActionRegistry.Resolve(agentworkflow.Request{
+		Name:  tu.Name,
+		Input: agentworkflow.Input(tu.Input),
+	})
+	if !actionExists {
+		return fmt.Errorf("unknown action: %s", tu.Name)
 	}
+
+	var validationContext agentworkflow.ValidationContext
+	if a.Workspace != nil {
+		validationContext = a.Workspace
+	}
+
+	validatedInput, validationErr := action.ValidateInput(
+		agentworkflow.Input(tu.Input),
+		validationContext,
+	)
+	if validationErr != nil {
+		a.recordInvalidToolUse(
+			ctx,
+			sessionID,
+			tu.ID,
+			tu.Name,
+			validationErr.Error(),
+		)
+		return nil
+	}
+	tu.Input = map[string]any(validatedInput)
 
 	summary := summarizeInput(tu.Name, tu.Input)
 	inputHash := hashFor(tu.Input)
-	isAuto := isReadClassTool(tu.Name)
+	isAuto := !action.RequiresApproval
 
 	if _, err := a.Events.Append(ctx, sessionID, events.ToolUseProposed{
 		ToolUseID:    tu.ID,
 		Tool:         tu.Name,
+		Input:        tu.Input,
 		InputSummary: summary,
 		InputHash:    inputHash,
 		TurnIndex:    turnIndex,
@@ -387,13 +459,40 @@ func (a *Agent) handleToolUse(ctx context.Context, sessionID uuid.UUID, turnInde
 		return nil
 	}
 
-	// approve / modify path: pick effective input then execute
+	// approve / modify path: pick and verify the effective input, then execute
 	effectiveInput := tu.Input
 	if decision.Kind == "modify" && decision.ModifiedInput != "" {
-		var alt map[string]any
-		if err := json.Unmarshal([]byte(decision.ModifiedInput), &alt); err == nil {
-			effectiveInput = alt
+		var modifiedInput map[string]any
+		if err := json.Unmarshal(
+			[]byte(decision.ModifiedInput),
+			&modifiedInput,
+		); err != nil {
+			a.recordInvalidToolUse(
+				ctx,
+				sessionID,
+				tu.ID,
+				tu.Name,
+				"modified input is not valid JSON",
+			)
+			return nil
 		}
+
+		validatedModifiedInput, err := action.ValidateInput(
+			agentworkflow.Input(modifiedInput),
+			validationContext,
+		)
+		if err != nil {
+			a.recordInvalidToolUse(
+				ctx,
+				sessionID,
+				tu.ID,
+				tu.Name,
+				err.Error(),
+			)
+			return nil
+		}
+
+		effectiveInput = map[string]any(validatedModifiedInput)
 	}
 
 	tool, ok := a.Tools[tu.Name]
@@ -410,6 +509,9 @@ func (a *Agent) handleToolUse(ctx context.Context, sessionID uuid.UUID, turnInde
 	})
 	if execErr != nil {
 		return execErr
+	}
+	if err := action.ValidateResult(output, isErr); err != nil {
+		return fmt.Errorf("verify %s result: %w", tu.Name, err)
 	}
 	dur := time.Since(t0).Milliseconds()
 
@@ -433,6 +535,31 @@ func (a *Agent) handleToolUse(ctx context.Context, sessionID uuid.UUID, turnInde
 		}},
 	})
 	return nil
+}
+
+func (a *Agent) recordInvalidToolUse(
+	ctx context.Context,
+	sessionID uuid.UUID,
+	toolUseID string,
+	toolName string,
+	detail string,
+) {
+	output, _ := json.Marshal(map[string]string{
+		"error":  "invalid " + toolName,
+		"detail": detail,
+	})
+
+	a.recordMessage(ctx, sessionID, Message{
+		Role: "tool",
+		Content: []ContentBlock{{
+			Kind: "tool_result",
+			ToolResult: &ContentToolResult{
+				ToolUseID: toolUseID,
+				Output:    string(output),
+				IsError:   true,
+			},
+		}},
+	})
 }
 
 func (a *Agent) toolSpecs() []ToolSpec {
@@ -504,6 +631,9 @@ func summarizeInput(toolName string, input map[string]any) string {
 	case "FileEdit":
 		path, _ := input["path"].(string)
 		content, _ := input["content"].(string)
+		if newText, ok := input["new_text"].(string); ok {
+			content = newText
+		}
 		return fmt.Sprintf("Edit %s (%d bytes)", path, len(content))
 	case "FileRead":
 		path, _ := input["path"].(string)
@@ -532,18 +662,4 @@ func summarizeInput(toolName string, input map[string]any) string {
 		return fmt.Sprintf("Run: %s", cmd)
 	}
 	return toolName
-}
-
-// isReadClassTool returns true for tools that are safe to auto-execute
-// without candidate consent. The read-class set covers strictly
-// non-mutating workspace inspection: FileRead, Grep, and Glob. RunTests
-// stays excluded because the candidate's choice to run tests is the core
-// Verification dimension signal, and RunCommand stays excluded because it
-// can mutate the scratch directory and spawn external processes.
-func isReadClassTool(name string) bool {
-	switch name {
-	case "FileRead", "Grep", "Glob":
-		return true
-	}
-	return false
 }

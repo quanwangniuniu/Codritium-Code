@@ -198,8 +198,10 @@ func (fileEditTool) Name() string { return "FileEdit" }
 func (fileEditTool) Spec() ToolSpec {
 	return ToolSpec{
 		Name: "FileEdit",
-		Description: "Propose a replacement for a file in the workspace. The candidate must " +
-			"approve (and may modify) the patch before it lands.",
+		Description: "Propose a targeted edit to a workspace file. For an existing file, " +
+			"provide old_text copied exactly from the current file and new_text as its replacement. " +
+			"For a new file, omit old_text and provide the complete file in new_text. " +
+			"The candidate must approve the edit before it is applied.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -207,30 +209,95 @@ func (fileEditTool) Spec() ToolSpec {
 					"type":        "string",
 					"description": "Workspace-relative file path.",
 				},
-				"content": map[string]any{
+				"old_text": map[string]any{
 					"type":        "string",
-					"description": "Full replacement contents of the file.",
+					"description": "Exact text to replace in an existing file. It must occur exactly once. Omit only when creating a new file.",
+				},
+				"new_text": map[string]any{
+					"type":        "string",
+					"description": "Replacement text. For a new file, this is the complete file content.",
 				},
 			},
-			"required": []string{"path", "content"},
+			"required":             []string{"path", "new_text"},
+			"additionalProperties": false,
 		},
 	}
 }
 
-func (fileEditTool) Execute(ctx context.Context, input map[string]any, deps ToolDeps) (string, bool, error) {
-	path, _ := input["path"].(string)
-	content, _ := input["content"].(string)
-	if path == "" {
+func (fileEditTool) Execute(
+	ctx context.Context,
+	input map[string]any,
+	deps ToolDeps,
+) (string, bool, error) {
+	path, pathOK := input["path"].(string)
+	if !pathOK || path == "" {
 		return `{"error":"path required"}`, true, nil
 	}
 	if err := checkDeny("FileEdit", path, deps.Deny); err != nil {
 		return fmt.Sprintf(`{"error":%q}`, err.Error()), true, nil
 	}
-	deps.Workspace.Set(path, content)
+
+	// Keep accepting the old complete-file format while existing tests and
+	// stored tool calls are migrated to targeted edits.
+	if content, ok := input["content"].(string); ok && content != "" {
+		deps.Workspace.Set(path, content)
+		resp, _ := json.Marshal(map[string]any{
+			"applied": true,
+			"path":    path,
+			"size":    len(content),
+			"legacy":  true,
+		})
+		return string(resp), false, nil
+	}
+
+	newText, newTextOK := input["new_text"].(string)
+	if !newTextOK {
+		return `{"error":"new_text required"}`, true, nil
+	}
+
+	current, exists := deps.Workspace.Get(path)
+	if !exists {
+		if oldText, ok := input["old_text"].(string); ok && oldText != "" {
+			return `{"error":"cannot replace old_text in a file that does not exist"}`, true, nil
+		}
+		if newText == "" {
+			return `{"error":"new file content cannot be empty"}`, true, nil
+		}
+
+		deps.Workspace.Set(path, newText)
+		resp, _ := json.Marshal(map[string]any{
+			"applied": true,
+			"path":    path,
+			"size":    len(newText),
+			"created": true,
+		})
+		return string(resp), false, nil
+	}
+
+	oldText, oldTextOK := input["old_text"].(string)
+	if !oldTextOK || oldText == "" {
+		return `{"error":"old_text required when editing an existing file"}`, true, nil
+	}
+
+	matches := strings.Count(current, oldText)
+	if matches == 0 {
+		return `{"error":"old_text was not found; read the latest file and try again"}`, true, nil
+	}
+	if matches > 1 {
+		return `{"error":"old_text matched more than once; include more surrounding context"}`, true, nil
+	}
+	if oldText == newText {
+		return `{"error":"edit would not change the file"}`, true, nil
+	}
+
+	updated := strings.Replace(current, oldText, newText, 1)
+	deps.Workspace.Set(path, updated)
+
 	resp, _ := json.Marshal(map[string]any{
-		"applied": true,
-		"path":    path,
-		"size":    len(content),
+		"applied":      true,
+		"path":         path,
+		"size":         len(updated),
+		"replacements": 1,
 	})
 	return string(resp), false, nil
 }

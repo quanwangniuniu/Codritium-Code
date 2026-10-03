@@ -1,10 +1,6 @@
-// Package llm hosts the v0.8 candidate-agent main loop, the LLM stream
-// adapters (Claude / Gemini), and the DecisionWaiter that bridges the
-// in-process agent goroutine to the candidate's approve / modify / reject
-// HTTP action.
-//
-// Today (V0-3) the package only contains the DecisionWaiter. V0-4 will
-// migrate the existing internal/anthropic content here and add gemini_stream.
+// Package llm contains the candidate-agent loop, the local Ollama stream
+// adapter, its tools, and the approval bridge between the running agent
+// and the candidate's approve, modify, or reject action.
 package llm
 
 import (

@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/genai"
 
@@ -67,15 +69,83 @@ func Submit(deps SubmissionDeps) http.HandlerFunc {
 
 		ctx := r.Context()
 
-		// Per-user rate limit. A reused pending submission (req.SubmissionID
-		// set) isn't a new burn — count only fresh inserts.
+		var sessionID *uuid.UUID
+		if req.SessionID != "" {
+			id, err := uuid.Parse(req.SessionID)
+			if err != nil {
+				http.Error(w, "invalid session_id", http.StatusBadRequest)
+				return
+			}
+
+			// A session may only be submitted by its owner.
+			var owner string
+			if err := deps.Pool.QueryRow(
+				ctx,
+				`SELECT candidate_id
+		 FROM candidate_sessions
+		 WHERE session_id = $1`,
+				id,
+			).Scan(&owner); err != nil || owner != u.Handle {
+				http.Error(w, "session not found", http.StatusNotFound)
+				return
+			}
+
+			sessionID = &id
+
+			// Treat retries for the same session as the same submission. This
+			// prevents a double click or network retry from creating another row,
+			// consuming another grading run, or hitting the hourly rate limit.
+			var existingID uuid.UUID
+			var existingStatus string
+			err = deps.Pool.QueryRow(
+				ctx,
+				`SELECT id, status
+		 FROM submissions
+		 WHERE session_id = $1 AND user_id = $2
+		 ORDER BY submitted_at DESC
+		 LIMIT 1`,
+				id,
+				u.ID,
+			).Scan(&existingID, &existingStatus)
+
+			switch {
+			case err == nil:
+				writeJSON(w, http.StatusOK, map[string]any{
+					"id":     existingID,
+					"status": existingStatus,
+					"reused": true,
+				})
+				return
+
+			case !errors.Is(err, pgx.ErrNoRows):
+				http.Error(
+					w,
+					"check existing submission: "+err.Error(),
+					http.StatusInternalServerError,
+				)
+				return
+			}
+		}
+
+		// A reused submission_id or an already-submitted session is not a new
+		// grading run. Apply the hourly limit only when creating a fresh row.
 		if req.SubmissionID == "" {
 			var recent int
 			if err := deps.Pool.QueryRow(ctx, `
-				SELECT COUNT(*) FROM submissions
-				WHERE user_id = $1 AND submitted_at >= now() - interval '1 hour'`,
+		SELECT COUNT(*) FROM submissions
+		WHERE user_id = $1
+		  AND submitted_at >= now() - interval '1 hour'`,
 				u.ID,
-			).Scan(&recent); err == nil && recent >= submitRateLimitPerHour {
+			).Scan(&recent); err != nil {
+				http.Error(
+					w,
+					"check submission rate limit: "+err.Error(),
+					http.StatusInternalServerError,
+				)
+				return
+			}
+
+			if recent >= submitRateLimitPerHour {
 				w.Header().Set("Retry-After", "3600")
 				writeJSON(w, http.StatusTooManyRequests, map[string]any{
 					"error":  "submission rate limit exceeded",
@@ -83,22 +153,6 @@ func Submit(deps SubmissionDeps) http.HandlerFunc {
 					"window": "1 hour",
 				})
 				return
-			}
-		}
-
-		var sessionID *uuid.UUID
-		if req.SessionID != "" {
-			if id, err := uuid.Parse(req.SessionID); err == nil {
-				// The session's transcript feeds grading and submit tears
-				// down its agent, so only the owner may attach it.
-				var owner string
-				if err := deps.Pool.QueryRow(ctx,
-					`SELECT candidate_id FROM candidate_sessions WHERE session_id = $1`, id,
-				).Scan(&owner); err != nil || owner != u.Handle {
-					http.Error(w, "session not found", http.StatusNotFound)
-					return
-				}
-				sessionID = &id
 			}
 		}
 
@@ -170,7 +224,7 @@ func Submit(deps SubmissionDeps) http.HandlerFunc {
 
 		// Reuse the pending submission (created during chat) if provided,
 		// otherwise insert a new row. session_id ties the submission back to
-		// the chat_v2 session so the grader can pull the conversation from
+		// the agent chat session so the grader can pull the conversation from
 		// session_messages.
 		var submissionID uuid.UUID
 		if req.SubmissionID != "" {
@@ -326,8 +380,8 @@ func runGradingPipeline(deps SubmissionDeps, submissionID uuid.UUID,
 		submissionID, gres.FinalScore, sb.PassCount, sb.Total, gres.EvaluatedDims)
 }
 
-// loadPromptHistory pulls the chat_v2 transcript that produced this
-// submission. Submissions created before chat_v2 (or via a pure non-chat
+// loadPromptHistory pulls the agent chat transcript that produced this
+// submission. Submissions created before agent chat (or via a pure non-chat
 // flow) carry a null session_id and return an empty history.
 //
 // session_messages.content is a JSONB array of Anthropic content blocks
@@ -535,15 +589,28 @@ func GetSubmission(deps SubmissionDeps) http.HandlerFunc {
 			finalScore                     *float64
 			submittedAt, gradedAt          *time.Time
 			userID                         uuid.UUID
+			sessionID                      *uuid.UUID
 		)
 		err = deps.Pool.QueryRow(r.Context(), `
 			SELECT s.user_id, p.slug, s.status, s.variant, s.code_files::text,
-			       COALESCE(s.test_results::text,'null'), COALESCE(s.scores::text,'null'),
-			       s.final_score, s.submitted_at, s.graded_at
+                   COALESCE(s.test_results::text,'null'), COALESCE(s.scores::text,'null'),
+                   s.final_score, s.submitted_at, s.graded_at, s.session_id
 			FROM submissions s
 			JOIN problems p ON p.id = s.problem_id
 			WHERE s.id = $1 AND s.user_id = $2`, id, u.ID,
-		).Scan(&userID, &problemSlug, &status, &variant, &codeFiles, &testResults, &scores, &finalScore, &submittedAt, &gradedAt)
+		).Scan(
+			&userID,
+			&problemSlug,
+			&status,
+			&variant,
+			&codeFiles,
+			&testResults,
+			&scores,
+			&finalScore,
+			&submittedAt,
+			&gradedAt,
+			&sessionID,
+		)
 		if err != nil {
 			http.Error(w, "submission not found", http.StatusNotFound)
 			return
@@ -571,6 +638,7 @@ func GetSubmission(deps SubmissionDeps) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"id":           id,
 			"user_id":      userID,
+			"session_id":   sessionID,
 			"problem_slug": problemSlug,
 			"status":       status,
 			"variant":      variant,

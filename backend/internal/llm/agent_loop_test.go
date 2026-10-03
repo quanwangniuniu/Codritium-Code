@@ -533,6 +533,87 @@ func TestRunTurn_NoOpFileEditBypassed(t *testing.T) {
 	}
 }
 
+func TestRunTurn_EmptyFileEditBypassed(t *testing.T) {
+	pool := newTestPool(t)
+	sid := newTestSession(t, pool)
+	store := events.NewStore(pool)
+	waiter := NewDecisionWaiter()
+
+	stream := &scriptedStream{
+		scripts: [][]NormalizedChunk{
+			{
+				{Kind: "tool_use_start", ToolUseID: "tu-empty", ToolUseName: "FileEdit"},
+				{
+					Kind:           "tool_use_input_delta",
+					ToolUseID:      "tu-empty",
+					InputJSONDelta: `{"path":"rate_limiter.py","content":""}`,
+				},
+				{Kind: "tool_use_stop", ToolUseID: "tu-empty"},
+				{Kind: "message_stop", StopReason: "tool_use"},
+			},
+			{
+				{Kind: "text_delta", Text: "I will retry with non-empty content."},
+				{Kind: "message_stop", StopReason: "end_turn"},
+			},
+		},
+	}
+
+	agent := &Agent{
+		Stream: stream,
+		Events: store,
+		Waiter: waiter,
+		Tools:  NewDefaultRegistry(),
+		Workspace: &Workspace{Files: map[string]string{
+			"rate_limiter.py": "starter",
+		}},
+	}
+
+	go func() {
+		for i := 0; i < 60; i++ {
+			if waiter.Pending("tu-empty") {
+				t.Errorf("empty FileEdit entered the approval flow")
+				waiter.Notify("tu-empty", Decision{Kind: "reject"})
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
+
+	res, err := agent.RunTurn(
+		context.Background(),
+		sid,
+		1,
+		"edit rate_limiter.py",
+	)
+	if err != nil {
+		t.Fatalf("RunTurn: %v", err)
+	}
+	if res.Reason != "normal" {
+		t.Fatalf("reason=%q want normal", res.Reason)
+	}
+	if res.Iterations != 2 {
+		t.Fatalf("iterations=%d want 2", res.Iterations)
+	}
+	if got := agent.Workspace.Files["rate_limiter.py"]; got != "starter" {
+		t.Fatalf("workspace changed after empty edit; got %q", got)
+	}
+
+	kinds := collectEvents(t, pool, sid)
+	for _, banned := range []string{
+		"tool_use_proposed",
+		"candidate_approved",
+		"candidate_rejected",
+	} {
+		if contains(kinds, banned) {
+			t.Fatalf(
+				"event %q must not fire for empty FileEdit; got %v",
+				banned,
+				kinds,
+			)
+		}
+	}
+}
+
 func TestRunTurn_FileReadAutoApproved(t *testing.T) {
 	pool := newTestPool(t)
 	sid := newTestSession(t, pool)
@@ -617,6 +698,90 @@ func contains(xs []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestRunTurn_StopsRepeatedIdenticalRead(t *testing.T) {
+	pool := newTestPool(t)
+	sid := newTestSession(t, pool)
+	store := events.NewStore(pool)
+
+	repeatedRead := func(id string) []NormalizedChunk {
+		return []NormalizedChunk{
+			{
+				Kind:        "tool_use_start",
+				ToolUseID:   id,
+				ToolUseName: "FileRead",
+			},
+			{
+				Kind:           "tool_use_input_delta",
+				ToolUseID:      id,
+				InputJSONDelta: `{"path":"answer.py"}`,
+			},
+			{
+				Kind:      "tool_use_stop",
+				ToolUseID: id,
+			},
+			{
+				Kind:       "message_stop",
+				StopReason: "tool_use",
+			},
+		}
+	}
+
+	stream := &scriptedStream{
+		scripts: [][]NormalizedChunk{
+			repeatedRead("tu-read-1"),
+			repeatedRead("tu-read-2"),
+			repeatedRead("tu-read-3"),
+			repeatedRead("tu-read-4"),
+		},
+	}
+
+	agent := &Agent{
+		Stream: stream,
+		Events: store,
+		Waiter: NewDecisionWaiter(),
+		Tools:  NewDefaultRegistry(),
+		Workspace: &Workspace{
+			Files: map[string]string{
+				"answer.py": "print('hello')",
+			},
+		},
+	}
+
+	result, err := agent.RunTurn(
+		context.Background(),
+		sid,
+		1,
+		"inspect the file",
+	)
+	if err != nil {
+		t.Fatalf("RunTurn: %v", err)
+	}
+	if result.Reason != "max_turns" {
+		t.Fatalf("reason=%q want max_turns", result.Reason)
+	}
+	if result.Iterations != 4 {
+		t.Fatalf("iterations=%d want 4", result.Iterations)
+	}
+
+	var proposals int
+	err = pool.QueryRow(
+		context.Background(),
+		`SELECT count(*) FROM session_events
+		 WHERE session_id=$1 AND kind='tool_use_proposed'`,
+		sid,
+	).Scan(&proposals)
+	if err != nil {
+		t.Fatalf("count proposals: %v", err)
+	}
+	if proposals != maxRepeatedAutoToolCalls {
+		t.Fatalf(
+			"proposals=%d want %d",
+			proposals,
+			maxRepeatedAutoToolCalls,
+		)
+	}
 }
 
 // silence unused-import warnings on errors package without separate file
@@ -717,5 +882,17 @@ func TestAnthropicBlocks(t *testing.T) {
 	}
 	if got[2]["type"] != "tool_result" || got[2]["tool_use_id"] != "tu-1" || got[2]["content"] != "ok" || got[2]["is_error"] != true {
 		t.Fatalf("tool_result block = %v", got[2])
+	}
+}
+
+func TestSummarizeInput_FileEditUsesNewText(t *testing.T) {
+	got := summarizeInput("FileEdit", map[string]any{
+		"path":     "answer.py",
+		"old_text": "before",
+		"new_text": "after",
+	})
+
+	if got != "Edit answer.py (5 bytes)" {
+		t.Fatalf("summary=%q", got)
 	}
 }

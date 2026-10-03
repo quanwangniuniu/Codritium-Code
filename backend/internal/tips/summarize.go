@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// SummarizeSessionEvents reads the chat_v2 event stream for a session and
+// SummarizeSessionEvents reads the agent chat event stream for a session and
 // returns a short markdown digest the tips-agent can fold into its system
 // prompt. The summary is rule-based — no LLM call — and is intentionally
 // coarse (counts, not transcripts) so it stays cheap and safe to embed in

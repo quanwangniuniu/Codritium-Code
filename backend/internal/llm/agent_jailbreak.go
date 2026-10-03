@@ -5,9 +5,9 @@ import (
 	"strings"
 )
 
-// ChatJailbreakClassifier is a deliberately narrow filter for the chat_v2
+// ChatJailbreakClassifier is a deliberately narrow filter for the agent chat
 // agent. Unlike the tips-agent tutor which has to hold a Socratic posture
-// against rich social-engineering attempts, chat_v2 is a coding partner —
+// against rich social-engineering attempts, agent chat is a coding partner —
 // most prompts are legitimate. The classifier only intercepts attempts to
 // reach the hidden test bundle or otherwise short-circuit the grader.
 //
