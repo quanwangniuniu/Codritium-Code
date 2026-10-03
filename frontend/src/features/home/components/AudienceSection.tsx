@@ -1,8 +1,7 @@
-import { Briefcase, Check, ClipboardCheck, MessagesSquare, Users } from "lucide-react";
+import { Check } from "lucide-react";
 import { t } from "@/shared/i18n";
-import { cn } from "@/shared/lib/cn";
 import { ArrowLink } from "./ArrowLink";
-import { ACCENT_TEXT, SectionBadge } from "./SectionBadge";
+import { DotGlyph } from "./DotGlyph";
 
 export const CONTACT_EMAIL = "contact@codritium.com";
 
@@ -15,13 +14,8 @@ export function AudienceSection({ problemCount }: AudienceSectionProps) {
     <section className="border-y border-divider bg-surface">
       <div className="mx-auto max-w-[1200px] px-4 sm:px-6 py-20 grid md:grid-cols-2 md:divide-x divide-divider gap-y-16">
         <div className="md:pr-14 space-y-4">
-          <div className="flex -space-x-2">
-            <SectionBadge icon={Users} accent="blue" className="ring-4 ring-surface" />
-            <SectionBadge icon={MessagesSquare} accent="green" className="ring-4 ring-surface" />
-          </div>
-          <h2 className={cn("text-2xl sm:text-[1.75rem] font-semibold tracking-tight", ACCENT_TEXT.blue)}>
-            {t("home_candidates_title")}
-          </h2>
+          <DotGlyph name="community" />
+          <h2 className="text-2xl sm:text-[1.75rem] font-semibold tracking-tight">{t("home_candidates_title")}</h2>
           <p className="text-muted leading-relaxed">
             {t("home_candidates_desc", { params: { n: problemCount } })}
           </p>
@@ -32,19 +26,14 @@ export function AudienceSection({ problemCount }: AudienceSectionProps) {
         </div>
 
         <div className="md:pl-14 space-y-4">
-          <div className="flex -space-x-2">
-            <SectionBadge icon={Briefcase} accent="amber" className="ring-4 ring-surface" />
-            <SectionBadge icon={ClipboardCheck} accent="rose" className="ring-4 ring-surface" />
-          </div>
-          <h2 className={cn("text-2xl sm:text-[1.75rem] font-semibold tracking-tight", ACCENT_TEXT.amber)}>
-            {t("home_teams_title")}
-          </h2>
+          <DotGlyph name="hiring" />
+          <h2 className="text-2xl sm:text-[1.75rem] font-semibold tracking-tight">{t("home_teams_title")}</h2>
           <p className="text-muted leading-relaxed">{t("home_teams_desc")}</p>
           <ul className="space-y-2 text-sm text-muted">
             {(["home_teams_point_rubric", "home_teams_point_replay", "home_teams_point_problems"] as const).map(
               (k) => (
                 <li key={k} className="flex gap-2">
-                  <Check size={16} className="text-home-amber shrink-0 mt-0.5" />
+                  <Check size={16} className="text-accent shrink-0 mt-0.5" />
                   {t(k)}
                 </li>
               ),

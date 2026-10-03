@@ -1,9 +1,7 @@
-import { Compass } from "lucide-react";
 import { t, type LocaleKey } from "@/shared/i18n";
-import { cn } from "@/shared/lib/cn";
 import { ArrowLink } from "./ArrowLink";
 import { CONTACT_EMAIL } from "./AudienceSection";
-import { ACCENT_TEXT, SectionBadge } from "./SectionBadge";
+import { DotGlyph } from "./DotGlyph";
 
 const SKILLS: LocaleKey[] = [
   "home_skill_incidents",
@@ -17,10 +15,8 @@ const SKILLS: LocaleKey[] = [
 export function MissionSection() {
   return (
     <section className="mx-auto max-w-[1200px] px-4 sm:px-6 py-20 lg:py-24 text-center">
-      <SectionBadge icon={Compass} accent="rose" />
-      <h2 className={cn("mt-6 text-3xl sm:text-4xl font-semibold tracking-tight", ACCENT_TEXT.rose)}>
-        {t("home_mission_title")}
-      </h2>
+      <DotGlyph name="mission" className="mx-auto" />
+      <h2 className="mt-6 text-3xl sm:text-4xl font-semibold tracking-tight">{t("home_mission_title")}</h2>
       <p className="mt-5 max-w-3xl mx-auto text-muted leading-relaxed sm:text-lg">{t("home_mission_body")}</p>
       <p className="mt-12 text-xs uppercase tracking-wider text-faint">{t("home_mission_skills_label")}</p>
       <ul className="mt-5 flex flex-wrap justify-center gap-3 max-w-3xl mx-auto">
