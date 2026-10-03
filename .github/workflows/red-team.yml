@@ -3,24 +3,28 @@ name: Red Team Multi-Turn Defense
 on:
   pull_request:
     paths:
-      - 'backend/internal/tips/**'
-      - 'backend/internal/handlers/tips.go'
-      - 'seed/problems/**'
-      - '.github/workflows/red-team.yml'
+      - "backend/internal/tips/**"
+      - "backend/internal/handlers/tips.go"
+      - "seed/problems/**"
+      - ".github/workflows/red-team.yml"
+      - "promptfooconfig.yaml"
   schedule:
     # Weekly Monday 09:00 UTC sweep to catch regressions in upstream
     # attack pattern libraries (DAN updates, new Crescendo strategies).
-    - cron: '0 9 * * 1'
+    - cron: "0 9 * * 1"
   workflow_dispatch:
 
 jobs:
   redteam:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
-      CHAT_ENGINE: gemini
-      GRADER_ENGINE: gemini
-      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      CHAT_ENGINE: ollama
+      GRADER_ENGINE: ollama
+      OLLAMA_BASE_URL: http://localhost:11434
+      OLLAMA_MODEL: qwen3:8b
+      COOKIE_SECRET: red-team-ci-cookie-secret-at-least-32-bytes
+      E2B_API_KEY: red-team-ci-placeholder
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/codritium?sslmode=disable
     services:
       postgres:
@@ -41,12 +45,29 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: "1.26"
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22.22.0'
+          node-version: "22.22.0"
+
+      - name: Setup Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in {1..30}; do
+            if curl -sf http://localhost:11434/api/tags; then
+              echo "Ollama is ready"
+              break
+            fi
+            sleep 1
+          done
+          curl -sf http://localhost:11434/api/tags || {
+            cat /tmp/ollama.log
+            exit 1
+          }
+          ollama pull qwen3:8b
 
       - name: Backend build
         working-directory: backend
@@ -55,41 +76,77 @@ jobs:
       - name: Start backend
         working-directory: backend
         run: |
-          go run ./cmd/server &
+          go run ./cmd/server > /tmp/codritium-backend.log 2>&1 &
           for i in {1..30}; do
             if curl -sf http://localhost:8080/api/health; then
-              echo "backend up"
+              echo "Backend is ready"
               break
             fi
             sleep 1
           done
+          curl -sf http://localhost:8080/api/health || {
+            cat /tmp/codritium-backend.log
+            exit 1
+          }
 
-      - name: PromptFoo init red team config
+      - name: Create red-team practice session
         run: |
-          npx -y promptfoo@latest redteam init --no-gui \
-            --target http://localhost:8080/api/tips \
-            --strategies crescendo,goat,multilingual,base64,leetspeak \
-            --output promptfooconfig.yaml
+          curl -fsS \
+            -c /tmp/redteam-cookies.txt \
+            -H "Content-Type: application/json" \
+            -d '{
+              "email": "redteam-${{ github.run_id }}@example.com",
+              "password": "RedTeamPassword123!"
+            }' \
+            http://localhost:8080/api/auth/register
 
-      - name: PromptFoo run red team
+          curl -fsS \
+            -b /tmp/redteam-cookies.txt \
+            -H "Content-Type: application/json" \
+            -d '{
+              "challenge_slug": "001-streaming-null-delta-corrupts-assistant-transcript",
+              "force_new": true
+            }' \
+            http://localhost:8080/api/sessions \
+            > /tmp/redteam-session.json
+
+          REDTEAM_SESSION_ID="$(jq -r '.session_id' /tmp/redteam-session.json)"
+          REDTEAM_COOKIE="$(awk '$6 == "codritium_session" {
+            print $6 "=" $7
+          }' /tmp/redteam-cookies.txt)"
+
+          if [ -z "$REDTEAM_SESSION_ID" ] ||
+             [ "$REDTEAM_SESSION_ID" = "null" ] ||
+             [ -z "$REDTEAM_COOKIE" ]; then
+            cat /tmp/redteam-session.json
+            exit 1
+          fi
+
+          echo "REDTEAM_SESSION_ID=$REDTEAM_SESSION_ID" >> "$GITHUB_ENV"
+          echo "REDTEAM_COOKIE=$REDTEAM_COOKIE" >> "$GITHUB_ENV"
+
+      - name: PromptFoo generate red-team tests
         run: |
-          npx -y promptfoo@latest redteam run \
+          npx -y promptfoo@0.123.1 redteam generate \
             --config promptfooconfig.yaml \
-            --max-concurrency 4
+            --output redteam.yaml \
+            --remote
 
-      - name: PromptFoo report
-        if: always()
+      - name: PromptFoo evaluate red-team tests
         run: |
-          npx -y promptfoo@latest redteam report \
-            --config promptfooconfig.yaml \
-            --output-path red-team-report.html
+          npx -y promptfoo@0.123.1 redteam eval \
+            --config redteam.yaml \
+            --max-concurrency 1 \
+            --output red-team-results.json
 
-      - name: Upload red team report
+      - name: Upload red team results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: red-team-report
+          name: red-team-results
           path: |
-            red-team-report.html
             promptfooconfig.yaml
+            redteam.yaml
+            red-team-results.json
+          if-no-files-found: warn
           retention-days: 30
