@@ -26,6 +26,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"codritium/backend/internal/agentworkflow"
 	"codritium/backend/internal/events"
 )
 
@@ -88,6 +89,8 @@ const (
 	defaultMaxIterations     = 20
 	maxRepeatedAutoToolCalls = 3
 )
+
+var defaultActionRegistry = agentworkflow.NewDefaultRegistry()
 
 // RunTurn consumes one user message and runs the agent until either the
 // model stops asking for tools (normal exit) or a guard / failure trips
@@ -158,9 +161,13 @@ func (a *Agent) RunTurn(ctx context.Context, sessionID uuid.UUID, turnIndex int,
 			return a.completeNormal(ctx, sessionID, turnIndex, iter, usage)
 		}
 
-		// 4) each tool_use: propose → wait decision → execute (unless rejected)
+		// 4) each tool_use: validate → propose → approve or wait → execute
 		for _, tu := range pending {
-			if isReadClassTool(tu.Name) {
+			action, actionExists := defaultActionRegistry.Resolve(agentworkflow.Request{
+				Name:  tu.Name,
+				Input: agentworkflow.Input(tu.Input),
+			})
+			if actionExists && !action.RequiresApproval {
 				key := tu.Name + ":" + hashFor(tu.Input)
 				if key == lastAutoToolKey {
 					repeatedAutoToolCalls++
@@ -348,117 +355,42 @@ type pendingBuilder struct {
 	input strings.Builder
 }
 
-// handleToolUse runs the three-step "propose → wait → execute" path for
-// one pending tool_use. Even on reject, a tool_result message is appended
-// to the running history so the model can react on the next iteration.
+// handleToolUse resolves and validates one action, records its proposal,
+// obtains an automatic or candidate decision, and executes it when approved.
+// Even on reject, a tool_result is appended so the model can react.
 func (a *Agent) handleToolUse(ctx context.Context, sessionID uuid.UUID, turnIndex int, tu pendingToolUse) error {
-	if tu.Name == "FileEdit" {
-		path, pathOK := tu.Input["path"].(string)
-		legacyContent, legacyOK := tu.Input["content"].(string)
-		newText, newTextOK := tu.Input["new_text"].(string)
-
-		if newTextOK {
-			normalizedText := normalizeFileEditNewText(newText)
-			if normalizedText != newText {
-				newText = normalizedText
-				tu.Input["new_text"] = normalizedText
-			}
-		}
-
-		recordInvalidEdit := func(detail string) {
-			output, _ := json.Marshal(map[string]string{
-				"error":  "invalid FileEdit",
-				"detail": detail,
-			})
-			a.recordMessage(ctx, sessionID, Message{
-				Role: "tool",
-				Content: []ContentBlock{{
-					Kind: "tool_result",
-					ToolResult: &ContentToolResult{
-						ToolUseID: tu.ID,
-						Output:    string(output),
-						IsError:   true,
-					},
-				}},
-			})
-		}
-
-		if !pathOK || path == "" {
-			recordInvalidEdit("path is required")
-			return nil
-		}
-
-		// Accept the old complete-file format temporarily so existing stored
-		// conversations and tests remain compatible during the migration.
-		if !legacyOK && !newTextOK {
-			recordInvalidEdit(
-				"new_text is required; for an existing file also provide exact old_text",
-			)
-			return nil
-		}
-		if legacyOK && legacyContent == "" {
-			recordInvalidEdit("legacy content cannot be empty")
-			return nil
-		}
-
-		if a.Workspace != nil {
-			current, exists := a.Workspace.Get(path)
-
-			if legacyOK {
-				if exists && current == legacyContent {
-					recordInvalidEdit(
-						fmt.Sprintf(
-							"proposed content for %s is identical to the current file",
-							path,
-						),
-					)
-					return nil
-				}
-			} else if exists {
-				oldText, oldTextOK := tu.Input["old_text"].(string)
-				if !oldTextOK || oldText == "" {
-					recordInvalidEdit(
-						"old_text is required when editing an existing file",
-					)
-					return nil
-				}
-
-				matches := strings.Count(current, oldText)
-				if matches == 0 {
-					recordInvalidEdit(
-						"old_text was not found; read the latest file and try again",
-					)
-					return nil
-				}
-				if matches > 1 {
-					recordInvalidEdit(
-						"old_text matched more than once; include more surrounding context",
-					)
-					return nil
-				}
-				if oldText == newText {
-					recordInvalidEdit("the proposed edit would not change the file")
-					return nil
-				}
-			} else {
-				oldText, _ := tu.Input["old_text"].(string)
-				if oldText != "" {
-					recordInvalidEdit(
-						"cannot replace old_text in a file that does not exist",
-					)
-					return nil
-				}
-				if newText == "" {
-					recordInvalidEdit("new file content cannot be empty")
-					return nil
-				}
-			}
-		}
+	action, actionExists := defaultActionRegistry.Resolve(agentworkflow.Request{
+		Name:  tu.Name,
+		Input: agentworkflow.Input(tu.Input),
+	})
+	if !actionExists {
+		return fmt.Errorf("unknown action: %s", tu.Name)
 	}
+
+	var validationContext agentworkflow.ValidationContext
+	if a.Workspace != nil {
+		validationContext = a.Workspace
+	}
+
+	validatedInput, validationErr := action.ValidateInput(
+		agentworkflow.Input(tu.Input),
+		validationContext,
+	)
+	if validationErr != nil {
+		a.recordInvalidToolUse(
+			ctx,
+			sessionID,
+			tu.ID,
+			tu.Name,
+			validationErr.Error(),
+		)
+		return nil
+	}
+	tu.Input = map[string]any(validatedInput)
 
 	summary := summarizeInput(tu.Name, tu.Input)
 	inputHash := hashFor(tu.Input)
-	isAuto := isReadClassTool(tu.Name)
+	isAuto := !action.RequiresApproval
 
 	if _, err := a.Events.Append(ctx, sessionID, events.ToolUseProposed{
 		ToolUseID:    tu.ID,
@@ -527,13 +459,40 @@ func (a *Agent) handleToolUse(ctx context.Context, sessionID uuid.UUID, turnInde
 		return nil
 	}
 
-	// approve / modify path: pick effective input then execute
+	// approve / modify path: pick and verify the effective input, then execute
 	effectiveInput := tu.Input
 	if decision.Kind == "modify" && decision.ModifiedInput != "" {
-		var alt map[string]any
-		if err := json.Unmarshal([]byte(decision.ModifiedInput), &alt); err == nil {
-			effectiveInput = alt
+		var modifiedInput map[string]any
+		if err := json.Unmarshal(
+			[]byte(decision.ModifiedInput),
+			&modifiedInput,
+		); err != nil {
+			a.recordInvalidToolUse(
+				ctx,
+				sessionID,
+				tu.ID,
+				tu.Name,
+				"modified input is not valid JSON",
+			)
+			return nil
 		}
+
+		validatedModifiedInput, err := action.ValidateInput(
+			agentworkflow.Input(modifiedInput),
+			validationContext,
+		)
+		if err != nil {
+			a.recordInvalidToolUse(
+				ctx,
+				sessionID,
+				tu.ID,
+				tu.Name,
+				err.Error(),
+			)
+			return nil
+		}
+
+		effectiveInput = map[string]any(validatedModifiedInput)
 	}
 
 	tool, ok := a.Tools[tu.Name]
@@ -550,6 +509,9 @@ func (a *Agent) handleToolUse(ctx context.Context, sessionID uuid.UUID, turnInde
 	})
 	if execErr != nil {
 		return execErr
+	}
+	if err := action.ValidateResult(output, isErr); err != nil {
+		return fmt.Errorf("verify %s result: %w", tu.Name, err)
 	}
 	dur := time.Since(t0).Milliseconds()
 
@@ -573,6 +535,31 @@ func (a *Agent) handleToolUse(ctx context.Context, sessionID uuid.UUID, turnInde
 		}},
 	})
 	return nil
+}
+
+func (a *Agent) recordInvalidToolUse(
+	ctx context.Context,
+	sessionID uuid.UUID,
+	toolUseID string,
+	toolName string,
+	detail string,
+) {
+	output, _ := json.Marshal(map[string]string{
+		"error":  "invalid " + toolName,
+		"detail": detail,
+	})
+
+	a.recordMessage(ctx, sessionID, Message{
+		Role: "tool",
+		Content: []ContentBlock{{
+			Kind: "tool_result",
+			ToolResult: &ContentToolResult{
+				ToolUseID: toolUseID,
+				Output:    string(output),
+				IsError:   true,
+			},
+		}},
+	})
 }
 
 func (a *Agent) toolSpecs() []ToolSpec {
@@ -614,36 +601,6 @@ func addUsage(a, b events.TokenUsage) events.TokenUsage {
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────
-
-// ─── helpers ────────────────────────────────────────────────────────────
-
-func normalizeFileEditNewText(text string) string {
-	// Real multiline content needs no conversion.
-	if strings.Contains(text, "\n") {
-		return text
-	}
-
-	const escapedNewline = `\n`
-	if !strings.Contains(text, escapedNewline) {
-		return text
-	}
-
-	// Multiple escaped newlines normally mean Qwen double-escaped a
-	// multiline file. A single escaped newline followed by indentation
-	// normally means a multiline code replacement.
-	shouldNormalize := strings.Count(text, escapedNewline) >= 2
-	if !shouldNormalize {
-		_, after, found := strings.Cut(text, escapedNewline)
-		shouldNormalize = found &&
-			(strings.HasPrefix(after, " ") || strings.HasPrefix(after, "\t"))
-	}
-
-	if !shouldNormalize {
-		return text
-	}
-
-	return strings.ReplaceAll(text, escapedNewline, "\n")
-}
 
 const excerptCap = 200
 
@@ -705,18 +662,4 @@ func summarizeInput(toolName string, input map[string]any) string {
 		return fmt.Sprintf("Run: %s", cmd)
 	}
 	return toolName
-}
-
-// isReadClassTool returns true for tools that are safe to auto-execute
-// without candidate consent. The read-class set covers strictly
-// non-mutating workspace inspection: FileRead, Grep, and Glob. RunTests
-// stays excluded because the candidate's choice to run tests is the core
-// Verification dimension signal, and RunCommand stays excluded because it
-// can mutate the scratch directory and spawn external processes.
-func isReadClassTool(name string) bool {
-	switch name {
-	case "FileRead", "Grep", "Glob":
-		return true
-	}
-	return false
 }

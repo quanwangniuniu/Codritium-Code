@@ -896,31 +896,3 @@ func TestSummarizeInput_FileEditUsesNewText(t *testing.T) {
 		t.Fatalf("summary=%q", got)
 	}
 }
-
-func TestNormalizeFileEditNewText(t *testing.T) {
-	t.Run("converts multiline escaped text", func(t *testing.T) {
-		input := `first line\nsecond line\nthird line`
-		want := "first line\nsecond line\nthird line"
-
-		if got := normalizeFileEditNewText(input); got != want {
-			t.Fatalf("normalizeFileEditNewText()=%q want %q", got, want)
-		}
-	})
-
-	t.Run("converts escaped newline before indentation", func(t *testing.T) {
-		input := `before\n        if value:`
-		want := "before\n        if value:"
-
-		if got := normalizeFileEditNewText(input); got != want {
-			t.Fatalf("normalizeFileEditNewText()=%q want %q", got, want)
-		}
-	})
-
-	t.Run("preserves escaped newline inside one-line code", func(t *testing.T) {
-		input := `print("\n")`
-
-		if got := normalizeFileEditNewText(input); got != input {
-			t.Fatalf("normalizeFileEditNewText()=%q want unchanged %q", got, input)
-		}
-	})
-}
