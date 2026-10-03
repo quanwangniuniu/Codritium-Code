@@ -1,16 +1,8 @@
 import { BadgeCheck, UserRound } from "lucide-react";
 import { t } from "@/shared/i18n";
 import { cn } from "@/shared/lib/cn";
-import { initialOf } from "@/shared/format";
+import { UserAvatar } from "@/shared/avatar/UserAvatar";
 import type { ForumAuthor } from "@/features/forum/api";
-
-const FALLBACK_COLORS = ["#7dd3fc", "#a7f3d0", "#fcd34d", "#f9a8d4", "#c4b5fd", "#fdba74"];
-
-function fallbackColor(seed: string): string {
-  let h = 0;
-  for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return FALLBACK_COLORS[h % FALLBACK_COLORS.length];
-}
 
 // Author avatar; `null` renders the anonymous placeholder.
 export function ForumAvatar({
@@ -32,19 +24,7 @@ export function ForumAvatar({
       </span>
     );
   }
-  if (author.avatar_url) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={author.avatar_url} alt="" style={style} className="shrink-0 rounded-full object-cover" />;
-  }
-  return (
-    <span
-      style={{ ...style, background: author.avatar_color || fallbackColor(author.handle) }}
-      className="grid shrink-0 place-items-center rounded-full text-xs font-semibold text-[#0b1220]"
-      aria-hidden
-    >
-      {initialOf(author.display_name, author.handle)}
-    </span>
-  );
+  return <UserAvatar url={author.avatar_url} seed={author.handle} size={size} />;
 }
 
 // "Name ✓" or "Anonymous", used on post cards, post pages and comments.

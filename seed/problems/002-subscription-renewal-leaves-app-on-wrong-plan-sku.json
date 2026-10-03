@@ -3,6 +3,7 @@
   "title": "Subscription Renewal Leaves App on Wrong Plan SKU",
   "category": "debugging",
   "difficulty": "easy",
+  "tags": ["Billing & Payments", "State Machines"],
   "readme_md": "# Subscription Renewal Leaves App on Wrong Plan SKU\n\n**Company:** Stripe  \n**Category:** Company Premium  \n**Difficulty:** Easy  \n\n## Scenario\n\nYour SaaS bills through Stripe Billing. Customers upgrade in the Stripe Customer Portal; the next `invoice.paid` for `subscription_cycle` shows the new price on the receipt. Finance sees the Pro charge, but the product still gates features on **Basic** because your renewal worker never moved the in-app SKU. Support keeps pasting Dashboard screenshots while the user insists they paid for Pro yesterday. The bug only shows up on renewal, not on first signup, which is why QA missed it.\n\n## Your Task\n\n- Fix renewal entitlement sync so a paid cycle invoice updates the app to the **price charged on that renewal**, not the signup price frozen at first subscribe.\n- Keep `evaluate_renewal_entitlement_sync`, `summarize_renewal_syncs`, `RenewalEntitlementWorkflow`, and the result dictionary keys the tests rely on.\n- Unpaid or non-cycle invoices must still skip entitlement changes without erroring on known customers.\n\n## How to Submit\n\n1. Fix the issue in the provided file(s)\n2. Export your full AI conversation history (plain text or JSON)\n3. Submit both on the platform\n",
   "starter_files": {
     "entitlement_store.py": {

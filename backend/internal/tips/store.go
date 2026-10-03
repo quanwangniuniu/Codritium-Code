@@ -25,11 +25,11 @@ type ProblemContext struct {
 // SessionContext bundles the data the tips handler needs to satisfy one
 // turn: the session lifecycle stage plus the candidate-safe problem view.
 type SessionContext struct {
-	SessionID   uuid.UUID
-	CandidateID string
-	Mode        Mode
-	Problem     ProblemContext
-	Submitted   bool
+	SessionID uuid.UUID
+	UserID    uuid.UUID
+	Mode      Mode
+	Problem   ProblemContext
+	Submitted bool
 }
 
 // ErrSessionNotFound is returned when LoadSessionContext cannot resolve
@@ -52,7 +52,7 @@ func LoadSessionContext(ctx context.Context, pool *pgxpool.Pool, sessionID uuid.
 	sc.SessionID = sessionID
 	err := pool.QueryRow(ctx, `
 		SELECT
-			cs.candidate_id,
+			cs.user_id,
 			cs.mode,
 			cs.submitted_at::text,
 			p.slug,
@@ -65,7 +65,7 @@ func LoadSessionContext(ctx context.Context, pool *pgxpool.Pool, sessionID uuid.
 		WHERE cs.session_id = $1`,
 		sessionID,
 	).Scan(
-		&sc.CandidateID,
+		&sc.UserID,
 		&mode,
 		&submittedAt,
 		&sc.Problem.Slug,

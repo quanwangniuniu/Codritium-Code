@@ -3,6 +3,7 @@
   "title": "The Timezone Trap",
   "category": "debugging",
   "difficulty": "easy",
+  "tags": ["Date & Time"],
   "readme_md": "# The Timezone Trap\n\n**Category:** Debugging  \n**Difficulty:** Easy  \n\n## Scenario\n\nThe nightly export email fires, but users in UTC+10 say the body shows the wrong local time. In the admin UI the schedule is stored in UTC and looks fine.\n\nQA stepped through one account and the bug shows up exactly at the step where UTC gets turned into \"their\" clock.\n\n## System Context\n\n- The workflow crosses service boundaries where retries, duplicate delivery, and partial failure are normal.\n- Operators rely on logs/metrics/audit events to replay incidents and verify recovery.\n- Downstream consumers depend on stable response envelopes and event semantics.\n\n## Your Task\n\n- Diagnose the production failure path and implement a targeted fix that preserves contract behavior.\n- Ensure local display time is derived correctly from UTC input and user offset.\n- Preserve the existing public function signature and return format.\n",
   "starter_files": {
     "schedule.py": {

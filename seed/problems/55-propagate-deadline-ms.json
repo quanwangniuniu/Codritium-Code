@@ -3,6 +3,7 @@
   "title": "Propagate Deadline Ms",
   "category": "feature_build",
   "difficulty": "easy",
+  "tags": ["Resilience"],
   "readme_md": "# Propagate Deadline Ms\n\n**Category:** Feature Build  \n**Difficulty:** Easy  \n\n## Scenario\n\nThe checkout API now receives a request deadline from the edge proxy, but downstream calls keep running after the client has gone away. The symptom is visible in traces: the top-level handler exits near the deadline while inventory and tax calls keep chewing through worker time. This is small but urgent because a partner load test starts tomorrow. Add deadline propagation without changing the response shape.\n\n## System Context\n\n- The workflow crosses service boundaries where retries, duplicate delivery, and partial failure are normal.\n- Operators rely on logs/metrics/audit events to replay incidents and verify recovery.\n- Downstream consumers depend on stable response envelopes and event semantics.\n\n## Your Task\n\n- Propagate the remaining deadline budget to downstream service calls.\n- Preserve the public functions and returned payload keys.\n- Keep the behavior runnable with Python 3.10+.\n",
   "starter_files": {
     "deadline_budget_models.py": {

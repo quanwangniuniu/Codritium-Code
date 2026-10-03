@@ -57,3 +57,12 @@ func TestFileRead_RespectsDenyRules(t *testing.T) {
 		t.Fatalf("allowed file: out=%q isErr=%v", out, isErr)
 	}
 }
+
+func TestDefaultRegistry_NoHostShell(t *testing.T) {
+	if _, ok := NewDefaultRegistry()["RunCommand"]; ok {
+		t.Fatal("RunCommand must be opt-in: it executes on the backend host")
+	}
+	if _, ok := NewDefaultRegistry().WithHostCommands()["RunCommand"]; !ok {
+		t.Fatal("WithHostCommands should add RunCommand")
+	}
+}

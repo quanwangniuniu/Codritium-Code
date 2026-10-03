@@ -3,6 +3,7 @@
   "title": "Locale Case Fold Breaks Turkish \"I\" Matching",
   "category": "debugging",
   "difficulty": "easy",
+  "tags": ["Text & Encoding"],
   "readme_md": "# Locale Case Fold Breaks Turkish \"I\" Matching\n\n**Company:** Google  \n**Category:** Company Premium  \n**Difficulty:** Easy  \n\n## Scenario\n\nA wave of tickets came in from pods running in the Turkey region: feature flags that work everywhere else just stop resolving. The flag key `TITLE_BANNER` is registered, the request asks for `title_banner`, and the lookup misses. Same story for HTTP headers — `X-Request-Id` set on the response can't be read back as `x-request-id`. Flip the same image to the US region and everything matches fine. The token namespaces are supposed to be case-insensitive no matter where the process runs.\n\n## Your Task\n\n- Fix case-insensitive token matching so a registered token and any case variant resolve to the same entry regardless of the locale the process runs under.\n- Keep ASCII tokens, header names, and flag keys matching the same way in every region.\n- Keep `normalize_token`, `tokens_match`, `TokenRegistry`, `HeaderTable`, and the flag helpers working as the tests expect.\n\n## How to Submit\n\n1. Fix the issue in the provided file(s)\n2. Export your full AI conversation history (plain text or JSON)\n3. Submit both on the platform\n",
   "starter_files": {
     "case_fold.py": {

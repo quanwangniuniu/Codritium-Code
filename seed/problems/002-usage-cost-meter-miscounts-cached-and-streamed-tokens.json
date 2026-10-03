@@ -3,6 +3,7 @@
   "title": "Usage Cost Meter Miscounts Cached Tokens",
   "category": "debugging",
   "difficulty": "easy",
+  "tags": ["LLM APIs", "Billing & Payments", "Numeric Logic"],
   "readme_md": "# Usage Cost Meter Miscounts Cached Tokens\n\n**Company:** OpenAI  \n**Category:** Company Premium  \n**Difficulty:** Easy  \n\n## Scenario\n\nFinance reconciles your internal spend dashboard against the monthly OpenAI invoice. Since you turned on prompt caching for the support assistant, the dashboard runs noticeably higher than the actual bill, and the gap grows on exactly the high-traffic prompts that cache best. The token counts on each request match what OpenAI reports, so nobody suspects the meter. A naive \"the numbers are too high\" prompt sends people auditing token counting instead of pricing.\n\n## Your Task\n\n- Fix request pricing so cached input tokens are billed at the cached rate, not the full input rate.\n- Keep fresh (non-cached) input and output priced at their normal rates, and keep totals correct when there are no cached tokens.\n- Keep `price_request`, `summarize_costs`, `UsageMeter`, and the result dictionary keys (`input_cost`, `cached_cost`, `output_cost`, `total_cost`) that the tests rely on.\n\n## How to Submit\n\n1. Fix the issue in the provided file(s)\n2. Export your full AI conversation history (plain text or JSON)\n3. Submit both on the platform\n",
   "starter_files": {
     "cost_meter.py": {

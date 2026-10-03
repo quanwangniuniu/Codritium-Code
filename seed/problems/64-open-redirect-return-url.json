@@ -3,6 +3,7 @@
   "title": "Open Redirect Return URL",
   "category": "security",
   "difficulty": "easy",
+  "tags": ["Web Security", "Validation"],
   "readme_md": "# Open Redirect Return URL\n\n**Category:** Security  \n**Difficulty:** Easy  \n\n## Scenario\n\nPhishing reports mention login links that bounce people to third-party sites after a successful sign-in. The query string still carries a `next` parameter your portal has accepted for years, but the validation tightened everywhere except this path.\n\nSecurity wants the redirect surface aligned with the same host policy the rest of the auth stack uses.\n\n## System Context\n\n- The workflow crosses service boundaries where retries, duplicate delivery, and partial failure are normal.\n- Operators rely on logs/metrics/audit events to replay incidents and verify recovery.\n- Downstream consumers depend on stable response envelopes and event semantics.\n\n## Your Task\n\n- Fix post-login redirect construction so external targets cannot be chosen through `next`.\n- Keep `build_post_login_redirect` and `sanitize_next_path` available for tests with the same signatures.\n- Preserve safe relative redirects that stay on this product host.\n",
   "starter_files": {
     "login.py": {

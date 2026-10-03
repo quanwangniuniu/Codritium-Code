@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { problemsApi, type Comment } from "@/features/problems/api";
 import { hasErrorCode } from "@/shared/api/errors";
-import { formatDateTime, initialOf } from "@/shared/format";
+import { UserAvatar } from "@/shared/avatar/UserAvatar";
+import { formatDateTime } from "@/shared/format";
 import { toast } from "@/shared/lib/toast";
 import { t } from "@/shared/i18n";
 
@@ -196,12 +197,7 @@ function CommentRow({
   const isMine = comment.user_id === currentUserId;
   return (
     <div className="flex gap-3 border-b border-divider pb-3 last:border-b-0">
-      <div
-        className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-card text-xs font-semibold text-ink"
-        aria-hidden
-      >
-        {initialOf(comment.user_display_name)}
-      </div>
+      <UserAvatar url={comment.user_avatar_url} seed={comment.user_handle} size={32} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 text-xs text-muted">
           <span className="font-medium text-ink">

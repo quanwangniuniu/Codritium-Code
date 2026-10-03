@@ -1,10 +1,13 @@
-import { MapPin, MessageSquare, MessagesSquare, ThumbsUp } from "lucide-react";
+import Link from "next/link";
+import { Globe, MapPin, MessageSquare, MessagesSquare, ThumbsUp } from "lucide-react";
 import { t, type LocaleKey } from "@/shared/i18n";
 import type { ProfileData } from "@/features/profile/types";
 import { cn } from "@/shared/lib/cn";
 import { categoryLabel, dimensionLabel } from "@/shared/labels";
-import { formatMonthYear, initialOf } from "@/shared/format";
-import { EditProfileButton } from "./EditProfileButton";
+import { formatMonthYear } from "@/shared/format";
+import { UserAvatar } from "@/shared/avatar/UserAvatar";
+import { GithubIcon, LinkedinIcon, XIcon } from "./BrandIcons";
+import { isGeneratedHandle, linkLabel } from "@/features/profile/lib/fields";
 
 // Rubric averages (1-5) bucketed like LeetCode's Advanced / Intermediate /
 // Fundamental skill groups.
@@ -16,10 +19,15 @@ const STRENGTH_TIERS: { labelKey: LocaleKey; dot: string; min: number; max: numb
 
 export function ProfileSidebar({ profile }: { profile: ProfileData }) {
   const { user, community, solved, dimensions } = profile;
-  const initial = initialOf(user.display_name);
   const memberSince = formatMonthYear(user.member_since);
   const tierKey: LocaleKey = user.tier === "pro" || user.tier === "max" ? "tier_pro" : "tier_free";
   const scored = dimensions.filter((d) => d.average !== null);
+  const links = [
+    { url: user.website_url, icon: Globe },
+    { url: user.github_url, icon: GithubIcon },
+    { url: user.linkedin_url, icon: LinkedinIcon },
+    { url: user.x_url, icon: XIcon },
+  ].filter((l) => l.url);
 
   const stats = [
     { icon: MessageSquare, color: "text-home-blue", labelKey: "prof_stat_posts" as LocaleKey, value: community.posts },
@@ -30,29 +38,25 @@ export function ProfileSidebar({ profile }: { profile: ProfileData }) {
   return (
     <aside className="rounded-2xl border border-divider bg-surface p-5 sm:p-6 space-y-6 self-start">
       <div className="flex gap-4">
-        <span
-          className="grid size-20 shrink-0 place-items-center overflow-hidden rounded-2xl text-2xl font-semibold text-white"
-          style={{ background: user.avatar_color || "var(--accent)" }}
-        >
-          {user.avatar_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={user.avatar_url} alt="" className="h-full w-full object-cover" />
-          ) : (
-            initial
-          )}
-        </span>
+        <UserAvatar url={user.avatar_url} seed={user.handle} className="size-20 rounded-2xl" />
         <div className="min-w-0 pt-1">
           <h1 className="text-lg font-semibold truncate">{user.display_name}</h1>
-          <p className="text-sm text-muted truncate">@{user.handle}</p>
+          {/* A machine-minted handle (u_3fa9...) is an id, not a name: don't show it. */}
+          {!isGeneratedHandle(user.handle) && <p className="text-sm text-muted truncate">@{user.handle}</p>}
           <p className="text-xs text-faint mt-2">
             {t("prof_member_since", { params: { date: memberSince } })} · {t(tierKey)}
           </p>
         </div>
       </div>
 
-      <EditProfileButton displayName={user.display_name} bio={user.bio} region={user.region} />
+      <Link
+        href="/profile/edit"
+        className="block w-full rounded-xl bg-home-green-soft py-2.5 text-center text-sm font-medium text-home-green transition hover:brightness-95"
+      >
+        {t("prof_edit_btn")}
+      </Link>
 
-      {(user.bio || user.region) && (
+      {(user.bio || user.region || links.length > 0) && (
         <div className="space-y-2 text-sm">
           {user.bio && <p className="text-muted leading-relaxed whitespace-pre-line">{user.bio}</p>}
           {user.region && (
@@ -61,6 +65,18 @@ export function ProfileSidebar({ profile }: { profile: ProfileData }) {
               {user.region}
             </p>
           )}
+          {links.map((l) => (
+            <a
+              key={l.url}
+              href={l.url}
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+              className="flex items-center gap-2 text-muted hover:text-ink"
+            >
+              <l.icon size={15} className="shrink-0 text-faint" />
+              <span className="truncate">{linkLabel(l.url)}</span>
+            </a>
+          ))}
         </div>
       )}
 

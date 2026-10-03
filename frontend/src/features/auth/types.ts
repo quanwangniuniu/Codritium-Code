@@ -2,6 +2,7 @@
 // features/auth/server.ts).
 export interface User {
   id: string;
+  handle: string;
   display_name: string;
   avatar_url: string;
   github_handle: string;
@@ -30,4 +31,12 @@ export type Me = {
   avatar_color: string;
   bio: string;
   is_pro: boolean;
+  // "" when unset.
+  gender: "" | "male" | "female" | "non_binary" | "other";
+  // YYYY-MM-DD, or "" when unset.
+  birthday: string;
+  website_url: string;
+  github_url: string;
+  linkedin_url: string;
+  x_url: string;
 };

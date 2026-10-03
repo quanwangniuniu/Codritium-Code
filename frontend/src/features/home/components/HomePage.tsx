@@ -1,16 +1,14 @@
-import { Code2 } from "lucide-react";
 import { AudienceSection } from "@/features/home/components/AudienceSection";
 import { CodeShowcase, type ShowcaseTrack } from "@/features/home/components/CodeShowcase";
-import { ExploreSection, type CategoryStat } from "@/features/home/components/ExploreSection";
+import { ExploreSection, type CategoryStat, type HomeAccent } from "@/features/home/components/ExploreSection";
 import { HomeFooter } from "@/features/home/components/HomeFooter";
 import { HomeHero } from "@/features/home/components/HomeHero";
 import { MissionSection } from "@/features/home/components/MissionSection";
-import { ACCENT_TEXT, SectionBadge, type HomeAccent } from "@/features/home/components/SectionBadge";
+import { DotGlyph } from "@/features/home/components/DotGlyph";
 import { currentUser } from "@/features/auth/server";
 import { t, type LocaleKey } from "@/shared/i18n";
 import { getProblem, listProblems } from "@/features/problems/server";
 import type { Category, Difficulty, Problem } from "@/features/problems/types";
-import { cn } from "@/shared/lib/cn";
 import { DIFFICULTIES, DIFFICULTY_LABEL_KEY } from "@/shared/labels";
 
 const DIFFICULTY_OPTIONS = DIFFICULTIES.map((value) => ({ value, labelKey: DIFFICULTY_LABEL_KEY[value] }));
@@ -81,10 +79,8 @@ export async function HomePage() {
 
       {showcase.length > 0 && (
         <section className="mx-auto max-w-[1200px] px-4 sm:px-6 py-20 lg:py-24 text-center">
-          <SectionBadge icon={Code2} accent="teal" />
-          <h2 className={cn("mt-6 text-3xl sm:text-4xl font-semibold tracking-tight", ACCENT_TEXT.teal)}>
-            {t("home_showcase_title")}
-          </h2>
+          <DotGlyph name="showcase" className="mx-auto" />
+          <h2 className="mt-6 text-3xl sm:text-4xl font-semibold tracking-tight">{t("home_showcase_title")}</h2>
           <p className="mt-5 max-w-2xl mx-auto text-muted leading-relaxed mb-12">{t("home_showcase_blurb")}</p>
           <CodeShowcase tracks={showcase} />
         </section>

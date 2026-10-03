@@ -3,6 +3,7 @@
   "title": "Fix SQL Injection",
   "category": "security",
   "difficulty": "easy",
+  "tags": ["Injection"],
   "readme_md": "# Fix SQL Injection\n\n**Category:** Security  \n**Difficulty:** Easy  \n\n## Scenario\n\nInternal pen test dropped a search string into the admin user lookup and got rows they should not see. Normal searches still work, which is why it survived code review.\n\nSecurity wants it closed before the route ships wider than internal ops.\n\n## System Context\n\n- The workflow crosses service boundaries where retries, duplicate delivery, and partial failure are normal.\n- Operators rely on logs/metrics/audit events to replay incidents and verify recovery.\n- Downstream consumers depend on stable response envelopes and event semantics.\n\n## Your Task\n\n- Fix the SQL security defect in the search flow.\n- Ensure normal search behavior still works for valid input.\n- Keep existing response format and function entry points unchanged.\n",
   "starter_files": {
     "db_gateway.py": {

@@ -76,3 +76,28 @@ func TestPathUUIDAndPage(t *testing.T) {
 		t.Fatalf("page=%+v", p)
 	}
 }
+
+func TestCORSAndLogging(t *testing.T) {
+	h := CORS([]string{"http://ok.test"})(Logging(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := w.(http.Flusher); !ok {
+			t.Error("logging wrapper hides http.Flusher (breaks SSE)")
+		}
+		w.WriteHeader(http.StatusTeapot)
+	})))
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Set("Origin", "http://ok.test")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, r)
+	if rr.Code != http.StatusTeapot || rr.Header().Get("Access-Control-Allow-Origin") != "http://ok.test" {
+		t.Fatalf("code=%d acao=%q", rr.Code, rr.Header().Get("Access-Control-Allow-Origin"))
+	}
+	r.Header.Set("Origin", "http://evil.test")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, r)
+	if rr.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatal("unlisted origin allowed")
+	}
+	if !strings.Contains(rr.Header().Get("Access-Control-Allow-Methods"), "PATCH") {
+		t.Fatal("PATCH not allowed")
+	}
+}

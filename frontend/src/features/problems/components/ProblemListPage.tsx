@@ -1,139 +1,119 @@
 import Link from "next/link";
-import { CircleCheck, CircleDashed, Lock, Search } from "lucide-react";
-import { listMyAttemptedProblems, listProblems } from "@/features/problems/server";
-import type { Category, Difficulty } from "@/features/problems/types";
-import { listUserSubmissions } from "@/features/submissions/server";
-import { ProblemsPagination } from "@/features/problems/components/ProblemsPagination";
+import {
+  Bug,
+  Building2,
+  CircleCheck,
+  Hammer,
+  LayoutGrid,
+  Search,
+  ShieldCheck,
+  Shuffle,
+  type LucideIcon,
+} from "lucide-react";
+import { getProblemFacets, searchProblems } from "@/features/problems/server";
+import type { Category } from "@/features/problems/types";
+import { ProblemInfiniteList } from "@/features/problems/components/ProblemInfiniteList";
+import { ProblemTagRow } from "@/features/problems/components/ProblemTagRow";
 import { ProblemsFilterSelect } from "@/features/problems/components/ProblemsFilterSelect";
+import {
+  hasFilters,
+  parseFilters,
+  problemsHref,
+  USER_STATUSES,
+  type FilterKey,
+  type ProblemFilters,
+  type UserStatus,
+} from "@/features/problems/lib/search";
 import { t, type LocaleKey } from "@/shared/i18n";
 import { cn } from "@/shared/lib/cn";
-import {
-  CATEGORIES,
-  CATEGORY_LABEL_KEY,
-  DIFFICULTIES,
-  DIFFICULTY_LABEL_KEY,
-  DIFFICULTY_TEXT_CLASS,
-} from "@/shared/labels";
+import { CATEGORIES, CATEGORY_LABEL_KEY, DIFFICULTIES, DIFFICULTY_LABEL_KEY } from "@/shared/labels";
 
-type CategoryFilter = "all" | Category;
-type StatusFilter = "all" | "solved" | "attempted" | "todo";
-type ProblemStatus = Exclude<StatusFilter, "all">;
-type FilterKey = "category" | "difficulty" | "status" | "company" | "q";
+const CATEGORY_ICON: Record<Category, { icon: LucideIcon; className: string }> = {
+  debugging: { icon: Bug, className: "text-warning" },
+  feature_build: { icon: Hammer, className: "text-accent" },
+  refactoring: { icon: Shuffle, className: "text-success" },
+  security: { icon: ShieldCheck, className: "text-danger" },
+  company_premium: { icon: Building2, className: "text-muted" },
+};
 
-const CATEGORY_FILTERS: { value: CategoryFilter; labelKey: LocaleKey }[] = [
-  { value: "all", labelKey: "problems_filter_all" },
-  ...CATEGORIES.map((c) => ({ value: c, labelKey: CATEGORY_LABEL_KEY[c] })),
-];
-
-const DIFFICULTY_FILTERS: { value: "all" | Difficulty; labelKey: LocaleKey }[] = [
-  { value: "all", labelKey: "problems_filter_all" },
-  ...DIFFICULTIES.map((d) => ({ value: d, labelKey: DIFFICULTY_LABEL_KEY[d] })),
-];
-
-const STATUS_FILTERS: { value: StatusFilter; labelKey: LocaleKey }[] = [
-  { value: "all", labelKey: "problems_filter_all" },
-  { value: "todo", labelKey: "problems_status_todo" },
-  { value: "attempted", labelKey: "problems_status_attempted" },
-  { value: "solved", labelKey: "problems_status_solved" },
-];
-
-const PAGE_SIZE = 50;
-const VALID_CATEGORY_VALUES = new Set<string>(CATEGORY_FILTERS.map((f) => f.value));
-const VALID_DIFFICULTY_VALUES = new Set<string>(DIFFICULTY_FILTERS.map((f) => f.value));
-const VALID_STATUS_VALUES = new Set<string>(STATUS_FILTERS.map((f) => f.value));
+const STATUS_LABEL_KEY: Record<UserStatus, LocaleKey> = {
+  todo: "problems_status_todo",
+  attempted: "problems_status_attempted",
+  solved: "problems_status_solved",
+};
 
 interface ProblemsPageProps {
-  searchParams: Promise<{
-    category?: string;
-    difficulty?: string;
-    status?: string;
-    company?: string;
-    q?: string;
-    page?: string;
-  }>;
+  searchParams: Promise<Partial<Record<FilterKey, string>>>;
 }
 
 export async function ProblemListPage({ searchParams }: ProblemsPageProps) {
-  const sp = await searchParams;
-  const fCategory = (VALID_CATEGORY_VALUES.has(sp.category ?? "") ? sp.category : "all") as CategoryFilter;
-  const fDifficulty = (
-    VALID_DIFFICULTY_VALUES.has(sp.difficulty ?? "") ? sp.difficulty : "all"
-  ) as "all" | Difficulty;
-  const fStatus = (VALID_STATUS_VALUES.has(sp.status ?? "") ? sp.status : "all") as StatusFilter;
-  const fCompany = sp.company ?? "all";
-  const fQuery = (sp.q ?? "").trim();
-  const requestedPage = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
+  const filters = parseFilters(await searchParams);
+  const [facets, firstPage] = await Promise.all([getProblemFacets(), searchProblems(filters)]);
 
-  const [problems, attempted, submissions] = await Promise.all([
-    listProblems(),
-    listMyAttemptedProblems(),
-    listUserSubmissions(""),
-  ]);
-
-  // Solved = at least one graded submission; attempted = a session was
-  // started but nothing has been graded yet.
-  const solvedSlugs = new Set(
-    submissions.filter((s) => s.status === "completed").map((s) => s.problem_id),
-  );
-  const attemptedSlugs = new Set(attempted.map((a) => a.slug));
-  function statusOf(slug: string): ProblemStatus {
-    if (solvedSlugs.has(slug)) return "solved";
-    if (attemptedSlugs.has(slug)) return "attempted";
-    return "todo";
+  // Changing one filter keeps the others; picking the active value again
+  // (or "all") clears it.
+  function hrefWith(patch: ProblemFilters) {
+    return problemsHref({ ...filters, ...patch });
   }
 
-  const needle = fQuery.toLowerCase();
-  const filtered = problems.filter((p) => {
-    if (fCategory !== "all" && p.category !== fCategory) return false;
-    if (fDifficulty !== "all" && p.difficulty !== fDifficulty) return false;
-    if (fStatus !== "all" && statusOf(p.id) !== fStatus) return false;
-    if (fCompany !== "all" && !p.company_slugs.includes(fCompany)) return false;
-    if (needle && !p.title.toLowerCase().includes(needle)) return false;
-    return true;
-  });
+  const categoryCount = new Map(facets.categories.map((c) => [c.value, c.count]));
+  const categoryPills = [
+    { value: undefined, label: t("problems_filter_all_topics"), icon: LayoutGrid, iconClass: "" },
+    ...CATEGORIES.filter((c) => categoryCount.get(c)).map((c) => ({
+      value: c,
+      label: t(CATEGORY_LABEL_KEY[c]),
+      icon: CATEGORY_ICON[c].icon,
+      iconClass: CATEGORY_ICON[c].className,
+    })),
+  ];
 
-  const companies = Array.from(new Set(problems.flatMap((p) => p.company_slugs))).sort();
-  const solvedCount = problems.filter((p) => solvedSlugs.has(p.id)).length;
-  const hasFilter =
-    fCategory !== "all" || fDifficulty !== "all" || fStatus !== "all" || fCompany !== "all" || !!fQuery;
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(requestedPage, totalPages);
-  const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-
-  // Active filters, carried into every filter link, the search form and the
-  // pagination component so changing one filter preserves the others.
-  const baseParams: Record<string, string> = {};
-  if (fCategory !== "all") baseParams.category = fCategory;
-  if (fDifficulty !== "all") baseParams.difficulty = fDifficulty;
-  if (fStatus !== "all") baseParams.status = fStatus;
-  if (fCompany !== "all") baseParams.company = fCompany;
-  if (fQuery) baseParams.q = fQuery;
-
-  function filterHref(key: FilterKey, value: string) {
-    const params = new URLSearchParams(baseParams);
-    params.delete(key);
-    if (value !== "all") params.set(key, value);
-    // Any filter change rewinds to page 1 — the previous page index might
-    // now be out of range after the result set shrinks or shifts.
-    const qs = params.toString();
-    return qs ? `/problems?${qs}` : "/problems";
-  }
-
-  function selectOptions(filters: { value: string; labelKey: LocaleKey }[], key: FilterKey) {
-    return filters.map((o) => ({ value: o.value, label: t(o.labelKey), href: filterHref(key, o.value) }));
-  }
+  const filtersKey = problemsHref(filters);
 
   return (
     <div className="mx-auto max-w-[1200px] space-y-5 px-4 py-8 sm:px-6 sm:py-10">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <h1 className="text-3xl font-semibold tracking-tight">{t("problems_title")}</h1>
-        <form action="/problems" className="relative w-full sm:w-72">
-          {Object.entries(baseParams)
-            .filter(([k]) => k !== "q")
-            .map(([k, v]) => (
-              <input key={k} type="hidden" name={k} value={v} />
-            ))}
+      <h1 className="text-3xl font-semibold tracking-tight">{t("problems_title")}</h1>
+
+      {facets.tags.length > 0 && (
+        <ProblemTagRow
+          active={filters.tag}
+          tags={facets.tags.map((tag) => ({
+            ...tag,
+            href: hrefWith({ tag: filters.tag === tag.value ? undefined : tag.value }),
+          }))}
+        />
+      )}
+
+      <nav
+        className="-mx-4 overflow-x-auto border-b border-divider px-4 pb-5 sm:mx-0 sm:px-0"
+        aria-label={t("problems_filter_category")}
+      >
+        <div className="flex w-max gap-3">
+          {categoryPills.map((pill) => {
+            const active = filters.category === pill.value;
+            const Icon = pill.icon;
+            return (
+              <Link
+                key={pill.value ?? "all"}
+                href={hrefWith({ category: pill.value })}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm transition-colors",
+                  active ? "bg-ink font-medium text-canvas" : "bg-surface-2 text-muted hover:text-ink",
+                )}
+              >
+                <Icon size={16} className={active ? undefined : pill.iconClass} />
+                {pill.label}
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <form action="/problems" className="relative w-full sm:w-64">
+          {(["category", "difficulty", "status", "tag"] as const).map(
+            (k) => filters[k] && <input key={k} type="hidden" name={k} value={filters[k]} />,
+          )}
           <Search
             size={14}
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint"
@@ -141,150 +121,59 @@ export async function ProblemListPage({ searchParams }: ProblemsPageProps) {
           <input
             type="search"
             name="q"
-            defaultValue={fQuery}
+            defaultValue={filters.q ?? ""}
             placeholder={t("problems_search_placeholder")}
             aria-label={t("problems_search_placeholder")}
-            className="w-full rounded-md border border-divider bg-surface py-2 pl-9 pr-3 text-sm text-ink outline-none placeholder:text-faint focus:border-accent"
+            className="w-full rounded-full bg-surface-2 py-2 pl-9 pr-3 text-sm text-ink outline-none placeholder:text-faint focus:ring-1 focus:ring-accent"
           />
         </form>
-      </header>
-
-      <nav className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0" aria-label={t("problems_filter_category")}>
-        <div className="flex w-max gap-2">
-          {CATEGORY_FILTERS.map((o) => (
-            <Link
-              key={o.value}
-              href={filterHref("category", o.value)}
-              aria-current={fCategory === o.value ? "page" : undefined}
-              className={cn(
-                "whitespace-nowrap rounded-full px-4 py-1.5 text-sm transition-colors",
-                fCategory === o.value
-                  ? "bg-ink text-canvas"
-                  : "bg-surface-2 text-muted hover:text-ink",
-              )}
-            >
-              {t(o.labelKey)}
-            </Link>
-          ))}
-        </div>
-      </nav>
-
-      <div className="flex flex-wrap items-center gap-2">
         <ProblemsFilterSelect
           label={t("problems_filter_difficulty")}
-          options={selectOptions(DIFFICULTY_FILTERS, "difficulty")}
-          active={fDifficulty}
+          active={filters.difficulty ?? "all"}
+          options={[
+            { value: "all", label: t("problems_filter_all"), href: hrefWith({ difficulty: undefined }) },
+            ...DIFFICULTIES.map((d) => ({
+              value: d,
+              label: t(DIFFICULTY_LABEL_KEY[d]),
+              href: hrefWith({ difficulty: d }),
+            })),
+          ]}
         />
         <ProblemsFilterSelect
           label={t("problems_filter_status")}
-          options={selectOptions(STATUS_FILTERS, "status")}
-          active={fStatus}
+          active={filters.status ?? "all"}
+          options={[
+            { value: "all", label: t("problems_filter_all"), href: hrefWith({ status: undefined }) },
+            ...USER_STATUSES.map((s) => ({
+              value: s,
+              label: t(STATUS_LABEL_KEY[s]),
+              href: hrefWith({ status: s }),
+            })),
+          ]}
         />
-        {companies.length > 0 && (
-          <ProblemsFilterSelect
-            label={t("problems_filter_company")}
-            options={[
-              { value: "all", label: t("problems_filter_all"), href: filterHref("company", "all") },
-              ...companies.map((c) => ({ value: c, label: c, href: filterHref("company", c) })),
-            ]}
-            active={fCompany}
-          />
-        )}
-        {hasFilter && (
+        {hasFilters(filters) && (
           <Link href="/problems" className="text-xs text-accent hover:underline">
             {t("problems_clear_filters")}
           </Link>
         )}
-        <span className="ml-auto flex items-center gap-1.5 text-xs text-muted">
-          <CircleCheck size={14} className="text-success" />
-          {t("problems_solved_count_fmt", { params: { count: solvedCount } })}
+        <span className="ml-auto flex items-center gap-1.5 text-sm text-muted">
+          <CircleCheck size={15} className={facets.solved > 0 ? "text-success" : "text-faint"} />
+          {t("problems_solved_count_fmt", { params: { count: facets.solved, total: facets.total } })}
         </span>
       </div>
 
-      {filtered.length === 0 ? (
+      {firstPage.items.length === 0 ? (
         <div className="space-y-3 rounded-md border border-divider py-16 text-center">
           <p className="text-muted">{t("problems_no_match")}</p>
-          {hasFilter && (
+          {hasFilters(filters) && (
             <Link href="/problems" className="text-sm text-accent underline">
               {t("problems_clear_filters")}
             </Link>
           )}
         </div>
       ) : (
-        <>
-          <div className="overflow-hidden rounded-md border border-divider">
-            <div
-             
-              className="grid grid-cols-[2.5rem_1fr_5rem] items-center gap-3 border-b border-divider bg-surface px-3 py-2.5 text-xs font-medium text-muted sm:grid-cols-[3.5rem_1fr_9rem_6rem] sm:px-4"
-            >
-              <span>{t("problems_filter_status")}</span>
-              <span>{t("problems_col_title")}</span>
-              <span className="hidden sm:block">
-                {t("problems_filter_category")}
-              </span>
-              <span>{t("problems_filter_difficulty")}</span>
-            </div>
-            <ul>
-              {pageItems.map((p) => {
-                const status = statusOf(p.id);
-                return (
-                  <li key={p.id} className="odd:bg-canvas even:bg-surface">
-                    <Link
-                      href={`/problems/${p.id}`}
-                      className="grid grid-cols-[2.5rem_1fr_5rem] items-center gap-3 px-3 py-2.5 text-sm transition-colors hover:bg-surface-2 sm:grid-cols-[3.5rem_1fr_9rem_6rem] sm:px-4"
-                    >
-                      <StatusIcon status={status} />
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span className="truncate text-ink">{p.title}</span>
-                        {p.is_pro_only && (
-                          <Lock
-                            size={13}
-                            className="shrink-0 text-warning"
-                            aria-label={t("problems_pro_lock_tooltip")}
-                          >
-                            <title>{t("problems_pro_lock_tooltip")}</title>
-                          </Lock>
-                        )}
-                      </span>
-                      <span className="hidden truncate text-muted sm:block">
-                        {t(CATEGORY_LABEL_KEY[p.category])}
-                      </span>
-                      <span className={cn("font-medium", DIFFICULTY_TEXT_CLASS[p.difficulty])}>
-                        {t(DIFFICULTY_LABEL_KEY[p.difficulty])}
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-          {totalPages > 1 && (
-            <ProblemsPagination
-              currentPage={safePage}
-              totalPages={totalPages}
-              baseParams={baseParams}
-            />
-          )}
-        </>
+        <ProblemInfiniteList key={filtersKey} initial={firstPage} filters={filters} />
       )}
     </div>
   );
-}
-
-function StatusIcon({ status }: { status: ProblemStatus }) {
-  if (status === "solved") {
-    return (
-      <CircleCheck size={16} className="text-success" aria-label={t("problems_status_solved")}>
-        <title>{t("problems_status_solved")}</title>
-      </CircleCheck>
-    );
-  }
-  if (status === "attempted") {
-    return (
-      <CircleDashed size={16} className="text-warning" aria-label={t("problems_status_attempted")}>
-        <title>{t("problems_status_attempted")}</title>
-      </CircleDashed>
-    );
-  }
-  return <span aria-label={t("problems_status_todo")} />;
 }

@@ -22,6 +22,7 @@ interface BackendUser {
 function adaptUser(u: BackendUser): User {
   return {
     id: u.id,
+    handle: u.handle,
     display_name: u.display_name,
     avatar_url: u.avatar_url ?? "",
     github_handle: u.handle,

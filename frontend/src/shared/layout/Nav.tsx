@@ -42,6 +42,7 @@ export async function Nav() {
               <ThemeToggle />
               <NavUserMenu
                 displayName={user.display_name}
+                handle={user.handle}
                 avatarUrl={user.avatar_url || undefined}
               />
             </>

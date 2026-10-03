@@ -3,6 +3,7 @@
   "title": "CSV Merge Last-Wins Bug",
   "category": "debugging",
   "difficulty": "easy",
+  "tags": ["Data Processing"],
   "readme_md": "# CSV Merge Last-Wins Bug\n\n**Category:** Debugging  \n**Difficulty:** Easy  \n\n## Scenario\n\nSupport imported two CSV batches from the same vendor. Rows share an `id` column, but the second batch was meant to **keep the first non-zero amount** when the same `id` appears again. Finance now sees older ticket revenue disappear whenever a duplicate `id` arrives with a different amount.\n\nThe importer finishes with exit code zero. Nobody gets a stack trace.\n\n## System Context\n\n- The workflow crosses service boundaries where retries, duplicate delivery, and partial failure are normal.\n- Operators rely on logs/metrics/audit events to replay incidents and verify recovery.\n- Downstream consumers depend on stable response envelopes and event semantics.\n\n## Your Task\n\n- Fix merge behavior so duplicate `id` handling matches the tests.\n- Keep `merge_vendor_rows` signature stable for downstream jobs.\n- Do not add new dependencies.\n",
   "starter_files": {
     "merge.py": {

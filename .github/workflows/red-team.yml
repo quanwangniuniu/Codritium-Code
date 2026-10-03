@@ -4,7 +4,6 @@ on:
   pull_request:
     paths:
       - 'backend/internal/tips/**'
-      - 'backend/internal/handlers/tips.go'
       - 'seed/problems/**'
       - '.github/workflows/red-team.yml'
   schedule:

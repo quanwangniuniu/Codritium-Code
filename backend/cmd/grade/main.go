@@ -87,14 +87,6 @@ func main() {
 	if *problemPath == "" {
 		*problemPath = filepath.Join(cfg.Paths.ProblemsSeed, "22-build-rate-limiter-middleware.json")
 	}
-	if cfg.GraderEngine != "ollama" &&
-		cfg.GraderEngine != "anthropic" &&
-		cfg.GraderEngine != "gemini" {
-		log.Fatalf(
-			"invalid engine: %q (use ollama|anthropic|gemini)",
-			cfg.GraderEngine,
-		)
-	}
 	if cfg.GraderEngine == "gemini" && cfg.GoogleAPIKey == "" {
 		log.Fatal("GOOGLE_API_KEY required for engine=gemini")
 	}
@@ -149,31 +141,27 @@ func main() {
 
 	log.Printf("[grade] engine=%s — calling grader ...", cfg.GraderEngine)
 	t0 := time.Now()
-	var result *grader.GraderResult
+	clients := grader.Clients{}
 	switch cfg.GraderEngine {
 	case "ollama":
-		client := grader.NewOllamaClient(
-			cfg.OllamaBaseURL,
-			cfg.OllamaModel,
-			time.Duration(cfg.OllamaTimeoutSec)*time.Second,
-		)
-		result, err = grader.RunOllama(ctx, client, input)
-
+		clients.Ollama = grader.NewOllamaClient(cfg.OllamaBaseURL, cfg.OllamaModel,
+			time.Duration(cfg.OllamaTimeoutSec)*time.Second)
 	case "gemini":
-		client, clientErr := genai.NewClient(ctx, &genai.ClientConfig{
+		clients.Gemini, err = genai.NewClient(ctx, &genai.ClientConfig{
 			APIKey:  cfg.GoogleAPIKey,
 			Backend: genai.BackendGeminiAPI,
 		})
-		if clientErr != nil {
-			log.Fatalf("gemini client: %v", clientErr)
+		if err != nil {
+			log.Fatalf("gemini client: %v", err)
 		}
-		result, err = grader.RunGemini(ctx, client, input)
-
 	case "anthropic":
-		client := anthropic.New(cfg.AnthropicAPIKey)
-		result, err = grader.Run(ctx, client, input)
+		clients.Anthropic = anthropic.New(cfg.AnthropicAPIKey)
 	}
-
+	eng, err := grader.NewEngine(cfg.GraderEngine, clients)
+	if err != nil {
+		log.Fatalf("grader: %v", err)
+	}
+	result, err := eng.Grade(ctx, input)
 	if err != nil {
 		log.Fatalf("grader: %v", err)
 	}

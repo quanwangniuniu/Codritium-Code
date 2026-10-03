@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"codritium/backend/internal/platform/testutil"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,40 +21,13 @@ import (
 
 func newTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		dsn = "postgres://codritium:codritium@localhost:5434/codritium?sslmode=disable"
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Skipf("no postgres at %s: %v", dsn, err)
-	}
-	if err := pool.Ping(ctx); err != nil {
-		t.Skipf("postgres ping: %v", err)
-	}
-	return pool
+	return testutil.Pool(t)
 }
 
 func newTestSession(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	t.Helper()
-	var id uuid.UUID
-	err := pool.QueryRow(context.Background(), `
-		INSERT INTO candidate_sessions (candidate_id, challenge_id, difficulty)
-		VALUES ($1, $2, 'medium')
-		RETURNING session_id`,
-		"chat-test-"+uuid.NewString(),
-		"22-build-rate-limiter-middleware",
-	).Scan(&id)
-	if err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-	t.Cleanup(func() {
-		_, _ = pool.Exec(context.Background(),
-			`DELETE FROM candidate_sessions WHERE session_id = $1`, id)
-	})
-	return id
+	owner := testutil.NewUser(t, pool, "user")
+	return testutil.NewSession(t, pool, owner, "22-build-rate-limiter-middleware", "medium")
 }
 
 // scriptedStream produces a predetermined chunk sequence per StreamTurn

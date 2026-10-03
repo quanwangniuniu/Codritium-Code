@@ -9,6 +9,24 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Database tests skip without Postgres; CI provides one so they run.
+    # testutil creates, migrates and seeds codritium_test on first use.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: codritium
+          POSTGRES_PASSWORD: codritium
+          POSTGRES_DB: codritium
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+        ports:
+          - 5434:5432
+    env:
+      TEST_DATABASE_URL: postgres://codritium:codritium@localhost:5434/codritium_test?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -18,9 +36,12 @@ jobs:
       - name: Build
         working-directory: backend
         run: go build ./...
-      - name: Test
+      - name: Vet
         working-directory: backend
-        run: go test ./...
+        run: go vet ./...
+      - name: Test (includes module-boundary and file-size checks)
+        working-directory: backend
+        run: go test -race ./...
 
   frontend:
     runs-on: ubuntu-latest
@@ -38,3 +59,12 @@ jobs:
       - name: Type check
         working-directory: frontend
         run: npx tsc --noEmit
+      - name: Lint
+        working-directory: frontend
+        run: npx eslint src
+      - name: Unit tests
+        working-directory: frontend
+        run: npm test --if-present
+      - name: Build
+        working-directory: frontend
+        run: npx next build

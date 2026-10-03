@@ -1,16 +1,12 @@
 import type { ReactNode } from "react";
-import {
-  BarChart3,
-  Bot,
-  Check,
-  GitPullRequestArrow,
-  Layers,
-  ShieldCheck,
-} from "lucide-react";
+import { Check, GitPullRequestArrow, ShieldCheck } from "lucide-react";
 import { t, type LocaleKey } from "@/shared/i18n";
 import { cn } from "@/shared/lib/cn";
 import { ArrowLink } from "./ArrowLink";
-import { ACCENT_TEXT, SectionBadge, type HomeAccent } from "./SectionBadge";
+import { DotGlyph, type GlyphName } from "./DotGlyph";
+
+// Colour of a category's bar in the catalog visual.
+export type HomeAccent = "blue" | "green" | "amber" | "teal" | "rose";
 
 export interface CategoryStat {
   labelKey: LocaleKey;
@@ -37,8 +33,7 @@ export function ExploreSection({ categories, difficulties }: ExploreSectionProps
       </div>
       <div className="space-y-20 lg:space-y-28">
         <FeatureRow
-          icon={Layers}
-          accent="blue"
+          glyph="problems"
           title={t("home_feature_problems_title")}
           desc={t("home_feature_problems_desc")}
           href="/problems"
@@ -47,8 +42,7 @@ export function ExploreSection({ categories, difficulties }: ExploreSectionProps
         />
         <FeatureRow
           reverse
-          icon={Bot}
-          accent="teal"
+          glyph="agent"
           title={t("home_feature_agent_title")}
           desc={t("home_feature_agent_desc")}
           href="/problems"
@@ -56,8 +50,7 @@ export function ExploreSection({ categories, difficulties }: ExploreSectionProps
           visual={<PatchVisual />}
         />
         <FeatureRow
-          icon={BarChart3}
-          accent="amber"
+          glyph="scoring"
           title={t("home_feature_scoring_title")}
           desc={t("home_feature_scoring_desc")}
           href="/problems"
@@ -70,8 +63,7 @@ export function ExploreSection({ categories, difficulties }: ExploreSectionProps
 }
 
 interface FeatureRowProps {
-  icon: typeof Layers;
-  accent: HomeAccent;
+  glyph: GlyphName;
   title: string;
   desc: string;
   href: string;
@@ -80,14 +72,12 @@ interface FeatureRowProps {
   reverse?: boolean;
 }
 
-function FeatureRow({ icon, accent, title, desc, href, linkLabel, visual, reverse }: FeatureRowProps) {
+function FeatureRow({ glyph, title, desc, href, linkLabel, visual, reverse }: FeatureRowProps) {
   return (
     <div className="grid lg:grid-cols-2 gap-10 lg:gap-20 items-center">
       <div className={cn("space-y-4", reverse && "lg:order-2")}>
-        <SectionBadge icon={icon} accent={accent} />
-        <h3 className={cn("text-2xl sm:text-[1.75rem] font-semibold tracking-tight", ACCENT_TEXT[accent])}>
-          {title}
-        </h3>
+        <DotGlyph name={glyph} />
+        <h3 className="text-2xl sm:text-[1.75rem] font-semibold tracking-tight">{title}</h3>
         <p className="text-muted leading-relaxed max-w-lg">{desc}</p>
         <ArrowLink href={href}>{linkLabel}</ArrowLink>
       </div>

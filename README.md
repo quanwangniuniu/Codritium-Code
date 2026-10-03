@@ -6,7 +6,7 @@ Self-serve AI-coding interview practice. IDE-style workspace, 5-dimension scorin
 
 - **Frontend**: Next.js 15 (App Router) + TypeScript + Tailwind v4 + shadcn/ui + Monaco Editor
 - **Backend**: Go 1.26 + pgx/v5 + Anthropic Go SDK + E2B Go SDK
-- **DB**: Postgres 17 (port 5434)
+- **DB**: Postgres 15+ (local install, port 5432)
 - **Sandbox**: E2B SaaS (Firecracker microVM) for candidate code execution
 - **Grader**: Anthropic Claude Sonnet 4.6 (5 independent dimensions, double-run averaged)
 
@@ -14,7 +14,8 @@ Self-serve AI-coding interview practice. IDE-style workspace, 5-dimension scorin
 
 ```bash
 cp .env.example .env   # fill in keys
-docker-compose up -d   # start Postgres
+# one-time, against your local Postgres (CREATEDB lets the tests create codritium_test):
+psql -U postgres -c "CREATE ROLE codritium LOGIN CREATEDB PASSWORD 'codritium'" -c "CREATE DATABASE codritium OWNER codritium"
 cd backend && go run ./cmd/server   # backend on :8080
 cd frontend && npm run dev          # frontend on :3000
 ```
@@ -29,7 +30,6 @@ Codritium/
 ├── scripts/        # strip_problem.py and other tooling
 ├── migrations/     # Postgres schema migrations (001-...)
 ├── seed/           # problem catalog seed data
-├── docker-compose.yml
 ├── .env            # secrets (never committed)
 ├── .env.example
 └── README.md
@@ -42,7 +42,7 @@ Codritium/
 ```
 ANTHROPIC_API_KEY=sk-...
 E2B_API_KEY=e2b_...
-DATABASE_URL=postgres://codritium:codritium@localhost:5434/codritium?sslmode=disable
+DATABASE_URL=postgres://codritium:codritium@localhost:5432/codritium?sslmode=disable
 COOKIE_SECRET=...
 ```
 

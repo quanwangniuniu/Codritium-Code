@@ -8,11 +8,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,32 +18,18 @@ import (
 	"codritium/backend/internal/auth"
 )
 
-// DefaultDSN matches docker-compose's Postgres.
-const DefaultDSN = "postgres://codritium:codritium@localhost:5434/codritium?sslmode=disable"
-
 var (
 	poolOnce sync.Once
 	pool     *pgxpool.Pool
 	poolErr  error
 )
 
-// Pool returns a shared pool to DATABASE_URL (or DefaultDSN), skipping the
-// test when Postgres is unreachable. The pool lives for the whole test
-// binary, so tests must not close it.
+// Pool returns a shared pool to the migrated, seeded test database (see
+// openTestDB), skipping the test when Postgres is unreachable. The pool
+// lives for the whole test binary, so tests must not close it.
 func Pool(t testing.TB) *pgxpool.Pool {
 	t.Helper()
-	poolOnce.Do(func() {
-		dsn := os.Getenv("DATABASE_URL")
-		if dsn == "" {
-			dsn = DefaultDSN
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		pool, poolErr = pgxpool.New(ctx, dsn)
-		if poolErr == nil {
-			poolErr = pool.Ping(ctx)
-		}
-	})
+	poolOnce.Do(func() { pool, poolErr = openTestDB() })
 	if poolErr != nil {
 		t.Skipf("postgres unavailable: %v", poolErr)
 	}
@@ -102,4 +86,21 @@ func WantStatus(t testing.TB, rr *httptest.ResponseRecorder, want int) {
 	if rr.Code != want {
 		t.Fatalf("status=%d want %d; body=%s", rr.Code, want, rr.Body.String())
 	}
+}
+
+// NewSession inserts a candidate_sessions row for u and deletes it (and,
+// by cascade, its events and messages) when the test ends.
+func NewSession(t testing.TB, pool *pgxpool.Pool, u *auth.User, slug, difficulty string) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	if err := pool.QueryRow(context.Background(), `
+		INSERT INTO candidate_sessions (user_id, challenge_id, difficulty)
+		VALUES ($1, $2, $3) RETURNING session_id`, u.ID, slug, difficulty,
+	).Scan(&id); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM candidate_sessions WHERE session_id = $1`, id)
+	})
+	return id
 }
