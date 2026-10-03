@@ -3,6 +3,7 @@
   "title": "Lightroom Export Ignores EXIF Orientation Flag",
   "category": "debugging",
   "difficulty": "easy",
+  "tags": ["Media & Files"],
   "readme_md": "# Lightroom Export Ignores EXIF Orientation Flag\n\n**Company:** Adobe  \n**Category:** Company Premium  \n**Difficulty:** Easy  \n\n## Scenario\n\nPhotographers exported a batch from Lightroom and the web gallery showed a mess: a few selfies came out sideways, and a couple were flipped left to right so the text in the frame reads backward. The originals look fine in the catalog because the viewer reads the EXIF orientation tag and turns the image on the fly. Export is supposed to bake that turn into the pixels and then clear the tag, so every consumer downstream gets an upright file. QA traced it to photos shot on front-facing cameras, which write the mirrored orientation values. Some exports also get rotated a second time when another tool re-reads the file.\n\n## Your Task\n\n- Fix the export so every EXIF orientation value (1 through 8), including the mirrored ones, is physically baked into the exported image.\n- Make sure exported assets carry the correct upright width and height, and that re-exporting an already-exported asset changes nothing.\n\n## How to Submit\n\n1. Fix the issue in the provided file(s)\n2. Export your full AI conversation history (plain text or JSON)\n3. Submit both on the platform\n",
   "starter_files": {
     "exif_orientation.py": {

@@ -12,6 +12,28 @@ export type ProblemListItem = {
   requires_pro: boolean;
 };
 
+// One row of GET /api/problems/search: catalog metadata plus the caller's
+// progress on the problem.
+export type ProblemSearchItem = ProblemListItem & {
+  user_status: "todo" | "attempted" | "solved";
+};
+
+export type ProblemSearchPage = {
+  items: ProblemSearchItem[];
+  total: number;
+  // null on the last page.
+  next_offset: number | null;
+};
+
+export type FacetCount = { value: string; count: number };
+
+export type ProblemFacets = {
+  total: number;
+  solved: number;
+  tags: FacetCount[];
+  categories: FacetCount[];
+};
+
 export type ProblemDetail = ProblemListItem & {
   readme_md: string;
   variant: "as-is" | "stripped";
@@ -43,6 +65,8 @@ export type CommentPage = {
 };
 
 export const problemsApi = {
+  // `query` comes from lib/search.ts searchQuery().
+  search: (query: string) => apiRequest<ProblemSearchPage>(`/api/problems/search?${query}`),
   getProblem: (slug: string, variant: "as-is" | "stripped" = "as-is") =>
     apiRequest<ProblemDetail>(`/api/problems/${slug}?variant=${variant}`),
   listComments: (slug: string, cursor?: string, limit = 20): Promise<CommentPage> => {

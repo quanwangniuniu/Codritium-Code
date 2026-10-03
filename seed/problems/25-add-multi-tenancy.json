@@ -3,6 +3,7 @@
   "title": "Add Multi-tenancy",
   "category": "feature_build",
   "difficulty": "hard",
+  "tags": ["Multi-tenancy"],
   "readme_md": "# Add Multi-tenancy\n\n**Category:** Feature Build  \n**Difficulty:** Hard  \n\n## Scenario\n\nStaging mixed two tenants when someone used the old shortcut GET that skipped tenant checks. Real invoices showed up in the wrong admin panel.\n\nShip is blocked until every read and write carries tenant context end to end without turning the API into molasses.\n\n## Background\n\nPayloads carry tenant id plus actor role; parsers check policy maps before touching storage.\n\nOps runs canned diagnostics counts per tenant for QBRs without shell access.\n\n## System Context\n\n- Thin helpers wrap invoice fetch, list, and write routes policy already guards.\n- Rows live in tenant-scoped partitions; an event log records mutations finance replays.\n- Counters split usage by tenant for forecasting spreadsheets nobody admits they still use.\n\n## Constraints\n\n- Golden tests encode JSON envelopes; do not rename fields out from under them.\n- Shortcut convenience methods cannot leak rows across tenant walls.\n- Metric and diagnostic snapshots stay readable after isolation lands.\n\n## Your Task\n\n- Implement robust multi-tenant isolation spanning parsing, authorization, persistence, and responses.\n- Ensure reads and writes cannot cross tenant boundaries under supported actions.\n- Preserve existing handler contracts and outward payload shapes.\n",
   "starter_files": {
     "access_policy.py": {

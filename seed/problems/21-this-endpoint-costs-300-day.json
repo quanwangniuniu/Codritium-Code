@@ -3,6 +3,7 @@
   "title": "This Endpoint Costs $300/day",
   "category": "feature_build",
   "difficulty": "easy",
+  "tags": ["Caching"],
   "readme_md": "# This Endpoint Costs $300/day\n\n**Category:** Feature Build  \n**Difficulty:** Easy  \n\n## Scenario\n\nFinance pinged eng about a single analytics route that hammers a paid upstream API. Same inputs, same billable calls, hundreds of times per hour.\n\nThe dashboard looks fine to users; the invoice line item does not. Someone needs caching before the quarter closes.\n\n## System Context\n\n- The workflow crosses service boundaries where retries, duplicate delivery, and partial failure are normal.\n- Operators rely on logs/metrics/audit events to replay incidents and verify recovery.\n- Downstream consumers depend on stable response envelopes and event semantics.\n\n## Your Task\n\n- Add memoization to avoid redundant upstream calls for the same input.\n- Keep response structure and endpoint behavior stable.\n- Ensure cache behavior is safe for basic edge cases.\n",
   "starter_files": {
     "analytics_client.py": {

@@ -3,6 +3,7 @@
   "title": "Your API is Timing Out",
   "category": "feature_build",
   "difficulty": "easy",
+  "tags": ["Resilience"],
   "readme_md": "# Your API is Timing Out\n\n**Category:** Feature Build  \n**Difficulty:** Easy  \n\n## Scenario\n\nA customer list endpoint started timing out once their dataset crossed six figures. Support can curl it and watch the worker eat memory.\n\nRight now the handler dumps the full table in one JSON blob. Pagination got bumped to this sprint because waiting sixty seconds is not a feature.\n\n## System Context\n\n- The workflow crosses service boundaries where retries, duplicate delivery, and partial failure are normal.\n- Operators rely on logs/metrics/audit events to replay incidents and verify recovery.\n- Downstream consumers depend on stable response envelopes and event semantics.\n\n## Your Task\n\n- Add pagination support to the list endpoint logic.\n- Ensure page and page-size behavior is validated and consistent.\n- Preserve the existing response shape as much as possible.\n",
   "starter_files": {
     "report_api.py": {

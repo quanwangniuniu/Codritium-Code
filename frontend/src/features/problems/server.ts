@@ -1,6 +1,8 @@
 // Server-side problem reads (cookie-forwarding). Adapts the backend
 // problem shapes into the UI's Problem type.
 import { apiJSON } from "@/shared/api/server";
+import type { ProblemFacets, ProblemSearchPage } from "./api";
+import { searchQuery, type ProblemFilters } from "./lib/search";
 import type { Problem } from "./types";
 
 interface BackendProblemBrief {
@@ -53,6 +55,18 @@ function adaptProblemFull(p: BackendProblemFull): Problem {
 export async function listProblems(): Promise<Problem[]> {
   const out = (await apiJSON<BackendProblemBrief[]>("/api/problems")) ?? [];
   return out.map(adaptProblemBrief);
+}
+
+// First page of the filtered catalog; the list page's client half fetches
+// the rest as the user scrolls.
+export async function searchProblems(filters: ProblemFilters): Promise<ProblemSearchPage> {
+  const page = await apiJSON<ProblemSearchPage>(`/api/problems/search?${searchQuery(filters)}`);
+  return page ?? { items: [], total: 0, next_offset: null };
+}
+
+export async function getProblemFacets(): Promise<ProblemFacets> {
+  const facets = await apiJSON<ProblemFacets>("/api/problems/facets");
+  return facets ?? { total: 0, solved: 0, tags: [], categories: [] };
 }
 
 export interface AttemptedProblem {

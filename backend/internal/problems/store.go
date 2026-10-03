@@ -3,6 +3,7 @@ package problems
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -84,4 +85,106 @@ func (s Store) CatalogTotals(ctx context.Context) (byDifficulty, byCategory map[
 		byCategory[c]++
 	}
 	return byDifficulty, byCategory, rows.Err()
+}
+
+// userStatusSQL classifies a problem for the user in $1 (NULL = anonymous).
+// Solved means a graded submission; attempted means a session was started.
+const userStatusSQL = `
+	CASE
+		WHEN $1::uuid IS NULL THEN 'todo'
+		WHEN EXISTS (SELECT 1 FROM submissions s
+		             WHERE s.problem_id = p.id AND s.user_id = $1::uuid AND s.status = 'graded') THEN 'solved'
+		WHEN EXISTS (SELECT 1 FROM candidate_sessions cs
+		             WHERE cs.challenge_id = p.slug AND cs.user_id = $1::uuid) THEN 'attempted'
+		ELSE 'todo'
+	END`
+
+// likeEscaper makes user input literal inside an ILIKE pattern.
+var likeEscaper = strings.NewReplacer(`\`, `\`, `%`, `\%`, `_`, `\_`)
+
+// Search returns one page of the catalog, easiest first.
+func (s Store) Search(ctx context.Context, sp SearchParams) (*SearchPage, error) {
+	var userID *string
+	if sp.UserID != "" {
+		userID = &sp.UserID
+	}
+	rows, err := s.Pool.Query(ctx, `
+		SELECT slug, title, category, difficulty, tags, status, user_status, COUNT(*) OVER ()
+		FROM (
+			SELECT p.slug, p.title, p.category, p.difficulty, COALESCE(p.tags, '{}') AS tags, p.status,
+			       `+userStatusSQL+` AS user_status
+			FROM problems p
+			WHERE p.status = $2
+			  AND ($3 = '' OR p.category = $3)
+			  AND ($4 = '' OR p.difficulty = $4)
+			  AND ($5 = '' OR p.tags @> ARRAY[$5])
+			  AND ($6 = '' OR p.title ILIKE '%' || $6 || '%')
+		) q
+		WHERE $7 = '' OR user_status = $7
+		ORDER BY array_position(ARRAY['easy', 'medium', 'hard'], difficulty), slug
+		LIMIT $8 OFFSET $9`,
+		userID, sp.Status, sp.Category, sp.Difficulty, sp.Tag,
+		likeEscaper.Replace(sp.Query), sp.UserStatus, sp.Limit, sp.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	page := &SearchPage{Items: []SearchItem{}}
+	for rows.Next() {
+		var it SearchItem
+		if err := rows.Scan(&it.Slug, &it.Title, &it.Category, &it.Difficulty, &it.Tags, &it.Status,
+			&it.UserStatus, &page.Total); err != nil {
+			return nil, err
+		}
+		it.RequiresPro = it.Category == CategoryCompanyPremium
+		page.Items = append(page.Items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if next := sp.Offset + len(page.Items); next < page.Total {
+		page.NextOffset = &next
+	}
+	return page, nil
+}
+
+// Facets counts published problems per tag and category, plus how many the
+// user has solved. Tags are ordered most-used first.
+func (s Store) Facets(ctx context.Context, userID string) (*Facets, error) {
+	f := &Facets{Tags: []FacetCount{}, Categories: []FacetCount{}}
+	rows, err := s.Pool.Query(ctx, `
+		SELECT 'tag', t, COUNT(*) FROM problems, unnest(tags) AS t
+		WHERE status = 'published' GROUP BY t
+		UNION ALL
+		SELECT 'category', category, COUNT(*) FROM problems
+		WHERE status = 'published' GROUP BY category
+		ORDER BY 1, 3 DESC, 2`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var kind string
+		var c FacetCount
+		if err := rows.Scan(&kind, &c.Value, &c.Count); err != nil {
+			return nil, err
+		}
+		if kind == "tag" {
+			f.Tags = append(f.Tags, c)
+		} else {
+			f.Categories = append(f.Categories, c)
+			f.Total += c.Count
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if userID == "" {
+		return f, nil
+	}
+	err = s.Pool.QueryRow(ctx, `
+		SELECT COUNT(DISTINCT s.problem_id)
+		FROM submissions s JOIN problems p ON p.id = s.problem_id
+		WHERE s.user_id = $1::uuid AND s.status = 'graded' AND p.status = 'published'`, userID).Scan(&f.Solved)
+	return f, err
 }

@@ -3,6 +3,7 @@
   "title": "Premiere Drop-Frame Timecode Drifts on 29.97 Footage",
   "category": "debugging",
   "difficulty": "easy",
+  "tags": ["Date & Time", "Media & Files", "Numeric Logic"],
   "readme_md": "# Premiere Drop-Frame Timecode Drifts on 29.97 Footage\n\n**Company:** Adobe  \n**Category:** Company Premium  \n**Difficulty:** Easy  \n\n## Scenario\n\nAn editor reported that the timecode readout on a one-hour 29.97 fps sequence is off by almost four seconds against the real clip duration, and it gets worse the longer the timeline runs. QA confirmed it on drop-frame sequences (`HH:MM:SS;FF`); non-drop sequences look fine. The frame-to-timecode conversion is treating drop-frame footage like plain 30 fps, so the displayed time slides away from real elapsed time. Trims that should land on the same frame across two clips no longer match, and exported markers are landing on the wrong spot.\n\n## Your Task\n\n- Fix the drop-frame conversion so timecode and absolute frame index agree with the NTSC 29.97 scheme, with no drift across a long sequence.\n- Keep round trips exact: a frame index converted to a timecode and back must return the same index, and the reverse must hold for timecodes.\n- Keep `timecode_to_frames`, `frames_to_timecode`, and `duration_between` working as the tests expect, and keep non-drop conversions unchanged.\n\n## How to Submit\n\n1. Fix the issue in the provided file(s)\n2. Export your full AI conversation history (plain text or JSON)\n3. Submit both on the platform\n",
   "starter_files": {
     "frame_math.py": {

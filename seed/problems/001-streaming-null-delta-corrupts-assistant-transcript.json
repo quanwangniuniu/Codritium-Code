@@ -3,6 +3,7 @@
   "title": "Streaming Null Delta Corrupts Assistant Transcript",
   "category": "debugging",
   "difficulty": "easy",
+  "tags": ["Streaming", "LLM APIs"],
   "readme_md": "# Streaming Null Delta Corrupts Assistant Transcript\n\n**Company:** OpenAI  \n**Category:** Company Premium  \n**Difficulty:** Easy  \n\n## Scenario\n\nYour support copilot streams Chat Completions and renders the reply token by token. Since last week, saved transcripts read like `NoneYour refund is on the wayNone` — the literal word \"None\" keeps showing up before and after the real answer. QA traced it to replies that open with a tool call or end normally: those frames stream a `content` field set to null. A vague \"the streaming text is broken\" prompt sends people hunting through the SSE parser, but the assembled message is wrong even when parsing is fine.\n\n## Your Task\n\n- Fix transcript assembly so streamed null `content` frames (the opening role frame, tool-call frames, and the closing frame) add no text instead of injecting \"None\".\n- Keep real text deltas in arrival order, including empty-string tokens.\n- Keep `assemble_transcript`, `assemble_from_raw`, `StreamTranscriptAssembler`, and the result dictionary keys (`role`, `text`, `tool_calls`, `finish_reason`) that the tests rely on.\n\n## How to Submit\n\n1. Fix the issue in the provided file(s)\n2. Export your full AI conversation history (plain text or JSON)\n3. Submit both on the platform\n",
   "starter_files": {
     "openai_stream_models.py": {

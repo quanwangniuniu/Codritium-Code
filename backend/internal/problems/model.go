@@ -96,3 +96,62 @@ func (p *Problem) VariantAllowed(variant string) bool {
 	}
 	return variant == VariantAsIs || variant == VariantStripped
 }
+
+// Tags is the fixed topic vocabulary a problem's tags are drawn from. The
+// catalog page lists them as filters, so a typo in a seed file would show up
+// as a stray one-problem topic; the seed test rejects anything not listed.
+var Tags = []string{
+	"Access Control", "Architecture", "Async", "Auth & Tokens", "Billing & Payments",
+	"Caching", "Cloud Infra", "Concurrency", "Configuration", "Cryptography",
+	"Data Processing", "Data Sync", "Date & Time", "Idempotency", "Injection",
+	"LLM APIs", "Media & Files", "Messaging", "Multi-tenancy", "Numeric Logic",
+	"Observability", "Pagination", "Resilience", "Retries", "State Machines",
+	"Streaming", "Text & Encoding", "Validation", "Web Security", "Webhooks",
+}
+
+// Per-user progress on a problem.
+const (
+	UserStatusTodo      = "todo"
+	UserStatusAttempted = "attempted"
+	UserStatusSolved    = "solved"
+)
+
+// SearchParams filters and pages the catalog. Empty fields do not filter.
+type SearchParams struct {
+	Status     string // problems.status; required
+	Category   string
+	Difficulty string
+	Tag        string
+	UserStatus string // one of the UserStatus* values
+	Query      string // case-insensitive title substring
+	UserID     string // "" for anonymous: every problem is then todo
+	Limit      int
+	Offset     int
+}
+
+// SearchItem is a catalog row plus the caller's progress on it.
+type SearchItem struct {
+	Brief
+	UserStatus string `json:"user_status"`
+}
+
+// SearchPage is one page of search results. NextOffset is nil on the last page.
+type SearchPage struct {
+	Items      []SearchItem `json:"items"`
+	Total      int          `json:"total"`
+	NextOffset *int         `json:"next_offset"`
+}
+
+// FacetCount is one filter value and how many published problems carry it.
+type FacetCount struct {
+	Value string `json:"value"`
+	Count int    `json:"count"`
+}
+
+// Facets are the catalog-wide counts the list page renders above the results.
+type Facets struct {
+	Total      int          `json:"total"`
+	Solved     int          `json:"solved"`
+	Tags       []FacetCount `json:"tags"`
+	Categories []FacetCount `json:"categories"`
+}

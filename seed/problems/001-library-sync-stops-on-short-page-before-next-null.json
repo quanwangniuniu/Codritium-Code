@@ -3,6 +3,7 @@
   "title": "Library Sync Stops Early on a Short Page",
   "category": "debugging",
   "difficulty": "easy",
+  "tags": ["Pagination", "Data Sync"],
   "readme_md": "# Library Sync Stops Early on a Short Page\n\n**Company:** Spotify  \n**Category:** Company Premium  \n**Difficulty:** Easy  \n\n## Scenario\n\nYour app mirrors each user's Saved Tracks so the offline cache and recommendations can work from the full library. A user with a few hundred liked songs reported that some of them never show up, and they're always the same ones from the middle of the list. You traced it to the sync: it stops paging too early for libraries where a page comes back with fewer items than requested. That happens normally — tracks unavailable in the user's market drop out of a page — but the rest of the library is still there behind the next link.\n\n## Your Task\n\n- Fix the saved-tracks pager so it keeps following pages until the API says there are no more, instead of stopping the first time a page returns fewer items than the requested limit.\n- Keep returning tracks in page order and stop cleanly at the end of the library.\n- Keep `collect_saved_tracks`, `sync_saved_track_ids`, `summarize_sync`, and `find_missing_ids` working as the tests expect.\n\n## How to Submit\n\n1. Fix the issue in the provided file(s)\n2. Export your full AI conversation history (plain text or JSON)\n3. Submit both on the platform\n",
   "starter_files": {
     "library_sync.py": {

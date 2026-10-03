@@ -3,6 +3,7 @@
   "title": "Track Relinking Logs the Wrong Track Id",
   "category": "debugging",
   "difficulty": "easy",
+  "tags": ["Data Processing", "Observability"],
   "readme_md": "# Track Relinking Logs the Wrong Track Id\n\n**Company:** Spotify  \n**Category:** Company Premium  \n**Difficulty:** Easy  \n\n## Scenario\n\nYour listening-history service quietly split one popular song into several. The data team noticed the same track showing up under different ids depending on where the listener was, so play counts are fragmented and it never reaches the \"top tracks\" rail it clearly earned. The cause is track relinking: when a song isn't playable in a user's market, playback streams a market substitute with its own id, and the originally requested track is carried alongside it. History is logging the substitute instead of the stable identity, so the same song looks like several.\n\n## Your Task\n\n- Fix history logging so a relinked play is recorded under the originally requested track's identity, not the market substitute's id.\n- Keep non-relinked plays logging under their own id, and keep counts, top-track, and recently-played consistent for the same song across markets.\n- Keep `log_play`, `log_plays`, `play_counts`, `top_track_id`, `build_recently_played`, and `summarize_history` working as the tests expect.\n\n## How to Submit\n\n1. Fix the issue in the provided file(s)\n2. Export your full AI conversation history (plain text or JSON)\n3. Submit both on the platform\n",
   "starter_files": {
     "history_logger.py": {
