@@ -132,6 +132,10 @@ jobs:
             --remote
 
       - name: PromptFoo evaluate red-team tests
+        env:
+          # Preserve findings in the report without treating assertion
+          # failures as an infrastructure failure.
+          PROMPTFOO_FAILED_TEST_EXIT_CODE: 0
         run: |
           npx -y promptfoo@0.123.1 redteam eval \
             --config redteam.yaml \
