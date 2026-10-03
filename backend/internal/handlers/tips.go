@@ -128,7 +128,7 @@ func PostTips(deps TipsDeps) http.HandlerFunc {
 			}
 		}
 
-		// Best-effort summary of the chat_v2 session so the tutor sees rough
+		// Best-effort summary of the agent chat session so the tutor sees rough
 		// state of what the candidate has done with the AI agent. A SQL
 		// failure isn't fatal — an empty summary just drops the section.
 		agentSummary, _ := tips.SummarizeSessionEvents(r.Context(), deps.Pool, sessionID)

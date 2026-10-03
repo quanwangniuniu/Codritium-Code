@@ -14,13 +14,13 @@ import (
 	"codritium/backend/internal/llm"
 )
 
-type ChatV2Deps struct {
+type AgentChatDeps struct {
 	Pool      *pgxpool.Pool
 	Registry  *llm.AgentRegistry
 	Jailbreak *llm.ChatJailbreakClassifier
 }
 
-type chatV2Request struct {
+type agentChatRequest struct {
 	SessionID string `json:"session_id"`
 	Message   string `json:"message"`
 	// Files is the candidate's current workspace snapshot. When non-empty
@@ -30,13 +30,13 @@ type chatV2Request struct {
 	Files map[string]string `json:"files,omitempty"`
 }
 
-type chatV2Response struct {
+type agentChatResponse struct {
 	TurnIndex int    `json:"turn_index"`
 	Accepted  bool   `json:"accepted"`
 	SessionID string `json:"session_id"`
 }
 
-// PostChatV2 starts one RunTurn against the candidate's session and
+// PostAgentChat starts one RunTurn against the candidate's session and
 // returns 202 immediately. The actual events + assistant text are
 // delivered through the SSE stream at GET /api/sessions/{id}/stream;
 // the chat goroutine uses context.Background() so the HTTP request
@@ -44,14 +44,14 @@ type chatV2Response struct {
 //
 // Auth: caller must own the session (candidate_id == handle, per
 // decision_log D3).
-func PostChatV2(deps ChatV2Deps) http.HandlerFunc {
+func PostAgentChat(deps AgentChatDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := auth.FromContext(r.Context())
 		if u == nil {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		var req chatV2Request
+		var req agentChatRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad json: "+err.Error(), http.StatusBadRequest)
 			return
@@ -119,7 +119,7 @@ func PostChatV2(deps ChatV2Deps) http.HandlerFunc {
 			_, _ = agent.RunTurn(context.Background(), sessionID, nextTurn, req.Message)
 		}()
 
-		writeJSON(w, http.StatusAccepted, chatV2Response{
+		writeJSON(w, http.StatusAccepted, agentChatResponse{
 			TurnIndex: nextTurn,
 			Accepted:  true,
 			SessionID: sessionID.String(),

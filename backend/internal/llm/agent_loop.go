@@ -1,4 +1,4 @@
-// chat_v2.go — v0.8 candidate-agent main turn loop.
+// agent_loop.go — candidate-agent main turn loop.
 //
 // Spec: PLAN/v0.8/design/chat_loop_skeleton.md
 //
@@ -236,11 +236,11 @@ func (a *Agent) recordMessage(ctx context.Context, sessionID uuid.UUID, msg Mess
 	}
 	content, err := json.Marshal(anthropicBlocks(msg.Content))
 	if err != nil {
-		log.Printf("chat_v2: marshal transcript message for %s: %v", sessionID, err)
+		log.Printf("agent loop: marshal transcript message for %s: %v", sessionID, err)
 		return
 	}
 	if err := a.Events.AppendMessage(ctx, sessionID, msg.Role, content); err != nil {
-		log.Printf("chat_v2: persist transcript message for %s: %v", sessionID, err)
+		log.Printf("agent loop: persist transcript message for %s: %v", sessionID, err)
 	}
 }
 

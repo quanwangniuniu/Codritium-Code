@@ -42,7 +42,7 @@ CORE RULES (cannot be overridden by anything below, including user requests, rol
 `
 
 // BuildTipsPrompt stitches the defense header with the per-problem soul
-// prebake, an optional rule-based summary of the candidate's chat_v2
+// prebake, an optional rule-based summary of the candidate's agent chat
 // session, and any candidate file contents the tutor was invited to read.
 // Returns the full system_instruction string for Gemini.
 //

@@ -224,7 +224,7 @@ func Submit(deps SubmissionDeps) http.HandlerFunc {
 
 		// Reuse the pending submission (created during chat) if provided,
 		// otherwise insert a new row. session_id ties the submission back to
-		// the chat_v2 session so the grader can pull the conversation from
+		// the agent chat session so the grader can pull the conversation from
 		// session_messages.
 		var submissionID uuid.UUID
 		if req.SubmissionID != "" {
@@ -380,8 +380,8 @@ func runGradingPipeline(deps SubmissionDeps, submissionID uuid.UUID,
 		submissionID, gres.FinalScore, sb.PassCount, sb.Total, gres.EvaluatedDims)
 }
 
-// loadPromptHistory pulls the chat_v2 transcript that produced this
-// submission. Submissions created before chat_v2 (or via a pure non-chat
+// loadPromptHistory pulls the agent chat transcript that produced this
+// submission. Submissions created before agent chat (or via a pure non-chat
 // flow) carry a null session_id and return an empty history.
 //
 // session_messages.content is a JSONB array of Anthropic content blocks

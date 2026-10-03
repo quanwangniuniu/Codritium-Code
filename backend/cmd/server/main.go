@@ -116,7 +116,7 @@ func main() {
 	)
 	agentRegistry := llm.NewAgentRegistry(agentFactory)
 	chatJailbreak := llm.NewChatJailbreakClassifier()
-	chatV2Deps := handlers.ChatV2Deps{
+	agentChatDeps := handlers.AgentChatDeps{
 		Pool:      database.Pool,
 		Registry:  agentRegistry,
 		Jailbreak: chatJailbreak,
@@ -209,15 +209,15 @@ func main() {
 	mux.Handle("GET /api/me/attempted", authMiddleware(handlers.ListMyAttempted(sessionsDeps)))
 	if cfg.ChatEngine == "disabled" {
 		mux.Handle(
-			"POST /api/chat/v2",
+			"POST /api/agent/chat",
 			authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "chat engine disabled", http.StatusServiceUnavailable)
 			})),
 		)
 	} else {
 		mux.Handle(
-			"POST /api/chat/v2",
-			authMiddleware(handlers.PostChatV2(chatV2Deps)),
+			"POST /api/agent/chat",
+			authMiddleware(handlers.PostAgentChat(agentChatDeps)),
 		)
 	}
 	mux.Handle("POST /api/tips", authMiddleware(handlers.PostTips(tipsDeps)))
@@ -344,7 +344,7 @@ func (g graderSandboxRunner) RunPytest(ctx context.Context, files map[string]str
 }
 
 // buildAgentFactory returns the closure the AgentRegistry uses to
-// construct a fresh Agent the first time a candidate hits chat_v2 on
+// construct a fresh Agent the first time a candidate starts agent chat on
 // a session. Loads the challenge's README / starter files / hidden
 // test file path from the problems table; wires the engine-neutral
 // stream client + DecisionWaiter + events store; locks the visible

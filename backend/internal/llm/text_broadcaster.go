@@ -6,13 +6,13 @@ import (
 	"github.com/google/uuid"
 )
 
-// TextBroadcaster is the side channel chat_v2 uses to push streamed
+// TextBroadcaster is the side channel the agent loop uses to push streamed
 // assistant text deltas to subscribers, bypassing the events.Store. This
 // keeps spec §5 "events ≠ transcript" honest — text never enters
 // session_events.payload — while still giving the SSE layer one place
 // to fan-out per-session text to many viewers.
 //
-// chat_v2 calls Publish during stream draining; the SSE handler holds
+// The agent loop calls Publish during stream draining; the SSE handler holds
 // a Subscribe channel for the SSE message-typed event stream. A slow
 // consumer drops messages rather than block Publish.
 type TextBroadcaster struct {

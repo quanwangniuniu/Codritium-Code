@@ -4,7 +4,7 @@ import "context"
 
 // LLMStreamClient is the engine-neutral interface used by the agent loop.
 // Implementations translate model responses into NormalizedChunk values
-// so chat_v2.go remains independent of the selected local model.
+// so agent_loop.go remains independent of the selected local model.
 type LLMStreamClient interface {
 	// StreamTurn opens a streaming completion for one turn and returns a
 	// reader the caller drains in order. Closing the reader (or ctx
