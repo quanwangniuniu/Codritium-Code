@@ -16,8 +16,8 @@ import (
 )
 
 // Handler holds the dependencies for the tips endpoints. The Agent
-// talks to Gemini; the Pool reads candidate_sessions joined to problems
-// and reads/writes tips_messages. There is intentionally no chat_v2 /
+// uses the configured local model; the Pool reads candidate_sessions joined to problems
+// and reads/writes tips_messages. There is intentionally no agent chat /
 // decision_waiter / event store reference — tips-agent is hard-isolated
 // from the candidate coding partner.
 // Routes registers the tips (Socratic tutor) API.
@@ -26,7 +26,7 @@ func (h Handler) Routes(rt *httpx.Router) {
 	rt.Handle("GET /api/tips/messages", h.getTipsMessages)
 }
 
-// Handler serves the tips API. Agent is nil when no Gemini key is set.
+// Handler serves the tips API. Agent is nil when tutor chat is disabled.
 type Handler struct {
 	Pool   *pgxpool.Pool
 	Agent  *Agent
@@ -137,7 +137,7 @@ func (h Handler) postTips(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Best-effort summary of the chat_v2 session so the tutor sees rough
+	// Best-effort summary of the agent chat session so the tutor sees rough
 	// state of what the candidate has done with the AI agent. A SQL
 	// failure isn't fatal — an empty summary just drops the section.
 	agentSummary, _ := SummarizeSessionEvents(r.Context(), h.Pool, sessionID)

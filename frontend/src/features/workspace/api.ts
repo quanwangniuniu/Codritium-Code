@@ -25,7 +25,10 @@ export type TipsStreamCallbacks = {
 };
 
 export const workspaceApi = {
-  createSession: (challengeSlug: string, forceNew = false): Promise<SessionResp> =>
+  createSession: (
+    challengeSlug: string,
+    forceNew = false,
+  ): Promise<SessionResp> =>
     apiRequest<SessionResp>("/api/sessions", {
       method: "POST",
       json: { challenge_slug: challengeSlug, force_new: forceNew },
@@ -50,7 +53,7 @@ export const workspaceApi = {
     message: string,
     files?: Record<string, string>,
   ): Promise<{ turn_index: number; accepted: boolean; session_id: string }> =>
-    apiRequest("/api/chat/v2", {
+    apiRequest("/api/agent/chat", {
       method: "POST",
       json: { session_id: sessionId, message, files: files ?? {} },
     }),
@@ -129,9 +132,7 @@ export const workspaceApi = {
             return;
           }
         } catch (parseErr) {
-          callbacks.onError(
-            `bad SSE payload: ${(parseErr as Error).message}`,
-          );
+          callbacks.onError(`bad SSE payload: ${(parseErr as Error).message}`);
           return;
         }
       }

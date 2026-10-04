@@ -1,4 +1,4 @@
-// chat_v2.go — v0.8 candidate-agent main turn loop.
+// agent_loop.go — candidate-agent main turn loop.
 //
 // Spec: PLAN/v0.8/design/chat_loop_skeleton.md
 //
@@ -22,10 +22,10 @@ import (
 	"log"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/google/uuid"
 
+	"codritium/backend/internal/actionworkflow"
 	"codritium/backend/internal/events"
 )
 
@@ -84,7 +84,12 @@ type RunResult struct {
 	Usage      events.TokenUsage
 }
 
-const defaultMaxIterations = 50
+const (
+	defaultMaxIterations     = 20
+	maxRepeatedAutoToolCalls = 3
+)
+
+var defaultActionRegistry = actionworkflow.NewDefaultRegistry()
 
 // RunTurn consumes one user message and runs the agent until either the
 // model stops asking for tools (normal exit) or a guard / failure trips
@@ -116,6 +121,9 @@ func (a *Agent) RunTurn(ctx context.Context, sessionID uuid.UUID, turnIndex int,
 
 	usage := events.TokenUsage{}
 	iter := 0
+
+	lastAutoToolKey := ""
+	repeatedAutoToolCalls := 0
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -152,10 +160,64 @@ func (a *Agent) RunTurn(ctx context.Context, sessionID uuid.UUID, turnIndex int,
 			return a.completeNormal(ctx, sessionID, turnIndex, iter, usage)
 		}
 
-		// 4) each tool_use: propose → wait decision → execute (unless rejected)
+		// 4) each tool_use: validate → propose → approve or wait → execute
 		for _, tu := range pending {
+			action, actionExists := defaultActionRegistry.Resolve(actionworkflow.Request{
+				Name:  tu.Name,
+				Input: actionworkflow.Input(tu.Input),
+			})
+			if actionExists && !action.RequiresApproval {
+				key := tu.Name + ":" + hashFor(tu.Input)
+				if key == lastAutoToolKey {
+					repeatedAutoToolCalls++
+				} else {
+					lastAutoToolKey = key
+					repeatedAutoToolCalls = 1
+				}
+
+				if repeatedAutoToolCalls > maxRepeatedAutoToolCalls {
+					output, _ := json.Marshal(map[string]any{
+						"error": "repeated identical read blocked",
+						"detail": fmt.Sprintf(
+							"%s was called repeatedly with the same input; use the existing result, choose a different tool, or finish the task",
+							tu.Name,
+						),
+					})
+
+					a.recordMessage(ctx, sessionID, Message{
+						Role: "tool",
+						Content: []ContentBlock{{
+							Kind: "tool_result",
+							ToolResult: &ContentToolResult{
+								ToolUseID: tu.ID,
+								Output:    string(output),
+								IsError:   true,
+							},
+						}},
+					})
+
+					return a.completeMaxTurns(
+						ctx,
+						sessionID,
+						turnIndex,
+						iter,
+						usage,
+					)
+				}
+			} else {
+				lastAutoToolKey = ""
+				repeatedAutoToolCalls = 0
+			}
+
 			if err := a.handleToolUse(ctx, sessionID, turnIndex, tu); err != nil {
-				return a.completeAborted(ctx, sessionID, turnIndex, iter, usage, "tool_use: "+err.Error())
+				return a.completeAborted(
+					ctx,
+					sessionID,
+					turnIndex,
+					iter,
+					usage,
+					"tool_use: "+err.Error(),
+				)
 			}
 		}
 		// loop back: model will see new tool_result messages on next iteration
@@ -173,11 +235,11 @@ func (a *Agent) recordMessage(ctx context.Context, sessionID uuid.UUID, msg Mess
 	}
 	content, err := json.Marshal(anthropicBlocks(msg.Content))
 	if err != nil {
-		log.Printf("chat_v2: marshal transcript message for %s: %v", sessionID, err)
+		log.Printf("agent loop: marshal transcript message for %s: %v", sessionID, err)
 		return
 	}
 	if err := a.Events.AppendMessage(ctx, sessionID, msg.Role, content); err != nil {
-		log.Printf("chat_v2: persist transcript message for %s: %v", sessionID, err)
+		log.Printf("agent loop: persist transcript message for %s: %v", sessionID, err)
 	}
 }
 
@@ -292,149 +354,6 @@ type pendingBuilder struct {
 	input strings.Builder
 }
 
-// handleToolUse runs the three-step "propose → wait → execute" path for
-// one pending tool_use. Even on reject, a tool_result message is appended
-// to the running history so the model can react on the next iteration.
-func (a *Agent) handleToolUse(ctx context.Context, sessionID uuid.UUID, turnIndex int, tu pendingToolUse) error {
-	if tu.Name == "FileEdit" {
-		path, pOK := tu.Input["path"].(string)
-		content, cOK := tu.Input["content"].(string)
-		if pOK && cOK && a.Workspace != nil {
-			if existing, exists := a.Workspace.Get(path); exists && existing == content {
-				a.recordMessage(ctx, sessionID, Message{
-					Role: "tool",
-					Content: []ContentBlock{{
-						Kind: "tool_result",
-						ToolResult: &ContentToolResult{
-							ToolUseID: tu.ID,
-							Output:    fmt.Sprintf(`{"error":"no-op edit","detail":"proposed content for %s is identical to current workspace; choose different content or pick a different tool"}`, path),
-							IsError:   true,
-						},
-					}},
-				})
-				return nil
-			}
-		}
-	}
-
-	summary := summarizeInput(tu.Name, tu.Input)
-	inputHash := hashFor(tu.Input)
-	isAuto := isReadClassTool(tu.Name)
-
-	if _, err := a.Events.Append(ctx, sessionID, events.ToolUseProposed{
-		ToolUseID:    tu.ID,
-		Tool:         tu.Name,
-		InputSummary: summary,
-		InputHash:    inputHash,
-		TurnIndex:    turnIndex,
-		Auto:         isAuto,
-	}); err != nil {
-		return err
-	}
-
-	var decision Decision
-	if isAuto {
-		decision = Decision{Kind: "approve"}
-	} else {
-		d, err := a.Waiter.Wait(ctx, DecisionKey(sessionID, tu.ID))
-		if err != nil {
-			return fmt.Errorf("waiter: %w", err)
-		}
-		decision = d
-	}
-
-	// emit the decision event
-	switch decision.Kind {
-	case "approve":
-		_, _ = a.Events.Append(ctx, sessionID, events.CandidateApproved{
-			ToolUseID:               tu.ID,
-			Modified:                decision.ModifiedInput != "",
-			ModificationExcerpt:     excerpt(decision.ModifiedInput),
-			CandidateCommentExcerpt: excerpt(decision.Comment),
-			Auto:                    isAuto,
-		})
-	case "modify":
-		_, _ = a.Events.Append(ctx, sessionID, events.CandidateApproved{
-			ToolUseID:               tu.ID,
-			Modified:                true,
-			ModificationExcerpt:     excerpt(decision.ModifiedInput),
-			CandidateCommentExcerpt: excerpt(decision.Comment),
-		})
-	case "reject":
-		kind := "no_reason"
-		if decision.Reason != "" {
-			kind = "with_reason"
-		}
-		_, _ = a.Events.Append(ctx, sessionID, events.CandidateRejected{
-			ToolUseID:     tu.ID,
-			ReasonExcerpt: excerpt(decision.Reason),
-			ReasonKind:    kind,
-		})
-	}
-
-	if decision.Kind == "reject" {
-		a.recordMessage(ctx, sessionID, Message{
-			Role: "tool",
-			Content: []ContentBlock{{
-				Kind: "tool_result",
-				ToolResult: &ContentToolResult{
-					ToolUseID: tu.ID,
-					Output:    fmt.Sprintf(`{"rejected_by_candidate":true,"reason":%q}`, decision.Reason),
-					IsError:   true,
-				},
-			}},
-		})
-		return nil
-	}
-
-	// approve / modify path: pick effective input then execute
-	effectiveInput := tu.Input
-	if decision.Kind == "modify" && decision.ModifiedInput != "" {
-		var alt map[string]any
-		if err := json.Unmarshal([]byte(decision.ModifiedInput), &alt); err == nil {
-			effectiveInput = alt
-		}
-	}
-
-	tool, ok := a.Tools[tu.Name]
-	if !ok {
-		return fmt.Errorf("unknown tool: %s", tu.Name)
-	}
-	t0 := time.Now()
-	output, isErr, execErr := tool.Execute(ctx, effectiveInput, ToolDeps{
-		Workspace:       a.Workspace,
-		Sandbox:         a.Sandbox,
-		Deny:            a.Deny,
-		VisibleTestFile: a.VisibleTest,
-		TmpFS:           a.TmpFS,
-	})
-	if execErr != nil {
-		return execErr
-	}
-	dur := time.Since(t0).Milliseconds()
-
-	_, _ = a.Events.Append(ctx, sessionID, events.ToolResult{
-		ToolUseID:     tu.ID,
-		IsError:       isErr,
-		OutputSummary: excerpt(output),
-		OutputHash:    hashFor(output),
-		DurationMs:    dur,
-	})
-
-	a.recordMessage(ctx, sessionID, Message{
-		Role: "tool",
-		Content: []ContentBlock{{
-			Kind: "tool_result",
-			ToolResult: &ContentToolResult{
-				ToolUseID: tu.ID,
-				Output:    output,
-				IsError:   isErr,
-			},
-		}},
-	})
-	return nil
-}
-
 func (a *Agent) toolSpecs() []ToolSpec {
 	out := make([]ToolSpec, 0, len(a.Tools))
 	for _, t := range a.Tools {
@@ -504,6 +423,9 @@ func summarizeInput(toolName string, input map[string]any) string {
 	case "FileEdit":
 		path, _ := input["path"].(string)
 		content, _ := input["content"].(string)
+		if newText, ok := input["new_text"].(string); ok {
+			content = newText
+		}
 		return fmt.Sprintf("Edit %s (%d bytes)", path, len(content))
 	case "FileRead":
 		path, _ := input["path"].(string)
@@ -532,18 +454,4 @@ func summarizeInput(toolName string, input map[string]any) string {
 		return fmt.Sprintf("Run: %s", cmd)
 	}
 	return toolName
-}
-
-// isReadClassTool returns true for tools that are safe to auto-execute
-// without candidate consent. The read-class set covers strictly
-// non-mutating workspace inspection: FileRead, Grep, and Glob. RunTests
-// stays excluded because the candidate's choice to run tests is the core
-// Verification dimension signal, and RunCommand stays excluded because it
-// can mutate the scratch directory and spawn external processes.
-func isReadClassTool(name string) bool {
-	switch name {
-	case "FileRead", "Grep", "Glob":
-		return true
-	}
-	return false
 }

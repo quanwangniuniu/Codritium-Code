@@ -42,7 +42,7 @@ type Config struct {
 	// AgentHostCommands enables the agent's RunCommand tool, which executes
 	// shell commands on this host. Off by default: see llm.WithHostCommands.
 	AgentHostCommands bool
-	Paths                  Paths
+	Paths             Paths
 }
 
 func Load() (*Config, error) {
@@ -67,7 +67,7 @@ func Load() (*Config, error) {
 		CookieSecret:           os.Getenv("COOKIE_SECRET"),
 		CookieDomain:           os.Getenv("COOKIE_DOMAIN"),
 		GraderEngine:           getenv("GRADER_ENGINE", "gemini"),
-		ChatEngine:             getenv("CHAT_ENGINE", "gemini"),
+		ChatEngine:             getenv("CHAT_ENGINE", "ollama"),
 		OllamaBaseURL:          getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
 		OllamaModel:            getenv("OLLAMA_MODEL", "qwen3:8b"),
 		OllamaTimeoutSec:       getenvInt("OLLAMA_TIMEOUT_SEC", 180),
@@ -120,29 +120,30 @@ func Load() (*Config, error) {
 	}
 
 	switch c.ChatEngine {
-	case "disabled", "gemini":
-	case "anthropic":
-		return nil, fmt.Errorf("CHAT_ENGINE=anthropic was removed (it could not use tools); use gemini or disabled")
+	case "disabled", "ollama":
 	default:
-		return nil, fmt.Errorf("CHAT_ENGINE must be 'disabled' or 'gemini', got %q", c.ChatEngine)
+		return nil, fmt.Errorf(
+			"CHAT_ENGINE must be 'disabled' or 'ollama', got %q",
+			c.ChatEngine,
+		)
 	}
 
-	if c.GraderEngine == "ollama" {
+	if c.GraderEngine == "ollama" || c.ChatEngine == "ollama" {
 		if c.OllamaBaseURL == "" {
-			return nil, fmt.Errorf("OLLAMA_BASE_URL is required for GRADER_ENGINE=ollama")
+			return nil, fmt.Errorf("OLLAMA_BASE_URL is required when Ollama chat or grading is enabled")
 		}
 		if c.OllamaModel == "" {
-			return nil, fmt.Errorf("OLLAMA_MODEL is required for GRADER_ENGINE=ollama")
+			return nil, fmt.Errorf("OLLAMA_MODEL is required when Ollama chat or grading is enabled")
 		}
 		if c.OllamaTimeoutSec <= 0 {
 			return nil, fmt.Errorf("OLLAMA_TIMEOUT_SEC must be greater than zero")
 		}
 	}
 
-	googleActive := c.ChatEngine == "gemini" || c.GraderEngine == "gemini"
+	googleActive := c.GraderEngine == "gemini"
 	if googleActive && c.GoogleAPIKey == "" {
 		return nil, fmt.Errorf(
-			"GOOGLE_API_KEY is required when Gemini chat or grading is enabled",
+			"GOOGLE_API_KEY is required when Gemini grading is enabled",
 		)
 	}
 

@@ -34,6 +34,7 @@ export function RightPanel({
   busy,
   onApply,
   onPatchResolved,
+  getPendingContent,
 }: {
   sessionId: string | null;
   submitted: boolean;
@@ -44,6 +45,7 @@ export function RightPanel({
   busy: boolean;
   onApply?: (codeBlock: string) => void;
   onPatchResolved?: ResolveCallback;
+  getPendingContent?: (toolUseId: string) => string | undefined;
 }) {
   const [active, setActive] = useState<Tab>("agent");
   // Tutor tab starts highlighted when the session opens. The 5-minute idle
@@ -121,6 +123,7 @@ export function RightPanel({
             busy={busy}
             onApply={onApply}
             onPatchResolved={onPatchResolved}
+            getPendingContent={getPendingContent}
             availableFiles={fileNames}
           />
         </div>
@@ -168,9 +171,13 @@ function TabButton({
         padding: "0 14px",
         fontSize: 12.5,
         color: active ? "var(--text-strong)" : "var(--text-dim)",
-        background: active ? accentBg ?? "var(--bg-tab-active)" : "transparent",
+        background: active
+          ? (accentBg ?? "var(--bg-tab-active)")
+          : "transparent",
         borderRight: "1px solid var(--border)",
-        borderBottom: active ? `2px solid ${indicator}` : "2px solid transparent",
+        borderBottom: active
+          ? `2px solid ${indicator}`
+          : "2px solid transparent",
         cursor: "pointer",
         userSelect: "none",
         fontWeight: active ? 600 : 500,

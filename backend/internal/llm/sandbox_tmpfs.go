@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// SessionTmpFS is the per-session scratch directory the chat_v2 tools
+// SessionTmpFS is the per-session scratch directory the agent chat tools
 // Grep / Glob / RunCommand operate against. It mirrors the candidate
 // workspace under /tmp/codritium/<session_id>/ so tools can spawn external
 // processes without touching the host filesystem. The hidden test file is

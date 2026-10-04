@@ -5,7 +5,7 @@ import "context"
 // LLMStreamClient is the engine-neutral interface the v0.8 main loop
 // drives. Implementations wrap the underlying SDK (Anthropic / Gemini)
 // and translate their native streaming chunks into NormalizedChunk
-// values so chat_v2.go does not need a switch on engine.
+// values so agent_loop.go does not need a switch on engine.
 type LLMStreamClient interface {
 	// StreamTurn opens a streaming completion for one turn and returns a
 	// reader the caller drains in order. Closing the reader (or ctx
@@ -77,8 +77,8 @@ type NormalizedChunk struct {
 	// text_delta
 	Text string
 	// tool_use_start
-	ToolUseID    string
-	ToolUseName  string
+	ToolUseID   string
+	ToolUseName string
 	// tool_use_input_delta: partial JSON for ToolUseID
 	InputJSONDelta string
 	// message_stop

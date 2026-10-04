@@ -17,7 +17,7 @@ import (
 const defaultGeminiChatModel = "gemini-2.5-flash"
 
 // GeminiStream adapts the google.golang.org/genai SDK streaming API to
-// the engine-neutral llm.LLMStreamClient contract that chat_v2.go consumes.
+// the engine-neutral llm.LLMStreamClient contract that agent_loop.go consumes.
 //
 // Gemini's streaming surface is one chunk per Part: a text Part becomes
 // a text_delta; a FunctionCall Part becomes a tool_use_start +

@@ -6,14 +6,13 @@ import (
 	"fmt"
 	"strings"
 
-	"google.golang.org/genai"
+	"codritium/backend/internal/llm"
 )
 
-const defaultModel = "gemini-2.5-flash"
+const defaultModel = "qwen3:8b"
 
-// Mode identifies the session lifecycle stage the tips-agent is called from.
-// Practice is the only mode where hints are served; simulator and replay
-// must hard-fail upstream so we keep the enum tight here.
+// Mode identifies the session stage in which the tutor is used.
+// Tutor responses are available only during practice.
 type Mode string
 
 const (
@@ -22,22 +21,14 @@ const (
 	ModeReply     Mode = "reply"
 )
 
-// Turn is one entry in the user/tutor exchange. The tips-agent has no
-// tool use, no streaming, no decision waiter — every turn is a single
-// text exchange with explicit per-turn user input.
+// Turn is one user or tutor message in the conversation history.
 type Turn struct {
-	Role string // "user" | "model"
+	Role string
 	Text string
 }
 
-// Request is the input shape the HTTP handler hands to the agent.
-// SoulPrebake is the problem-specific guidance the candidate is allowed
-// to see; the seeded prebake is the only source. Conversation is the
-// running multi-turn history scoped to this practice session. FileContents
-// is the optional candidate-edited workspace snapshot — never the hidden
-// test, only files the candidate already sees. AgentSummary is the
-// rule-based digest of the candidate's chat_v2 progress; nil/empty leaves
-// the prompt section out so the model behaviour matches the pre-1.0 path.
+// Request contains the problem guidance, conversation history, workspace
+// snapshot, and candidate-agent activity supplied to the tutor.
 type Request struct {
 	Mode         Mode
 	SoulPrebake  string
@@ -46,182 +37,166 @@ type Request struct {
 	FileContents map[string]string
 }
 
-// StreamChunk is one piece of a streaming tutor turn. Delta is the text
-// fragment to append to the UI; Done signals the model finished; Err
-// carries terminal stream errors (Done and Err are mutually exclusive).
+// StreamChunk contains one text fragment or the terminal state of a tutor response.
 type StreamChunk struct {
 	Delta string
 	Done  bool
 	Err   error
 }
 
-// Response holds the tutor reply plus the resolved model name so callers
-// can log or surface which engine produced the answer (Phase 1: gemini
-// only; Phase 2+ may add fallbacks).
+// Response contains the completed tutor reply and configured model name.
 type Response struct {
 	Text  string
 	Model string
 }
 
-// Agent wraps a genai.Client and resolves the model name. Construct one
-// per process; the SDK reuses HTTP transports for the client's lifetime.
+// Agent uses the shared local model stream to produce Socratic tutor responses.
 type Agent struct {
-	Client *genai.Client
+	Stream llm.LLMStreamClient
 	Model  string
 }
 
-// New returns an Agent. Client must be non-nil — Phase 1 has no offline
-// fallback. Model defaults to gemini-2.5-flash when blank.
-func New(client *genai.Client, model string) *Agent {
+// New creates a tutor agent backed by the configured local Ollama model.
+func New(stream llm.LLMStreamClient, model string) *Agent {
 	if model == "" {
 		model = defaultModel
 	}
-	return &Agent{Client: client, Model: model}
+	return &Agent{
+		Stream: stream,
+		Model:  model,
+	}
 }
 
-// Ask runs a single non-streaming tips turn and returns the tutor reply.
-// Mode != ModePractice is rejected — the practice mode gate is the only
-// surface that calls the agent. Empty conversation is also rejected;
-// the handler is expected to require at least one user turn.
+// Ask collects one streamed tutor response and returns it as complete text.
 func (a *Agent) Ask(ctx context.Context, req Request) (Response, error) {
-	if req.Mode != ModePractice {
-		return Response{}, fmt.Errorf("tips agent: mode %q not allowed", req.Mode)
-	}
-	if len(req.Conversation) == 0 {
-		return Response{}, errors.New("tips agent: empty conversation")
-	}
-	if a == nil || a.Client == nil {
-		return Response{}, errors.New("tips agent: gemini client not configured")
-	}
-
-	contents := toGenAIContents(req.Conversation)
-	cfg := &genai.GenerateContentConfig{
-		Temperature:     genai.Ptr[float32](0.7),
-		MaxOutputTokens: 4096,
-		// gemini-2.5-flash enables internal thinking by default and the
-		// thinking tokens count against MaxOutputTokens. For Socratic
-		// tutor turns we want fast, short replies — no thinking budget.
-		ThinkingConfig: &genai.ThinkingConfig{
-			ThinkingBudget: genai.Ptr[int32](0),
-		},
-	}
-	systemPrompt := BuildTipsPrompt(req.SoulPrebake, req.AgentSummary, req.FileContents)
-	cfg.SystemInstruction = genai.NewContentFromText(systemPrompt, genai.RoleUser)
-
-	resp, err := a.Client.Models.GenerateContent(ctx, a.Model, contents, cfg)
+	stream, err := a.AskStream(ctx, req)
 	if err != nil {
-		return Response{}, fmt.Errorf("tips agent: gemini generate: %w", err)
+		return Response{}, err
 	}
 
-	text := extractText(resp)
-	if strings.TrimSpace(text) == "" {
-		return Response{}, errors.New("tips agent: empty response from gemini")
-	}
-	return Response{Text: text, Model: a.Model}, nil
-}
-
-// AskStream is the streaming variant of Ask. It returns a channel of
-// StreamChunk values terminated by either a Done=true or an Err. The
-// channel closes after the terminal chunk so callers may range over it
-// without explicit length tracking. Ctx cancellation aborts the stream.
-func (a *Agent) AskStream(ctx context.Context, req Request) (<-chan StreamChunk, error) {
-	if req.Mode != ModePractice {
-		return nil, fmt.Errorf("tips agent: mode %q not allowed", req.Mode)
-	}
-	if len(req.Conversation) == 0 {
-		return nil, errors.New("tips agent: empty conversation")
-	}
-	if a == nil || a.Client == nil {
-		return nil, errors.New("tips agent: gemini client not configured")
+	var text strings.Builder
+	for chunk := range stream {
+		if chunk.Err != nil {
+			return Response{}, chunk.Err
+		}
+		text.WriteString(chunk.Delta)
 	}
 
-	contents := toGenAIContents(req.Conversation)
-	cfg := &genai.GenerateContentConfig{
-		Temperature:     genai.Ptr[float32](0.7),
-		MaxOutputTokens: 4096,
-		// gemini-2.5-flash enables internal thinking by default and the
-		// thinking tokens count against MaxOutputTokens. For Socratic
-		// tutor turns we want fast, short replies — no thinking budget.
-		ThinkingConfig: &genai.ThinkingConfig{
-			ThinkingBudget: genai.Ptr[int32](0),
-		},
+	result := text.String()
+	if strings.TrimSpace(result) == "" {
+		return Response{}, errors.New("tips agent: empty response from Ollama")
 	}
-	systemPrompt := BuildTipsPrompt(req.SoulPrebake, req.AgentSummary, req.FileContents)
-	cfg.SystemInstruction = genai.NewContentFromText(systemPrompt, genai.RoleUser)
 
 	model := a.Model
 	if model == "" {
 		model = defaultModel
 	}
-	seq := a.Client.Models.GenerateContentStream(ctx, model, contents, cfg)
+	return Response{
+		Text:  result,
+		Model: model,
+	}, nil
+}
+
+// AskStream starts one streaming tutor turn. Only practice mode is allowed.
+func (a *Agent) AskStream(
+	ctx context.Context,
+	req Request,
+) (<-chan StreamChunk, error) {
+	if req.Mode != ModePractice {
+		return nil, fmt.Errorf(
+			"tips agent: mode %q not allowed",
+			req.Mode,
+		)
+	}
+	if len(req.Conversation) == 0 {
+		return nil, errors.New("tips agent: empty conversation")
+	}
+	if a == nil || a.Stream == nil {
+		return nil, errors.New("tips agent: Ollama stream not configured")
+	}
+
+	reader, err := a.Stream.StreamTurn(ctx, llm.TurnRequest{
+		SystemPrompt:    BuildTipsPrompt(req.SoulPrebake, req.AgentSummary, req.FileContents),
+		Messages:        toLLMMessages(req.Conversation),
+		MaxOutputTokens: 4096,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("tips agent: Ollama request: %w", err)
+	}
 
 	out := make(chan StreamChunk)
 	go func() {
 		defer close(out)
+		defer reader.Close()
+
 		emitted := false
-		for resp, err := range seq {
+		for {
+			chunk, ok, err := reader.Next(ctx)
 			if err != nil {
-				select {
-				case out <- StreamChunk{Err: fmt.Errorf("tips stream: %w", err)}:
-				case <-ctx.Done():
-				}
+				sendStreamChunk(ctx, out, StreamChunk{
+					Err: fmt.Errorf("tips stream: %w", err),
+				})
 				return
 			}
-			text := extractText(resp)
-			if text == "" {
+			if !ok {
+				break
+			}
+			if chunk.Kind != "text_delta" || chunk.Text == "" {
 				continue
 			}
+
 			emitted = true
-			select {
-			case out <- StreamChunk{Delta: text}:
-			case <-ctx.Done():
+			if !sendStreamChunk(ctx, out, StreamChunk{
+				Delta: chunk.Text,
+			}) {
 				return
 			}
 		}
+
 		if !emitted {
-			select {
-			case out <- StreamChunk{Err: errors.New("tips stream: empty response from gemini")}:
-			case <-ctx.Done():
-			}
+			sendStreamChunk(ctx, out, StreamChunk{
+				Err: errors.New("tips stream: empty response from Ollama"),
+			})
 			return
 		}
-		select {
-		case out <- StreamChunk{Done: true}:
-		case <-ctx.Done():
-		}
+
+		sendStreamChunk(ctx, out, StreamChunk{Done: true})
 	}()
+
 	return out, nil
 }
 
-func toGenAIContents(turns []Turn) []*genai.Content {
-	out := make([]*genai.Content, 0, len(turns))
-	for _, t := range turns {
-		var role genai.Role = genai.RoleUser
-		if t.Role == "model" {
-			role = genai.RoleModel
+// toLLMMessages converts persisted tutor turns into the shared LLM message format.
+func toLLMMessages(turns []Turn) []llm.Message {
+	out := make([]llm.Message, 0, len(turns))
+	for _, turn := range turns {
+		role := "user"
+		if turn.Role == "model" {
+			role = "assistant"
 		}
-		out = append(out, genai.NewContentFromText(t.Text, role))
+
+		out = append(out, llm.Message{
+			Role: role,
+			Content: []llm.ContentBlock{
+				{
+					Kind: "text",
+					Text: turn.Text,
+				},
+			},
+		})
 	}
 	return out
 }
 
-func extractText(resp *genai.GenerateContentResponse) string {
-	if resp == nil || len(resp.Candidates) == 0 {
-		return ""
+func sendStreamChunk(
+	ctx context.Context,
+	out chan<- StreamChunk,
+	chunk StreamChunk,
+) bool {
+	select {
+	case out <- chunk:
+		return true
+	case <-ctx.Done():
+		return false
 	}
-	var b strings.Builder
-	for _, cand := range resp.Candidates {
-		if cand == nil || cand.Content == nil {
-			continue
-		}
-		for _, part := range cand.Content.Parts {
-			if part == nil {
-				continue
-			}
-			if part.Text != "" {
-				b.WriteString(part.Text)
-			}
-		}
-	}
-	return b.String()
 }

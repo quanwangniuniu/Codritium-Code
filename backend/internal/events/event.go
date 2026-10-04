@@ -43,7 +43,7 @@ type SessionStarted struct {
 	SystemPromptHash  string   `json:"system_prompt_hash,omitempty"`
 }
 
-func (SessionStarted) Kind() string  { return "session_started" }
+func (SessionStarted) Kind() string   { return "session_started" }
 func (e SessionStarted) Payload() any { return e }
 
 type CompactTriggered struct {
@@ -53,7 +53,7 @@ type CompactTriggered struct {
 	TokensAfter     int    `json:"tokens_after"`
 }
 
-func (CompactTriggered) Kind() string  { return "compact_triggered" }
+func (CompactTriggered) Kind() string   { return "compact_triggered" }
 func (e CompactTriggered) Payload() any { return e }
 
 type TurnCompleted struct {
@@ -63,7 +63,7 @@ type TurnCompleted struct {
 	Reason     string     `json:"reason"` // "normal" | "aborted" | "max_turns" | "budget"
 }
 
-func (TurnCompleted) Kind() string  { return "turn_completed" }
+func (TurnCompleted) Kind() string   { return "turn_completed" }
 func (e TurnCompleted) Payload() any { return e }
 
 type TokenUsage struct {
@@ -80,25 +80,26 @@ type SessionSubmitted struct {
 	FilesChanged    []string `json:"files_changed,omitempty"`
 }
 
-func (SessionSubmitted) Kind() string  { return "session_submitted" }
+func (SessionSubmitted) Kind() string   { return "session_submitted" }
 func (e SessionSubmitted) Payload() any { return e }
 
 // ─── 2. Main dialog loop (3 kinds) ──────────────────────────────────────
 
 type ToolUseProposed struct {
-	ToolUseID     string `json:"tool_use_id"`
-	Tool          string `json:"tool"` // FileRead | FileEdit | RunTests | ...
-	InputSummary  string `json:"input_summary"`
-	InputHash     string `json:"input_hash,omitempty"`
-	RefMessageID  string `json:"ref_message_id,omitempty"`
-	TurnIndex     int    `json:"turn_index"`
+	ToolUseID    string         `json:"tool_use_id"`
+	Tool         string         `json:"tool"` // FileRead | FileEdit | RunTests | ...
+	Input        map[string]any `json:"input,omitempty"`
+	InputSummary string         `json:"input_summary"`
+	InputHash    string         `json:"input_hash,omitempty"`
+	RefMessageID string         `json:"ref_message_id,omitempty"`
+	TurnIndex    int            `json:"turn_index"`
 	// Auto signals that the runtime decided to execute this tool without
 	// waiting for a candidate decision (read-class tools like FileRead).
 	// AI Collaboration scoring skips auto rows so the signal stays clean.
-	Auto          bool   `json:"auto,omitempty"`
+	Auto bool `json:"auto,omitempty"`
 }
 
-func (ToolUseProposed) Kind() string  { return "tool_use_proposed" }
+func (ToolUseProposed) Kind() string   { return "tool_use_proposed" }
 func (e ToolUseProposed) Payload() any { return e }
 
 type ToolResult struct {
@@ -109,16 +110,16 @@ type ToolResult struct {
 	DurationMs    int64  `json:"duration_ms,omitempty"`
 }
 
-func (ToolResult) Kind() string  { return "tool_result" }
+func (ToolResult) Kind() string   { return "tool_result" }
 func (e ToolResult) Payload() any { return e }
 
 type FirstMessageClassified struct {
-	Classification    string `json:"classification"` // bare_request | partial_plan | structured_plan
-	ReasoningExcerpt  string `json:"reasoning_excerpt,omitempty"`
-	ClassifierModel   string `json:"classifier_model,omitempty"`
+	Classification   string `json:"classification"` // bare_request | partial_plan | structured_plan
+	ReasoningExcerpt string `json:"reasoning_excerpt,omitempty"`
+	ClassifierModel  string `json:"classifier_model,omitempty"`
 }
 
-func (FirstMessageClassified) Kind() string  { return "first_message_classified" }
+func (FirstMessageClassified) Kind() string   { return "first_message_classified" }
 func (e FirstMessageClassified) Payload() any { return e }
 
 // ─── 3. Candidate decisions (3 kinds, AI Collaboration core) ────────────
@@ -130,10 +131,10 @@ type CandidateApproved struct {
 	CandidateCommentExcerpt string `json:"candidate_comment_excerpt,omitempty"`
 	// Auto = true means the runtime auto-approved this tool use (read-class
 	// tools). Grader treats auto rows as system noise, not candidate signal.
-	Auto                    bool   `json:"auto,omitempty"`
+	Auto bool `json:"auto,omitempty"`
 }
 
-func (CandidateApproved) Kind() string  { return "candidate_approved" }
+func (CandidateApproved) Kind() string   { return "candidate_approved" }
 func (e CandidateApproved) Payload() any { return e }
 
 type CandidateRejected struct {
@@ -142,7 +143,7 @@ type CandidateRejected struct {
 	ReasonKind    string `json:"reason_kind"` // with_reason | no_reason
 }
 
-func (CandidateRejected) Kind() string  { return "candidate_rejected" }
+func (CandidateRejected) Kind() string   { return "candidate_rejected" }
 func (e CandidateRejected) Payload() any { return e }
 
 type CandidatePushedBack struct {
@@ -151,7 +152,7 @@ type CandidatePushedBack struct {
 	SecondProposalID  string `json:"second_proposal_id,omitempty"`
 }
 
-func (CandidatePushedBack) Kind() string  { return "candidate_pushed_back" }
+func (CandidatePushedBack) Kind() string   { return "candidate_pushed_back" }
 func (e CandidatePushedBack) Payload() any { return e }
 
 // ─── 4. Plan-mode transitions (2 kinds) ─────────────────────────────────
@@ -161,7 +162,7 @@ type PlanModeEntered struct {
 	TurnIndex int    `json:"turn_index"`
 }
 
-func (PlanModeEntered) Kind() string  { return "plan_mode_entered" }
+func (PlanModeEntered) Kind() string   { return "plan_mode_entered" }
 func (e PlanModeEntered) Payload() any { return e }
 
 type PlanModeExited struct {
@@ -170,7 +171,7 @@ type PlanModeExited struct {
 	DurationMs     int64  `json:"duration_ms,omitempty"`
 }
 
-func (PlanModeExited) Kind() string  { return "plan_mode_exited" }
+func (PlanModeExited) Kind() string   { return "plan_mode_exited" }
 func (e PlanModeExited) Payload() any { return e }
 
 // ─── 5. Verification (2 kinds, Verification core) ───────────────────────
@@ -184,7 +185,7 @@ type TestExecuted struct {
 	DurationMs       int64    `json:"duration_ms,omitempty"`
 }
 
-func (TestExecuted) Kind() string  { return "test_executed" }
+func (TestExecuted) Kind() string   { return "test_executed" }
 func (e TestExecuted) Payload() any { return e }
 
 type SelfCheckArtifact struct {
@@ -193,7 +194,7 @@ type SelfCheckArtifact struct {
 	Excerpt      string `json:"excerpt,omitempty"`
 }
 
-func (SelfCheckArtifact) Kind() string  { return "self_check_artifact" }
+func (SelfCheckArtifact) Kind() string   { return "self_check_artifact" }
 func (e SelfCheckArtifact) Payload() any { return e }
 
 // ─── 6. Candidate reading / reverting (R5 Gonfire absorption) ────────────
@@ -210,7 +211,7 @@ type AIOutputRead struct {
 	NextActionKind     string `json:"next_action_kind"` // new_prompt | tool_use_review | manual_edit | idle_timeout
 }
 
-func (AIOutputRead) Kind() string  { return "ai_output_read" }
+func (AIOutputRead) Kind() string   { return "ai_output_read" }
 func (e AIOutputRead) Payload() any { return e }
 
 // CandidateRevertedEdit is emitted when the candidate undoes a previously
@@ -224,7 +225,7 @@ type CandidateRevertedEdit struct {
 	NextActionRef     string   `json:"next_action_ref,omitempty"`
 }
 
-func (CandidateRevertedEdit) Kind() string  { return "candidate_reverted_edit" }
+func (CandidateRevertedEdit) Kind() string   { return "candidate_reverted_edit" }
 func (e CandidateRevertedEdit) Payload() any { return e }
 
 // KnownKinds is the closed set of valid event kinds (handy for tests).
