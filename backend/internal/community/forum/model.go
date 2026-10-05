@@ -42,6 +42,7 @@ const (
 	forumPostsPerHour    = 5
 	forumCommentsPerHour = 30
 	forumVotesPerMinute  = 120
+	forumReportsPerHour  = 10
 )
 
 var forumTagPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9+#.-]{0,23}$`)
@@ -54,6 +55,8 @@ type forumAuthor struct {
 	AvatarColor string    `json:"avatar_color"`
 	// Verified marks official (admin) accounts, like LeetCode's check badge.
 	Verified bool `json:"verified"`
+	// Reputation is upvotes received on the author's named posts and comments.
+	Reputation int `json:"reputation"`
 }
 
 type forumPost struct {
@@ -66,6 +69,7 @@ type forumPost struct {
 	Tags         []string     `json:"tags"`
 	IsAnonymous  bool         `json:"is_anonymous"`
 	IsPinned     bool         `json:"is_pinned"`
+	IsLocked     bool         `json:"is_locked"`
 	Author       *forumAuthor `json:"author"`
 	IsMine       bool         `json:"is_mine"`
 	Upvotes      int          `json:"upvotes"`

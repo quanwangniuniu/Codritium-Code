@@ -57,6 +57,8 @@ export interface ForumAuthor {
   avatar_url: string;
   avatar_color: string;
   verified: boolean;
+  // Upvotes received on the author's named posts and comments.
+  reputation: number;
 }
 
 export interface ForumPost {
@@ -69,6 +71,8 @@ export interface ForumPost {
   tags: string[];
   is_anonymous: boolean;
   is_pinned: boolean;
+  // No new comments while locked (moderators excepted).
+  is_locked: boolean;
   // null when the post is anonymous and the viewer is neither its author
   // nor an admin.
   author: ForumAuthor | null;
@@ -155,6 +159,35 @@ export interface MentionSuggestion {
   avatar_color: string;
 }
 
+export type ReportReason = "spam" | "abuse" | "off_topic" | "other";
+export const REPORT_REASONS: ReportReason[] = ["spam", "abuse", "off_topic", "other"];
+
+// One reported post or comment in the moderation queue.
+export interface ReportedItem {
+  post_id: string;
+  comment_id: string | null;
+  post_title: string;
+  excerpt: string;
+  is_anonymous: boolean;
+  author: { id: string; handle: string; display_name: string; muted_until: string | null };
+  reports: number;
+  reasons: ReportReason[];
+  details: string[];
+  first_reported_at: string;
+  last_reported_at: string;
+  removed: boolean;
+}
+
+export interface ForumMute {
+  user_id: string;
+  handle: string;
+  display_name: string;
+  muted_until: string;
+  reason: string;
+  muted_by: string;
+  created_at: string;
+}
+
 export interface VoteResult {
   upvotes: number;
   downvotes: number;
@@ -205,6 +238,16 @@ export const forumApi = {
     if (postId) params.set("post_id", postId);
     return apiRequest<{ users: MentionSuggestion[] }>(`/api/forum/mention-suggestions?${params}`);
   },
+  report: (target: { postId: string; commentId?: string }, reason: ReportReason, details: string) =>
+    apiRequest<void>("/api/forum/reports", {
+      method: "POST",
+      json: { post_id: target.postId, comment_id: target.commentId ?? null, reason, details },
+    }),
+  lockPost: (id: string, locked: boolean) =>
+    apiRequest<{ is_locked: boolean }>(`/api/forum/posts/${encodeURIComponent(id)}/lock`, {
+      method: "POST",
+      json: { locked },
+    }),
   pinPost: (id: string, pinned: boolean) =>
     apiRequest<{ is_pinned: boolean }>(`/api/forum/posts/${encodeURIComponent(id)}/pin`, {
       method: "POST",
@@ -240,6 +283,24 @@ export const forumApi = {
     apiRequest<void>(`/api/forum/comments/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };
 
+// Moderator-only calls.
+export const forumAdminApi = {
+  reports: (offset = 0, limit = 20) =>
+    apiRequest<{ items: ReportedItem[]; has_more: boolean; open_targets: number }>(
+      `/api/forum/admin/reports?limit=${limit}${offset ? `&offset=${offset}` : ""}`,
+    ),
+  resolve: (item: Pick<ReportedItem, "post_id" | "comment_id">, action: "remove" | "dismiss", muteDays = 0, reason = "") =>
+    apiRequest<{ resolved: number; status: string }>("/api/forum/admin/reports/resolve", {
+      method: "POST",
+      json: { post_id: item.post_id, comment_id: item.comment_id, action, mute_days: muteDays, reason },
+    }),
+  mutes: () => apiRequest<{ mutes: ForumMute[] }>("/api/forum/admin/mutes"),
+  mute: (handle: string, days: number, reason: string) =>
+    apiRequest<void>("/api/forum/admin/mutes", { method: "POST", json: { handle, days, reason } }),
+  unmute: (userId: string) =>
+    apiRequest<void>(`/api/forum/admin/mutes/${encodeURIComponent(userId)}`, { method: "DELETE" }),
+};
+
 // Maps backend error codes to user-facing messages.
 const ERROR_KEY: Record<string, LocaleKey> = {
   unauthorized: "forum_err_login_required",
@@ -252,10 +313,19 @@ const ERROR_KEY: Record<string, LocaleKey> = {
   anonymous_not_allowed: "forum_err_anonymous_not_allowed",
   not_found: "forum_err_not_found",
   rate_limited: "forum_err_rate_limited",
+  locked: "forum_err_locked",
+  already_reported: "forum_err_already_reported",
+  too_many_links: "forum_err_too_many_links",
+  admin_only: "forum_err_admin_only",
   invalid_section: "forum_err_invalid_section",
 };
 
+// Codes whose server message carries specifics (a date, a wait time) worth
+// showing as-is.
+const SERVER_MESSAGE_CODES = new Set(["muted", "account_too_new"]);
+
 export function forumErrorMessage(err: unknown): string {
+  if (err instanceof ApiError && SERVER_MESSAGE_CODES.has(err.code)) return err.message;
   if (err instanceof ApiError && ERROR_KEY[err.code]) return t(ERROR_KEY[err.code]);
   return t("forum_err_generic");
 }

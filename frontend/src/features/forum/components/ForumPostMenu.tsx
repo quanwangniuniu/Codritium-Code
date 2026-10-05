@@ -2,26 +2,29 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Ellipsis, Link2, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
+import { Ellipsis, Flag, Link2, Lock, LockOpen, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
 import { t } from "@/shared/i18n";
 import { useLocale } from "@/shared/i18n/client";
 import { toast } from "@/shared/lib/toast";
 import { cn } from "@/shared/lib/cn";
 import { forumApi, forumErrorMessage, type ForumPost, type ForumViewer } from "@/features/forum/api";
+import { ForumReportDialog } from "@/features/forum/components/ForumReportDialog";
 
 interface ForumPostMenuProps {
-  post: Pick<ForumPost, "id" | "is_mine" | "is_pinned">;
+  post: Pick<ForumPost, "id" | "is_mine" | "is_pinned" | "is_locked">;
   viewer: ForumViewer | null;
   onDeleted?: () => void;
 }
 
 // The "…" menu on a post: copy link for everyone, edit for the author,
-// delete for the author or an admin, pin/unpin for admins.
+// report for other signed-in readers, delete for the author or an admin,
+// pin/unpin and lock/unlock for admins.
 export function ForumPostMenu({ post, viewer, onDeleted }: ForumPostMenuProps) {
   useLocale();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [reporting, setReporting] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -80,6 +83,20 @@ export function ForumPostMenu({ post, viewer, onDeleted }: ForumPostMenuProps) {
     }
   }
 
+  async function toggleLock() {
+    setOpen(false);
+    setBusy(true);
+    try {
+      await forumApi.lockPost(post.id, !post.is_locked);
+      toast.success(post.is_locked ? t("forum_post_unlocked") : t("forum_post_locked"));
+      router.refresh();
+    } catch (e) {
+      toast.error(forumErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const item =
     "flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink hover:bg-surface-2";
 
@@ -125,6 +142,26 @@ export function ForumPostMenu({ post, viewer, onDeleted }: ForumPostMenuProps) {
               {post.is_pinned ? t("forum_unpin") : t("forum_pin")}
             </button>
           )}
+          {viewer?.isAdmin && (
+            <button type="button" role="menuitem" className={item} onClick={toggleLock}>
+              {post.is_locked ? <LockOpen size={14} /> : <Lock size={14} />}
+              {post.is_locked ? t("forum_unlock") : t("forum_lock")}
+            </button>
+          )}
+          {viewer && !post.is_mine && (
+            <button
+              type="button"
+              role="menuitem"
+              className={item}
+              onClick={() => {
+                setOpen(false);
+                setReporting(true);
+              }}
+            >
+              <Flag size={14} />
+              {t("forum_report")}
+            </button>
+          )}
           {canDelete && (
             <button type="button" role="menuitem" className={cn(item, "text-danger")} onClick={remove}>
               <Trash2 size={14} />
@@ -133,6 +170,7 @@ export function ForumPostMenu({ post, viewer, onDeleted }: ForumPostMenuProps) {
           )}
         </div>
       )}
+      {reporting && <ForumReportDialog postId={post.id} onClose={() => setReporting(false)} />}
     </div>
   );
 }

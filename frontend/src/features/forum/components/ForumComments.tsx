@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { MessageCircle, Pencil, Reply, Trash2 } from "lucide-react";
+import { Flag, Lock, MessageCircle, Pencil, Reply, Trash2 } from "lucide-react";
 import { t } from "@/shared/i18n";
 import { useLocale } from "@/shared/i18n/client";
 import { toast } from "@/shared/lib/toast";
@@ -20,15 +20,19 @@ import { ForumMarkdown } from "@/features/forum/components/ForumMarkdown";
 import { ForumAuthorName, ForumAvatar } from "@/features/forum/components/ForumAvatar";
 import { ForumVote } from "@/features/forum/components/ForumVote";
 import { MentionTextarea } from "@/features/forum/components/MentionTextarea";
+import { ForumReportDialog } from "@/features/forum/components/ForumReportDialog";
 
 interface ForumCommentsProps {
   postId: string;
   initialCount: number;
   allowAnonymous: boolean;
   viewer: ForumViewer | null;
+  // A locked thread takes no new comments, replies, or edits (moderators
+  // can still comment).
+  locked: boolean;
 }
 
-export function ForumComments({ postId, initialCount, allowAnonymous, viewer }: ForumCommentsProps) {
+export function ForumComments({ postId, initialCount, allowAnonymous, viewer, locked }: ForumCommentsProps) {
   useLocale();
   const [sort, setSort] = useState<ForumCommentSort>("best");
   const [comments, setComments] = useState<ForumComment[]>([]);
@@ -36,6 +40,8 @@ export function ForumComments({ postId, initialCount, allowAnonymous, viewer }: 
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [count, setCount] = useState(initialCount);
+  const [reporting, setReporting] = useState<string | null>(null);
+  const canWrite = !!viewer && (!locked || viewer.isAdmin);
   // The open reply box: which thread it's under, and the handle to @ when
   // replying to a reply (threads are one level deep, as on LeetCode).
   const [replyTo, setReplyTo] = useState<{ parentId: string; mention?: string } | null>(null);
@@ -161,9 +167,15 @@ export function ForumComments({ postId, initialCount, allowAnonymous, viewer }: 
         </div>
       </div>
 
-      {viewer ? (
+      {locked && (
+        <p className="flex items-center gap-2 rounded-md border border-divider bg-surface-2 p-3 text-sm text-muted">
+          <Lock size={15} className="shrink-0" />
+          {t("forum_locked_banner")}
+        </p>
+      )}
+      {canWrite ? (
         <CommentComposer postId={postId} parentId={null} allowAnonymous={allowAnonymous} onPosted={added} />
-      ) : (
+      ) : locked ? null : (
         <p className="rounded-md border border-divider bg-surface p-4 text-sm text-muted">
           <Link href={`/login?next=${encodeURIComponent(`/forums/${postId}`)}`} className="text-accent underline">
             {t("forum_login_link")}
@@ -185,7 +197,9 @@ export function ForumComments({ postId, initialCount, allowAnonymous, viewer }: 
                   comment={c}
                   viewer={viewer}
                   postId={postId}
-                  onReply={viewer && !c.is_deleted ? () => toggleReply(c.id) : undefined}
+                  onReply={canWrite && !c.is_deleted ? () => toggleReply(c.id) : undefined}
+                  onReport={() => setReporting(c.id)}
+                  canEdit={!locked}
                   onDelete={() => remove(c)}
                   onEdited={edited}
                 />
@@ -200,7 +214,9 @@ export function ForumComments({ postId, initialCount, allowAnonymous, viewer }: 
                         postId={postId}
                         // A reply to a reply joins the same thread, @-ing its
                         // author (unless they posted anonymously).
-                        onReply={viewer && !c.is_deleted ? () => toggleReply(c.id, r.author?.handle) : undefined}
+                        onReply={canWrite && !c.is_deleted ? () => toggleReply(c.id, r.author?.handle) : undefined}
+                        onReport={() => setReporting(r.id)}
+                        canEdit={!locked}
                         onDelete={() => remove(r)}
                         onEdited={edited}
                       />
@@ -237,6 +253,7 @@ export function ForumComments({ postId, initialCount, allowAnonymous, viewer }: 
           </button>
         </div>
       )}
+      {reporting && <ForumReportDialog postId={postId} commentId={reporting} onClose={() => setReporting(null)} />}
     </section>
   );
 }
@@ -246,6 +263,8 @@ function CommentBody({
   viewer,
   postId,
   onReply,
+  onReport,
+  canEdit,
   onDelete,
   onEdited,
 }: {
@@ -253,6 +272,8 @@ function CommentBody({
   viewer: ForumViewer | null;
   postId: string;
   onReply?: () => void;
+  onReport: () => void;
+  canEdit: boolean;
   onDelete: () => void;
   onEdited: (c: ForumComment) => void;
 }) {
@@ -317,7 +338,7 @@ function CommentBody({
                   {t("forum_reply")}
                 </button>
               )}
-              {comment.is_mine && (
+              {comment.is_mine && canEdit && (
                 <button type="button" onClick={() => setEditing(true)} className="inline-flex items-center gap-1 hover:text-ink">
                   <Pencil size={13} />
                   {t("forum_edit")}
@@ -327,6 +348,12 @@ function CommentBody({
                 <button type="button" onClick={onDelete} className="inline-flex items-center gap-1 hover:text-danger">
                   <Trash2 size={13} />
                   {t("forum_delete")}
+                </button>
+              )}
+              {viewer && !comment.is_mine && (
+                <button type="button" onClick={onReport} className="inline-flex items-center gap-1 hover:text-danger">
+                  <Flag size={13} />
+                  {t("forum_report")}
                 </button>
               )}
             </div>

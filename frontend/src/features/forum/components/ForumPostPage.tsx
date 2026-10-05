@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { compactCount } from "@/shared/format";
-import { ArrowLeft, Code2, MessageCircle, Pin } from "lucide-react";
+import { ArrowLeft, Code2, Lock, MessageCircle, Pin } from "lucide-react";
 import { currentUser } from "@/features/auth/server";
 import { t } from "@/shared/i18n";
 import {
@@ -39,11 +39,21 @@ export async function ForumPostPage({ params }: ForumPostPageProps) {
 
       <article className="space-y-5">
         <header className="space-y-4">
-          {post.is_pinned && (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-accent">
-              <Pin size={12} />
-              {t("forum_pinned")}
-            </span>
+          {(post.is_pinned || post.is_locked) && (
+            <div className="flex items-center gap-3 text-xs font-medium">
+              {post.is_pinned && (
+                <span className="inline-flex items-center gap-1 text-accent">
+                  <Pin size={12} />
+                  {t("forum_pinned")}
+                </span>
+              )}
+              {post.is_locked && (
+                <span className="inline-flex items-center gap-1 text-muted">
+                  <Lock size={12} />
+                  {t("forum_locked_badge")}
+                </span>
+              )}
+            </div>
           )}
           <h1 className="text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">{post.title}</h1>
           <div className="flex items-center gap-3">
@@ -104,6 +114,7 @@ export async function ForumPostPage({ params }: ForumPostPageProps) {
         initialCount={post.comment_count}
         allowAnonymous={FORUM_ANON_SECTIONS.includes(post.section)}
         viewer={viewer}
+        locked={post.is_locked}
       />
     </div>
   );

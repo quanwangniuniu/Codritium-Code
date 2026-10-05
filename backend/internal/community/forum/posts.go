@@ -245,7 +245,7 @@ func (h Handler) createForumPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req, ok := decodePostRequest(w, r, h.Pool)
-	if !ok || !h.allow(w, r, u, postLimit) {
+	if !ok || !h.allow(w, r, u, postLimit, req.Title+"\n"+req.BodyMD) {
 		return
 	}
 	// The post, its author's follow, and mention notifications land together.
@@ -298,7 +298,7 @@ func (h Handler) updateForumPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req, ok := decodePostRequest(w, r, h.Pool)
-	if !ok {
+	if !ok || !h.allow(w, r, u, editLimit, "") {
 		return
 	}
 	tag, err := h.Pool.Exec(r.Context(), `
@@ -390,7 +390,7 @@ func (h Handler) voteForumPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, ok := auth.Require(w, r)
-	if !ok || !h.allow(w, r, u, voteLimit) {
+	if !ok || !h.allow(w, r, u, voteLimit, "") {
 		return
 	}
 	value, ok := votes.DecodeValue(w, r)

@@ -39,6 +39,7 @@ export async function Nav() {
                 displayName={user.display_name}
                 handle={user.handle}
                 avatarUrl={user.avatar_url || undefined}
+                isAdmin={user.role === "admin"}
               />
             </>
           ) : (

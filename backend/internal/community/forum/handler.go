@@ -30,6 +30,14 @@ func (h Handler) Routes(rt *httpx.Router) {
 	rt.Handle("PUT /api/forum/comments/{id}", h.updateForumComment)
 	rt.Handle("POST /api/forum/comments/{id}/vote", h.voteForumComment)
 	rt.Handle("DELETE /api/forum/comments/{id}", h.deleteForumComment)
+
+	rt.Handle("POST /api/forum/reports", h.createForumReport)
+	rt.Handle("POST /api/forum/posts/{id}/lock", h.lockForumPost)
+	rt.Handle("GET /api/forum/admin/reports", h.listForumReports)
+	rt.Handle("POST /api/forum/admin/reports/resolve", h.resolveForumReports)
+	rt.Handle("GET /api/forum/admin/mutes", h.listForumMutes)
+	rt.Handle("POST /api/forum/admin/mutes", h.muteForumUser)
+	rt.Handle("DELETE /api/forum/admin/mutes/{id}", h.unmuteForumUser)
 }
 
 type Handler struct {
@@ -37,4 +45,6 @@ type Handler struct {
 	// Cookie carries the deployment's cookie attributes for the signed-out
 	// visitor cookie that view counting uses.
 	Cookie auth.CookieOptions
+	// NewAccount holds back brand-new accounts; the zero value doesn't.
+	NewAccount NewAccountRules
 }

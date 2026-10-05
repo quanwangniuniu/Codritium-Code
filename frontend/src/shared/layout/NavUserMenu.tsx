@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronDown, UserRound, Settings, CreditCard, LogOut } from "lucide-react";
+import { ChevronDown, UserRound, Settings, CreditCard, LogOut, ShieldCheck } from "lucide-react";
 import { authApi } from "@/features/auth/api";
 import { UserAvatar } from "@/shared/avatar/UserAvatar";
 import { t } from "@/shared/i18n";
@@ -13,12 +13,13 @@ interface NavUserMenuProps {
   displayName: string;
   handle: string;
   avatarUrl?: string;
+  isAdmin?: boolean;
 }
 
 // Avatar + dropdown for the website nav (Profile / Settings / Plans / Logout).
 // Client component: the dropdown is interactive and the logout call runs in the
 // browser so the session cookie clears on the backend before we redirect.
-export function NavUserMenu({ displayName, handle, avatarUrl }: NavUserMenuProps) {
+export function NavUserMenu({ displayName, handle, avatarUrl, isAdmin }: NavUserMenuProps) {
   useLocale();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -51,6 +52,7 @@ export function NavUserMenu({ displayName, handle, avatarUrl }: NavUserMenuProps
     { label: t("nav_profile"), href: "/profile", icon: UserRound },
     { label: t("settings_link"), href: "/settings", icon: Settings },
     { label: t("menu_plans"), href: "/plans", icon: CreditCard },
+    ...(isAdmin ? [{ label: t("mod_title"), href: "/admin/forum", icon: ShieldCheck }] : []),
   ];
 
   return (

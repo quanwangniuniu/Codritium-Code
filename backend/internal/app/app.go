@@ -165,7 +165,11 @@ func (a *App) build(ctx context.Context) error {
 		tipsHandler,
 		replay.Handler{Pool: pool},
 		profile.Handler{Pool: pool},
-		forum.Handler{Pool: pool, Cookie: auth.CookieOptions{Domain: cfg.CookieDomain, Secure: cfg.CookieSecure}},
+		forum.Handler{
+			Pool:       pool,
+			Cookie:     auth.CookieOptions{Domain: cfg.CookieDomain, Secure: cfg.CookieSecure},
+			NewAccount: forum.DefaultNewAccountRules,
+		},
 		comments.Handler{Pool: pool},
 		notes.Handler{Pool: pool},
 		notifications.Handler{Pool: pool},

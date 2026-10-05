@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"codritium/backend/internal/auth"
 )
@@ -23,7 +24,7 @@ const forumCommentColumns = `
 	CASE WHEN c.updated_at > c.created_at THEN c.updated_at END,
 	c.deleted_at IS NOT NULL,
 	u.handle, u.display_name, COALESCE(u.avatar_url,''), COALESCE(u.avatar_color,''),
-	COALESCE(u.role,''), COALESCE(v.value, 0)`
+	COALESCE(u.role,''), COALESCE(v.value, 0),` + reputationExpr
 
 const forumCommentFrom = `
 	FROM forum_comments c
@@ -39,7 +40,7 @@ func scanForumComment(row pgx.Row, viewer *auth.User, postAuthor uuid.UUID) (for
 	)
 	if err := row.Scan(&c.ID, &c.PostID, &c.ParentID, &authorID, &c.Body, &c.IsAnonymous,
 		&c.Upvotes, &c.Downvotes, &c.CreatedAt, &c.EditedAt, &c.IsDeleted,
-		&a.Handle, &a.DisplayName, &a.AvatarURL, &a.AvatarColor, &role, &c.MyVote); err != nil {
+		&a.Handle, &a.DisplayName, &a.AvatarURL, &a.AvatarColor, &role, &c.MyVote, &a.Reputation); err != nil {
 		return forumComment{}, err
 	}
 	c.Score = c.Upvotes - c.Downvotes
@@ -62,6 +63,7 @@ func scanForumComment(row pgx.Row, viewer *auth.User, postAuthor uuid.UUID) (for
 type forumPostMeta struct {
 	authorID uuid.UUID
 	section  string
+	locked   bool
 }
 
 func loadForumPostMeta(ctx context.Context, q interface {
@@ -69,8 +71,8 @@ func loadForumPostMeta(ctx context.Context, q interface {
 }, id uuid.UUID) (forumPostMeta, error) {
 	var m forumPostMeta
 	err := q.QueryRow(ctx,
-		`SELECT user_id, section FROM forum_posts WHERE id = $1 AND deleted_at IS NULL`, id,
-	).Scan(&m.authorID, &m.section)
+		`SELECT user_id, section, is_locked FROM forum_posts WHERE id = $1 AND deleted_at IS NULL`, id,
+	).Scan(&m.authorID, &m.section, &m.locked)
 	return m, err
 }
 
@@ -185,7 +187,7 @@ func (h Handler) createForumComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body, ok := validCommentBody(w, req.Body)
-	if !ok || !h.allow(w, r, u, commentLimit) {
+	if !ok || !h.allow(w, r, u, commentLimit, body) {
 		return
 	}
 
@@ -203,6 +205,11 @@ func (h Handler) createForumComment(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		httpx.Internal(w, r, err)
+		return
+	}
+	// Locked threads take no new comments, except a moderator's.
+	if meta.locked && u.Role != "admin" {
+		forumError(w, http.StatusForbidden, "locked")
 		return
 	}
 	if req.IsAnonymous && !forumAnonSections[meta.section] {
@@ -262,7 +269,7 @@ func (h Handler) voteForumComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, ok := auth.Require(w, r)
-	if !ok || !h.allow(w, r, u, voteLimit) {
+	if !ok || !h.allow(w, r, u, voteLimit, "") {
 		return
 	}
 	votes.Handle(w, r, h.Pool, votes.ForumComment, id, u.ID)
@@ -297,7 +304,7 @@ func (h Handler) updateForumComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body, ok := validCommentBody(w, req.Body)
-	if !ok {
+	if !ok || !h.allow(w, r, u, editLimit, "") {
 		return
 	}
 	var postAuthor uuid.UUID
@@ -305,7 +312,7 @@ func (h Handler) updateForumComment(w http.ResponseWriter, r *http.Request) {
 		UPDATE forum_comments c SET body = $3, updated_at = now()
 		FROM forum_posts p
 		WHERE c.id = $1 AND c.user_id = $2 AND c.deleted_at IS NULL
-		  AND p.id = c.post_id AND p.deleted_at IS NULL
+		  AND p.id = c.post_id AND p.deleted_at IS NULL AND NOT p.is_locked
 		RETURNING p.user_id`, id, u.ID, body).Scan(&postAuthor)
 	if errors.Is(err, pgx.ErrNoRows) {
 		forumError(w, http.StatusNotFound, "not_found")
@@ -336,18 +343,7 @@ func (h Handler) deleteForumComment(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	tx, err := h.Pool.BeginTx(r.Context(), pgx.TxOptions{})
-	if err != nil {
-		httpx.Internal(w, r, err)
-		return
-	}
-	defer tx.Rollback(r.Context())
-
-	var postID uuid.UUID
-	err = tx.QueryRow(r.Context(), `
-		UPDATE forum_comments SET deleted_at = now()
-		WHERE id = $1 AND deleted_at IS NULL AND (user_id = $2 OR $3)
-		RETURNING post_id`, id, u.ID, u.Role == "admin").Scan(&postID)
+	err := softDeleteComment(r.Context(), h.Pool, id, u.ID, u.Role == "admin")
 	if errors.Is(err, pgx.ErrNoRows) {
 		forumError(w, http.StatusNotFound, "not_found")
 		return
@@ -356,15 +352,28 @@ func (h Handler) deleteForumComment(w http.ResponseWriter, r *http.Request) {
 		httpx.Internal(w, r, err)
 		return
 	}
-	if _, err := tx.Exec(r.Context(),
-		`UPDATE forum_posts SET comment_count = GREATEST(comment_count - 1, 0) WHERE id = $1`,
-		postID); err != nil {
-		httpx.Internal(w, r, err)
-		return
-	}
-	if err := tx.Commit(r.Context()); err != nil {
-		httpx.Internal(w, r, err)
-		return
-	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// softDeleteComment deletes comment id if by wrote it or byAdmin, keeping
+// the post's comment count in step. pgx.ErrNoRows means there was nothing
+// (left) to delete.
+func softDeleteComment(ctx context.Context, pool *pgxpool.Pool, id, by uuid.UUID, byAdmin bool) error {
+	tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var postID uuid.UUID
+	if err := tx.QueryRow(ctx, `
+		UPDATE forum_comments SET deleted_at = now()
+		WHERE id = $1 AND deleted_at IS NULL AND (user_id = $2 OR $3)
+		RETURNING post_id`, id, by, byAdmin).Scan(&postID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE forum_posts SET comment_count = GREATEST(comment_count - 1, 0) WHERE id = $1`, postID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
