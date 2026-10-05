@@ -7,27 +7,39 @@ import { apiRequest } from "@/shared/api/client";
 import { ApiError } from "@/shared/api/errors";
 import { formatShortDate } from "@/shared/format";
 
-export type ForumSection = "interview" | "career" | "compensation" | "feedback" | "problems";
+// Sections follow LeetCode Discuss; "interview" is Interview Experience.
+export type ForumSection =
+  | "interview-question"
+  | "interview"
+  | "compensation"
+  | "career"
+  | "study-guide"
+  | "general"
+  | "feedback";
 export type ForumSort = "hot" | "votes" | "newest";
 export type ForumCommentSort = "best" | "newest";
 
 export const FORUM_SECTIONS: ForumSection[] = [
+  "interview-question",
   "interview",
-  "career",
   "compensation",
+  "career",
+  "study-guide",
+  "general",
   "feedback",
-  "problems",
 ];
 
 // Sections where posting (and commenting) anonymously is allowed.
-export const FORUM_ANON_SECTIONS: ForumSection[] = ["interview", "compensation"];
+export const FORUM_ANON_SECTIONS: ForumSection[] = ["interview-question", "interview", "compensation"];
 
 export const FORUM_SECTION_LABEL_KEY: Record<ForumSection, LocaleKey> = {
+  "interview-question": "forum_section_interview_question_label",
   interview: "forum_section_interview_label",
-  career: "forum_section_career_label",
   compensation: "forum_section_compensation_label",
+  career: "forum_section_career_label",
+  "study-guide": "forum_section_study_guide_label",
+  general: "forum_section_general_label",
   feedback: "forum_section_feedback_label",
-  problems: "forum_section_problems_label",
 };
 
 export const FORUM_LIMITS = {
@@ -85,6 +97,10 @@ export interface ForumComment {
   score: number;
   my_vote: -1 | 0 | 1;
   created_at: string;
+  edited_at: string | null;
+  // A deleted top-level comment kept as a placeholder because it still has
+  // replies; its body is empty and author null.
+  is_deleted: boolean;
   replies?: ForumComment[];
 }
 
@@ -180,6 +196,15 @@ export const forumApi = {
       method: "POST",
       json: { body, parent_id: parentId, is_anonymous: isAnonymous },
     }),
+  updateComment: (id: string, body: string) =>
+    apiRequest<ForumComment>(`/api/forum/comments/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      json: { body },
+    }),
+  recordView: (postId: string) =>
+    apiRequest<{ view_count: number }>(`/api/forum/posts/${encodeURIComponent(postId)}/view`, {
+      method: "POST",
+    }),
   voteComment: (id: string, value: -1 | 0 | 1) =>
     apiRequest<VoteResult>(`/api/forum/comments/${encodeURIComponent(id)}/vote`, {
       method: "POST",
@@ -200,6 +225,8 @@ const ERROR_KEY: Record<string, LocaleKey> = {
   unknown_problem: "forum_err_unknown_problem",
   anonymous_not_allowed: "forum_err_anonymous_not_allowed",
   not_found: "forum_err_not_found",
+  rate_limited: "forum_err_rate_limited",
+  invalid_section: "forum_err_invalid_section",
 };
 
 export function forumErrorMessage(err: unknown): string {

@@ -107,7 +107,9 @@ func loadForumPost(ctx context.Context, pool *pgxpool.Pool, id uuid.UUID, viewer
 var (
 	mdFence     = regexp.MustCompile("(?s)```.*?(```|$)")
 	mdLink      = regexp.MustCompile(`!?\[([^\]]*)\]\([^)]*\)`)
-	mdLineStart = regexp.MustCompile(`(?m)^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+|\d+\.\s+)`)
+	mdLineStart = regexp.MustCompile(`(?m)^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+(\[[ xX]\]\s+)?|\d+\.\s+)`)
+	mdTableRule = regexp.MustCompile(`(?m)^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$`)
+	mdTablePipe = regexp.MustCompile(`\s*\|\s*`)
 	mdEmphasis  = regexp.MustCompile("[*_`~]+")
 	mdSpace     = regexp.MustCompile(`\s+`)
 )
@@ -118,6 +120,8 @@ func forumExcerpt(md string) string {
 	s := mdFence.ReplaceAllString(md, " ")
 	s = mdLink.ReplaceAllString(s, "$1")
 	s = mdLineStart.ReplaceAllString(s, "")
+	s = mdTableRule.ReplaceAllString(s, " ")
+	s = mdTablePipe.ReplaceAllString(s, " ")
 	s = mdEmphasis.ReplaceAllString(s, "")
 	s = strings.TrimSpace(mdSpace.ReplaceAllString(s, " "))
 	if utf8.RuneCountInString(s) <= forumExcerptLen {

@@ -158,28 +158,15 @@ func (h Handler) listTrendingForumPosts(w http.ResponseWriter, r *http.Request) 
 	httpx.JSON(w, http.StatusOK, map[string]any{"posts": items})
 }
 
-// GetForumPost returns one post with its full body and records a view for
-// signed-in viewers (once per user).
+// GetForumPost returns one post with its full body. Reading doesn't count a
+// view: the page reports one separately (recordForumView), so server-side
+// renders and link prefetches don't inflate the count.
 func (h Handler) getForumPost(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.PathUUID(w, r, "id")
 	if !ok {
 		return
 	}
 	viewer := auth.FromContext(r.Context())
-	if viewer != nil {
-		if _, err := h.Pool.Exec(r.Context(), `
-			WITH ins AS (
-			  INSERT INTO forum_post_views (post_id, user_id)
-			  SELECT $1, $2 WHERE EXISTS (SELECT 1 FROM forum_posts WHERE id = $1 AND deleted_at IS NULL)
-			  ON CONFLICT DO NOTHING
-			  RETURNING post_id
-			)
-			UPDATE forum_posts SET view_count = view_count + 1
-			WHERE id IN (SELECT post_id FROM ins)`, id, viewer.ID); err != nil {
-			httpx.Internal(w, r, err)
-			return
-		}
-	}
 	p, err := loadForumPost(r.Context(), h.Pool, id, viewer)
 	if errors.Is(err, pgx.ErrNoRows) {
 		forumError(w, http.StatusNotFound, "not_found")
@@ -225,7 +212,7 @@ func (req *forumPostRequest) validate(ctx context.Context, pool *pgxpool.Pool) s
 	}
 	if req.ProblemSlug != nil {
 		slug := strings.TrimSpace(*req.ProblemSlug)
-		if slug == "" || req.Section != "problems" {
+		if slug == "" {
 			req.ProblemSlug = nil
 		} else {
 			if exists, err := (problems.Store{Pool: pool}).Exists(ctx, slug); err != nil || !exists {
@@ -256,7 +243,7 @@ func (h Handler) createForumPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req, ok := decodePostRequest(w, r, h.Pool)
-	if !ok {
+	if !ok || !h.allow(w, r, u, postLimit) {
 		return
 	}
 	var id uuid.UUID
@@ -381,7 +368,7 @@ func (h Handler) voteForumPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, ok := auth.Require(w, r)
-	if !ok {
+	if !ok || !h.allow(w, r, u, voteLimit) {
 		return
 	}
 	votes.Handle(w, r, h.Pool, votes.ForumPost, id, u.ID)

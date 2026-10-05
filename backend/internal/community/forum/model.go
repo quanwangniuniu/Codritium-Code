@@ -7,18 +7,22 @@ import (
 	"github.com/google/uuid"
 )
 
+// Sections follow LeetCode Discuss. "interview" is Interview Experience.
 var forumSections = map[string]bool{
-	"interview":    true,
-	"career":       true,
-	"compensation": true,
-	"feedback":     true,
-	"problems":     true,
+	"interview-question": true,
+	"interview":          true,
+	"compensation":       true,
+	"career":             true,
+	"study-guide":        true,
+	"general":            true,
+	"feedback":           true,
 }
 
 // Sections where posts (and comments on them) may be anonymous.
 var forumAnonSections = map[string]bool{
-	"interview":    true,
-	"compensation": true,
+	"interview-question": true,
+	"interview":          true,
+	"compensation":       true,
 }
 
 const (
@@ -33,6 +37,11 @@ const (
 	forumOffsetMax   = 2000
 	forumPinnedMax   = 5
 	forumTrendingMax = 10
+
+	// Per-user write limits (admins are exempt).
+	forumPostsPerHour    = 5
+	forumCommentsPerHour = 30
+	forumVotesPerMinute  = 120
 )
 
 var forumTagPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9+#.-]{0,23}$`)
@@ -70,20 +79,24 @@ type forumPost struct {
 }
 
 type forumComment struct {
-	ID          uuid.UUID      `json:"id"`
-	PostID      uuid.UUID      `json:"post_id"`
-	ParentID    *uuid.UUID     `json:"parent_id"`
-	Body        string         `json:"body"`
-	IsAnonymous bool           `json:"is_anonymous"`
-	Author      *forumAuthor   `json:"author"`
-	IsMine      bool           `json:"is_mine"`
-	IsOP        bool           `json:"is_op"`
-	Upvotes     int            `json:"upvotes"`
-	Downvotes   int            `json:"downvotes"`
-	Score       int            `json:"score"`
-	MyVote      int            `json:"my_vote"`
-	CreatedAt   time.Time      `json:"created_at"`
-	Replies     []forumComment `json:"replies,omitempty"`
+	ID          uuid.UUID    `json:"id"`
+	PostID      uuid.UUID    `json:"post_id"`
+	ParentID    *uuid.UUID   `json:"parent_id"`
+	Body        string       `json:"body"`
+	IsAnonymous bool         `json:"is_anonymous"`
+	Author      *forumAuthor `json:"author"`
+	IsMine      bool         `json:"is_mine"`
+	IsOP        bool         `json:"is_op"`
+	Upvotes     int          `json:"upvotes"`
+	Downvotes   int          `json:"downvotes"`
+	Score       int          `json:"score"`
+	MyVote      int          `json:"my_vote"`
+	CreatedAt   time.Time    `json:"created_at"`
+	EditedAt    *time.Time   `json:"edited_at"`
+	// IsDeleted marks a deleted top-level comment kept as a "[deleted]"
+	// placeholder because it still has replies. Its body and author are blank.
+	IsDeleted bool           `json:"is_deleted"`
+	Replies   []forumComment `json:"replies,omitempty"`
 }
 
 type forumTrendingItem struct {

@@ -57,7 +57,7 @@ SELECT u.id, v.section, v.title, v.body, v.tags, v.upvotes, v.comments, now() - 
 FROM seed_user u,
 (VALUES
   ('career', 'How I prepare for AI-enabled interviews', 'Notes from a month of practice.', ARRAY['prep'], 14, 3, interval '40 days'),
-  ('problems', 'Idempotency keys vs event ids for webhook retries', 'Which one should the ledger dedupe on?', ARRAY['debugging'], 6, 2, interval '9 days'),
+  ('general', 'Idempotency keys vs event ids for webhook retries', 'Which one should the ledger dedupe on?', ARRAY['debugging'], 6, 2, interval '9 days'),
   ('feedback', 'Feature request: show dimension trends over time', 'Would love a chart per dimension.', ARRAY['feature'], 3, 1, interval '2 days')
 ) AS v(section, title, body, tags, upvotes, comments, age);
 

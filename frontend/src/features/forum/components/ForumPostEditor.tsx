@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { t } from "@/shared/i18n";
@@ -17,7 +17,7 @@ import {
   type ForumPostInput,
   type ForumSection,
 } from "@/features/forum/api";
-import { Markdown } from "@/shared/layout/Markdown";
+import { ForumMarkdown } from "@/features/forum/components/ForumMarkdown";
 
 interface ForumPostEditorProps {
   // Present when editing an existing post.
@@ -27,6 +27,54 @@ interface ForumPostEditorProps {
   problems: { slug: string; title: string }[];
 }
 
+// The editor's fields as saved to localStorage between visits.
+interface Draft {
+  section: ForumSection;
+  title: string;
+  body: string;
+  tags: string[];
+  anonymous: boolean;
+  problemSlug: string;
+}
+
+function draftKey(postId?: string): string {
+  return postId ? `forum-draft:edit:${postId}` : "forum-draft:new";
+}
+
+// Storage can be unavailable (private mode, blocked site data); drafts are a
+// convenience, so failures are ignored.
+function loadDraft(key: string): Draft | null {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const d = JSON.parse(raw) as Partial<Draft>;
+    if (typeof d.title !== "string" || typeof d.body !== "string") return null;
+    return {
+      section: FORUM_SECTIONS.includes(d.section as ForumSection) ? (d.section as ForumSection) : "general",
+      title: d.title,
+      body: d.body,
+      tags: Array.isArray(d.tags) ? d.tags.filter((x): x is string => typeof x === "string") : [],
+      anonymous: d.anonymous === true,
+      problemSlug: typeof d.problemSlug === "string" ? d.problemSlug : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveDraft(key: string, d: Draft | null) {
+  try {
+    if (d) window.localStorage.setItem(key, JSON.stringify(d));
+    else window.localStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
+function sameDraft(a: Draft, b: Draft): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 function normalizeTag(raw: string): string {
   return raw.trim().replace(/^#/, "").toLowerCase().split(/\s+/).join("-");
 }
@@ -34,15 +82,58 @@ function normalizeTag(raw: string): string {
 export function ForumPostEditor({ postId, initial, defaultSection, problems }: ForumPostEditorProps) {
   useLocale();
   const router = useRouter();
-  const [section, setSection] = useState<ForumSection>(initial?.section ?? defaultSection ?? "interview");
-  const [title, setTitle] = useState(initial?.title ?? "");
-  const [body, setBody] = useState(initial?.body_md ?? "");
-  const [tags, setTags] = useState<string[]>(initial?.tags ?? []);
+  // What the form starts from (and returns to when a draft is discarded).
+  const [start] = useState<Draft>(() => ({
+    section: initial?.section ?? defaultSection ?? "general",
+    title: initial?.title ?? "",
+    body: initial?.body_md ?? "",
+    tags: initial?.tags ?? [],
+    anonymous: initial?.is_anonymous ?? false,
+    problemSlug: initial?.problem_slug ?? "",
+  }));
+  const [section, setSection] = useState<ForumSection>(start.section);
+  const [title, setTitle] = useState(start.title);
+  const [body, setBody] = useState(start.body);
+  const [tags, setTags] = useState<string[]>(start.tags);
   const [tagDraft, setTagDraft] = useState("");
-  const [anonymous, setAnonymous] = useState(initial?.is_anonymous ?? false);
-  const [problemSlug, setProblemSlug] = useState(initial?.problem_slug ?? "");
+  const [anonymous, setAnonymous] = useState(start.anonymous);
+  const [problemSlug, setProblemSlug] = useState(start.problemSlug);
   const [tab, setTab] = useState<"write" | "preview">("write");
   const [busy, setBusy] = useState(false);
+  const [restored, setRestored] = useState(false);
+
+  // Autosave: restore an unsaved draft on mount, then keep it updated while
+  // typing. Saving waits for the restore so it can't overwrite the draft.
+  const key = draftKey(postId);
+  const loaded = useRef(false);
+  const apply = useCallback((d: Draft) => {
+    setSection(d.section);
+    setTitle(d.title);
+    setBody(d.body);
+    setTags(d.tags);
+    setAnonymous(d.anonymous);
+    setProblemSlug(d.problemSlug);
+  }, []);
+  useEffect(() => {
+    const d = loadDraft(key);
+    if (d && !sameDraft(d, start)) {
+      apply(d);
+      setRestored(true);
+    }
+    loaded.current = true;
+  }, [apply, key, start]);
+  useEffect(() => {
+    if (!loaded.current) return;
+    const current: Draft = { section, title, body, tags, anonymous, problemSlug };
+    const timer = setTimeout(() => saveDraft(key, sameDraft(current, start) ? null : current), 500);
+    return () => clearTimeout(timer);
+  }, [key, start, section, title, body, tags, anonymous, problemSlug]);
+
+  function discardDraft() {
+    apply(start);
+    saveDraft(key, null);
+    setRestored(false);
+  }
 
   const anonAllowed = FORUM_ANON_SECTIONS.includes(section);
   const titleLen = title.trim().length;
@@ -80,11 +171,14 @@ export function ForumPostEditor({ postId, initial, defaultSection, problems }: F
       body_md: body,
       tags: finalTags,
       is_anonymous: anonAllowed && anonymous,
-      problem_slug: section === "problems" && problemSlug ? problemSlug : null,
+      problem_slug: problemSlug || null,
     };
     setBusy(true);
     try {
       const post = postId ? await forumApi.updatePost(postId, input) : await forumApi.createPost(input);
+      // Stop autosave first so the pending save can't bring the draft back.
+      loaded.current = false;
+      saveDraft(key, null);
       toast.success(postId ? t("forum_post_updated") : t("forum_post_published"));
       router.push(`/forums/${post.id}`);
       router.refresh();
@@ -105,6 +199,14 @@ export function ForumPostEditor({ postId, initial, defaultSection, problems }: F
         void submit();
       }}
     >
+      {restored && (
+        <div className="flex flex-wrap items-center gap-3 rounded-md border border-divider bg-surface-2 px-3 py-2 text-sm text-muted">
+          {t("forum_draft_restored")}
+          <button type="button" onClick={discardDraft} className="ml-auto text-accent hover:underline">
+            {t("forum_draft_discard")}
+          </button>
+        </div>
+      )}
       <div className="space-y-1.5">
         <input
           value={title}
@@ -136,19 +238,17 @@ export function ForumPostEditor({ postId, initial, defaultSection, problems }: F
             ))}
           </select>
         </label>
-        {section === "problems" && (
-          <label className="space-y-1.5 text-sm">
-            <span className="text-muted">{t("forum_problem_label")}</span>
-            <select value={problemSlug} onChange={(e) => setProblemSlug(e.target.value)} className={field}>
-              <option value="">{t("forum_problem_none")}</option>
-              {problems.map((p) => (
-                <option key={p.slug} value={p.slug}>
-                  {p.title}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
+        <label className="space-y-1.5 text-sm">
+          <span className="text-muted">{t("forum_problem_label")}</span>
+          <select value={problemSlug} onChange={(e) => setProblemSlug(e.target.value)} className={field}>
+            <option value="">{t("forum_problem_none")}</option>
+            {problems.map((p) => (
+              <option key={p.slug} value={p.slug}>
+                {p.title}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <div className="space-y-1.5 text-sm">
@@ -218,7 +318,7 @@ export function ForumPostEditor({ postId, initial, defaultSection, problems }: F
         ) : (
           <div className="min-h-[24rem] bg-surface p-4">
             {body.trim() ? (
-              <Markdown source={body} className="text-[15px] text-ink" />
+              <ForumMarkdown source={body} />
             ) : (
               <p className="text-sm text-faint">{t("forum_preview_empty")}</p>
             )}

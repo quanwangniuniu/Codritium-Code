@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { compactCount } from "@/shared/format";
-import { ArrowLeft, Code2, Eye, MessageCircle, Pin } from "lucide-react";
+import { ArrowLeft, Code2, MessageCircle, Pin } from "lucide-react";
 import { currentUser } from "@/features/auth/server";
 import { t } from "@/shared/i18n";
 import {
@@ -11,10 +11,11 @@ import {
   type ForumViewer,
 } from "@/features/forum/api";
 import { getForumPost } from "@/features/forum/server";
-import { Markdown } from "@/shared/layout/Markdown";
+import { ForumMarkdown } from "@/features/forum/components/ForumMarkdown";
 import { ForumAuthorName, ForumAvatar } from "@/features/forum/components/ForumAvatar";
 import { ForumComments } from "@/features/forum/components/ForumComments";
 import { ForumPostMenu } from "@/features/forum/components/ForumPostMenu";
+import { ForumViewCount } from "@/features/forum/components/ForumViewCount";
 import { ForumVote } from "@/features/forum/components/ForumVote";
 
 interface ForumPostPageProps {
@@ -23,7 +24,6 @@ interface ForumPostPageProps {
 
 export async function ForumPostPage({ params }: ForumPostPageProps) {
   const { id } = await params;
-  // Fetching the post also records a view for signed-in readers.
   const [post, user] = await Promise.all([getForumPost(id), currentUser()]);
   if (!post) notFound();
   const viewer: ForumViewer | null = user ? { id: user.id, isAdmin: user.role === "admin" } : null;
@@ -55,10 +55,7 @@ export async function ForumPostPage({ params }: ForumPostPageProps) {
                 </time>
                 {edited && <span>· {t("forum_edited")}</span>}
                 <span aria-hidden>·</span>
-                <span className="inline-flex items-center gap-1">
-                  <Eye size={14} />
-                  {compactCount(post.view_count)}
-                </span>
+                <ForumViewCount postId={post.id} initial={post.view_count} />
               </div>
             </div>
           </div>
@@ -86,7 +83,7 @@ export async function ForumPostPage({ params }: ForumPostPageProps) {
           )}
         </header>
 
-        <Markdown source={post.body_md ?? ""} className="text-[15px] leading-relaxed text-ink" />
+        <ForumMarkdown source={post.body_md ?? ""} />
 
         <div className="flex items-center gap-4 border-y border-divider py-3 text-sm text-muted">
           <ForumVote kind="post" id={post.id} score={post.score} myVote={post.my_vote} signedIn={!!viewer} />
