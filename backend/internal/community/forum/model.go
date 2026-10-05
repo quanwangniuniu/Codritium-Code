@@ -43,6 +43,7 @@ const (
 	forumCommentsPerHour = 30
 	forumVotesPerMinute  = 120
 	forumReportsPerHour  = 10
+	forumImagesPerHour   = 20
 )
 
 var forumTagPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9+#.-]{0,23}$`)

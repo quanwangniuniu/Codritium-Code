@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"codritium/backend/internal/community/votes"
@@ -94,6 +95,13 @@ func (h Handler) listForumComments(w http.ResponseWriter, r *http.Request) {
 		httpx.Internal(w, r, err)
 		return
 	}
+	// as_of (read before the comments, from the clock that stamps them)
+	// lets the page ask later how many comments arrived since this load.
+	var asOf time.Time
+	if err := h.Pool.QueryRow(r.Context(), `SELECT now()`).Scan(&asOf); err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
 	page := httpx.ParsePage(r, forumPageDefault, forumPageMax, forumOffsetMax)
 	limit, offset := page.Limit, page.Offset
 	order := "(c.upvotes - c.downvotes) DESC, c.created_at DESC, c.id DESC"
@@ -161,7 +169,9 @@ func (h Handler) listForumComments(w http.ResponseWriter, r *http.Request) {
 			top[i].Replies = append(top[i].Replies, c)
 		}
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"comments": top, "has_more": hasMore})
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"comments": top, "has_more": hasMore, "as_of": asOf.UTC().Format(time.RFC3339Nano),
+	})
 }
 
 type forumCommentRequest struct {

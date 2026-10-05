@@ -46,6 +46,8 @@ var (
 		      + (SELECT count(*) FROM forum_comment_votes WHERE user_id = $1 AND voted_at > now() - interval '1 minute')`, false}
 	reportLimit = forumLimit{forumReportsPerHour, "1 hour",
 		`SELECT count(*) FROM forum_reports WHERE reporter_id = $1 AND created_at > now() - interval '1 hour'`, false}
+	imageLimit = forumLimit{forumImagesPerHour, "1 hour",
+		`SELECT count(*) FROM forum_images WHERE user_id = $1 AND created_at > now() - interval '1 hour'`, true}
 	editLimit = forumLimit{}
 )
 

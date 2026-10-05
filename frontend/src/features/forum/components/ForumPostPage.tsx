@@ -15,6 +15,7 @@ import { ForumRelatedPosts } from "@/features/forum/components/ForumRelatedPosts
 import { ForumMarkdown } from "@/features/forum/components/ForumMarkdown";
 import { ForumAuthorName, ForumAvatar } from "@/features/forum/components/ForumAvatar";
 import { ForumComments } from "@/features/forum/components/ForumComments";
+import { ForumEditHistory } from "@/features/forum/components/ForumEditHistory";
 import { ForumPostActions } from "@/features/forum/components/ForumPostActions";
 import { ForumPostMenu } from "@/features/forum/components/ForumPostMenu";
 import { ForumViewCount } from "@/features/forum/components/ForumViewCount";
@@ -66,7 +67,13 @@ export async function ForumPostPage({ params }: ForumPostPageProps) {
                   <time dateTime={post.created_at} suppressHydrationWarning>
                     {forumTimeAgo(post.created_at)}
                   </time>
-                  {edited && <span>· {t("forum_edited")}</span>}
+                  {edited && (
+                    <ForumEditHistory
+                      postId={post.id}
+                      updatedAt={post.updated_at}
+                      canView={post.is_mine || !!viewer?.isAdmin}
+                    />
+                  )}
                   <span aria-hidden>·</span>
                   <ForumViewCount postId={post.id} initial={post.view_count} />
                 </div>

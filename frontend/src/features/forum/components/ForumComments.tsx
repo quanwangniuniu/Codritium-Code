@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Flag, Lock, MessageCircle, Pencil, Reply, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowUp, Flag, Lock, MessageCircle, Pencil, Reply, Trash2 } from "lucide-react";
 import { t } from "@/shared/i18n";
 import { useLocale } from "@/shared/i18n/client";
 import { toast } from "@/shared/lib/toast";
@@ -32,6 +33,9 @@ interface ForumCommentsProps {
   locked: boolean;
 }
 
+// How often an open post checks for comments from others.
+const POLL_NEW_MS = 30_000;
+
 export function ForumComments({ postId, initialCount, allowAnonymous, viewer, locked }: ForumCommentsProps) {
   useLocale();
   const [sort, setSort] = useState<ForumCommentSort>("best");
@@ -40,7 +44,12 @@ export function ForumComments({ postId, initialCount, allowAnonymous, viewer, lo
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [count, setCount] = useState(initialCount);
+  const router = useRouter();
   const [reporting, setReporting] = useState<string | null>(null);
+  // When the first page was last loaded, and how many comments others have
+  // posted since (polled while the tab is visible).
+  const [asOf, setAsOf] = useState<string | null>(null);
+  const [fresh, setFresh] = useState(0);
   const canWrite = !!viewer && (!locked || viewer.isAdmin);
   // The open reply box: which thread it's under, and the handle to @ when
   // replying to a reply (threads are one level deep, as on LeetCode).
@@ -57,6 +66,10 @@ export function ForumComments({ postId, initialCount, allowAnonymous, viewer, lo
       setLoading(true);
       try {
         const page = await forumApi.listComments(postId, nextSort, from);
+        if (from === 0) {
+          setAsOf(page.as_of);
+          setFresh(0);
+        }
         setComments((prev) => (from === 0 ? page.comments : [...prev, ...page.comments]));
         setOffset(from + page.comments.length);
         setHasMore(page.has_more);
@@ -72,6 +85,23 @@ export function ForumComments({ postId, initialCount, allowAnonymous, viewer, lo
   useEffect(() => {
     void load(sort, 0);
   }, [load, sort]);
+
+  useEffect(() => {
+    if (!asOf) return;
+    const poll = () => {
+      if (document.visibilityState !== "visible") return;
+      forumApi
+        .newCommentCount(postId, asOf)
+        .then((r) => setFresh(r.count))
+        .catch(() => {});
+    };
+    const timer = setInterval(poll, POLL_NEW_MS);
+    document.addEventListener("visibilitychange", poll);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", poll);
+    };
+  }, [asOf, postId]);
 
   // Links from notifications point at #comment-<id>: once the first page is
   // in, scroll to that comment and flash it.
@@ -184,8 +214,29 @@ export function ForumComments({ postId, initialCount, allowAnonymous, viewer, lo
         </p>
       )}
 
+      {fresh > 0 && (
+        <div className="sticky top-16 z-10 flex justify-center">
+          <button
+            type="button"
+            // New comments show first under "Newest", so switch to it.
+            onClick={() => {
+              setCount((n) => n + fresh);
+              // Re-render the server parts too (the post's comment counter).
+              router.refresh();
+              document.getElementById("comments")?.scrollIntoView({ behavior: "smooth" });
+              if (sort === "newest") void load("newest", 0);
+              else setSort("newest");
+            }}
+            className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3.5 py-1.5 text-sm font-medium text-accent-fg shadow-md hover:opacity-90"
+          >
+            <ArrowUp size={14} />
+            {fresh === 1 ? t("forum_new_comment_one") : t("forum_new_comments_fmt", { params: { n: fresh } })}
+          </button>
+        </div>
+      )}
+
       {loading && comments.length === 0 ? (
-        <p className="py-6 text-center text-sm text-muted">{t("loading")}</p>
+        <CommentSkeleton />
       ) : comments.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted">{t("forum_no_comments")}</p>
       ) : (
@@ -255,6 +306,23 @@ export function ForumComments({ postId, initialCount, allowAnonymous, viewer, lo
       )}
       {reporting && <ForumReportDialog postId={postId} commentId={reporting} onClose={() => setReporting(null)} />}
     </section>
+  );
+}
+
+function CommentSkeleton() {
+  return (
+    <ul className="space-y-5 py-2" aria-busy="true" aria-label={t("loading")}>
+      {[0, 1, 2].map((i) => (
+        <li key={i} className="flex animate-pulse gap-3">
+          <div className="size-8 shrink-0 rounded-full bg-surface-2" />
+          <div className="flex-1 space-y-2 pt-1">
+            <div className="h-3 w-32 rounded bg-surface-2" />
+            <div className="h-3 w-full max-w-md rounded bg-surface-2" />
+            <div className="h-3 w-2/3 max-w-xs rounded bg-surface-2" />
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -401,6 +469,7 @@ function CommentEditor({
         value={body}
         onValueChange={setBody}
         postId={postId}
+        allowImages
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void save();
           if (e.key === "Escape") onCancel();
@@ -470,6 +539,7 @@ function CommentComposer({
         value={body}
         onValueChange={setBody}
         postId={postId}
+        allowImages
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void submit();
         }}

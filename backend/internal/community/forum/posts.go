@@ -328,11 +328,22 @@ func (h Handler) updateForumPost(w http.ResponseWriter, r *http.Request) {
 	if !ok || !h.allow(w, r, u, editLimit, "") {
 		return
 	}
+	// One statement: lock the post, save the version being replaced (only
+	// when the text or tags actually change), then apply the edit.
 	tag, err := h.Pool.Exec(r.Context(), `
-		UPDATE forum_posts
+		WITH old AS (
+		  SELECT id, title, body_md, tags, updated_at FROM forum_posts
+		  WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+		  FOR UPDATE
+		), rev AS (
+		  INSERT INTO forum_post_revisions (post_id, title, body_md, tags, written_at)
+		  SELECT id, title, body_md, tags, updated_at FROM old
+		  WHERE (title, body_md, tags) IS DISTINCT FROM ($5::text, $6::text, $7::text[])
+		)
+		UPDATE forum_posts p
 		SET section = $3, problem_slug = $4, title = $5, body_md = $6, tags = $7,
 		    is_anonymous = $8, updated_at = now()
-		WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+		FROM old WHERE p.id = old.id`,
 		id, u.ID, req.Section, req.ProblemSlug, req.Title, req.BodyMD, req.Tags, req.IsAnonymous)
 	if err != nil {
 		httpx.Internal(w, r, err)

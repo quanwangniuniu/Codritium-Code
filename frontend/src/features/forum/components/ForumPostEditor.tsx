@@ -381,6 +381,7 @@ export function ForumPostEditor({ postId, initial, defaultSection, defaultProble
           <MentionTextarea
             value={body}
             onValueChange={setBody}
+            allowImages
             placeholder={t("forum_body_placeholder")}
             aria-label={t("forum_body_label")}
             maxLength={FORUM_LIMITS.bodyMax}

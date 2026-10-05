@@ -145,6 +145,8 @@ export interface MyForumComment {
 export interface ForumCommentPage {
   comments: ForumComment[];
   has_more: boolean;
+  // Server time of this load, for asking later what's new since.
+  as_of: string;
 }
 
 export interface ForumPostInput {
@@ -229,6 +231,14 @@ export function feedSearchParams(query: ForumFeedQuery, offset = 0, limit = 20, 
   return params;
 }
 
+export interface ForumRevision {
+  title: string;
+  body_md: string;
+  tags: string[];
+  written_at: string;
+  replaced_at: string;
+}
+
 export const forumApi = {
   listPosts: (query: ForumFeedQuery, offset: number, asOf?: string, limit = 20) =>
     apiRequest<ForumFeedPage>(`/api/forum/posts?${feedSearchParams(query, offset, limit, asOf)}`),
@@ -299,6 +309,12 @@ export const forumApi = {
     apiRequest<{ view_count: number }>(`/api/forum/posts/${encodeURIComponent(postId)}/view`, {
       method: "POST",
     }),
+  revisions: (postId: string) =>
+    apiRequest<{ revisions: ForumRevision[] }>(`/api/forum/posts/${encodeURIComponent(postId)}/revisions`),
+  newCommentCount: (postId: string, since: string) =>
+    apiRequest<{ count: number }>(
+      `/api/forum/posts/${encodeURIComponent(postId)}/comments/new?since=${encodeURIComponent(since)}`,
+    ),
   voteComment: (id: string, value: -1 | 0 | 1) =>
     apiRequest<VoteResult>(`/api/forum/comments/${encodeURIComponent(id)}/vote`, {
       method: "POST",
@@ -342,6 +358,9 @@ const ERROR_KEY: Record<string, LocaleKey> = {
   already_reported: "forum_err_already_reported",
   too_many_links: "forum_err_too_many_links",
   admin_only: "forum_err_admin_only",
+  image_too_large: "forum_err_image_too_large",
+  bad_image_type: "forum_err_image_type",
+  bad_image: "forum_err_image_type",
   invalid_section: "forum_err_invalid_section",
 };
 

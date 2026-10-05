@@ -26,13 +26,34 @@ export function ForumPostMenu({ post, viewer, onDeleted }: ForumPostMenuProps) {
   const [busy, setBusy] = useState(false);
   const [reporting, setReporting] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
 
+  // Keyboard: opening focuses the first item; arrows, Home and End move
+  // between items; Escape closes and returns focus to the "…" button; Tab
+  // closes and moves on.
   useEffect(() => {
     if (!open) return;
+    const items = () => Array.from(ref.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
+    items()[0]?.focus();
     const onDown = (e: MouseEvent) => {
       if (!ref.current?.contains(e.target as Node)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const onKey = (e: KeyboardEvent) => {
+      const list = items();
+      const at = list.indexOf(document.activeElement as HTMLElement);
+      const focus = (i: number) => {
+        e.preventDefault();
+        list[(i + list.length) % list.length]?.focus();
+      };
+      if (e.key === "Escape") {
+        setOpen(false);
+        trigger.current?.focus();
+      } else if (e.key === "Tab") setOpen(false);
+      else if (e.key === "ArrowDown") focus(at + 1);
+      else if (e.key === "ArrowUp") focus(at - 1);
+      else if (e.key === "Home") focus(0);
+      else if (e.key === "End") focus(list.length - 1);
+    };
     window.addEventListener("mousedown", onDown);
     window.addEventListener("keydown", onKey);
     return () => {
@@ -104,6 +125,7 @@ export function ForumPostMenu({ post, viewer, onDeleted }: ForumPostMenuProps) {
     <div ref={ref} className="relative">
       <button
         type="button"
+        ref={trigger}
         aria-label={t("forum_post_actions")}
         aria-haspopup="menu"
         aria-expanded={open}

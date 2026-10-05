@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type TextareaHTMLAttributes } from "react";
+import { ImagePlus, Loader2 } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
+import { t } from "@/shared/i18n";
+import { toast } from "@/shared/lib/toast";
 import { UserAvatar } from "@/shared/avatar/UserAvatar";
-import { forumApi, type MentionSuggestion } from "@/features/forum/api";
+import { forumApi, forumErrorMessage, type MentionSuggestion } from "@/features/forum/api";
 import { activeMention, type ActiveMention } from "@/features/forum/mentions";
+import { altFromFileName, isImageFile, uploadForumImage } from "@/features/forum/images";
 
 interface MentionTextareaProps
   extends Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange"> {
@@ -12,13 +16,32 @@ interface MentionTextareaProps
   onValueChange: (value: string) => void;
   // Ranks people already in this thread first.
   postId?: string;
+  // Accept images by paste, drag-and-drop, or an attach button; each
+  // uploads and lands in the text as markdown.
+  allowImages?: boolean;
 }
+
+let uploadSeq = 0;
 
 // A textarea with @-mention autocomplete. Typing "@" offers people in the
 // thread; typing more searches handles and display names. Arrow keys move,
-// Enter or Tab picks, Escape dismisses.
-export function MentionTextarea({ value, onValueChange, postId, onKeyDown, className, ...rest }: MentionTextareaProps) {
+// Enter or Tab picks, Escape dismisses. With allowImages it also takes
+// images.
+export function MentionTextarea({
+  value,
+  onValueChange,
+  postId,
+  allowImages,
+  onKeyDown,
+  className,
+  ...rest
+}: MentionTextareaProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  // Uploads finish after more typing, so they edit the latest text.
+  const latest = useRef(value);
+  latest.current = value;
+  const [uploading, setUploading] = useState(0);
   const listId = useId();
   const [mention, setMention] = useState<ActiveMention | null>(null);
   const [users, setUsers] = useState<MentionSuggestion[]>([]);
@@ -82,6 +105,33 @@ export function MentionTextarea({ value, onValueChange, postId, onKeyDown, class
 
   const open = mention !== null && users.length > 0;
 
+  // Puts a placeholder at the caret for each image, uploads, then swaps the
+  // placeholder for the image markdown (or removes it if the upload fails).
+  function insertImages(files: File[]) {
+    const images = files.filter(isImageFile);
+    if (images.length === 0) return;
+    const el = ref.current;
+    const at = el ? el.selectionStart : latest.current.length;
+    const tokens = images.map(
+      (f) => `![${t("forum_image_uploading")} ${altFromFileName(f.name)}](#upload-${++uploadSeq})`,
+    );
+    const text = latest.current;
+    const before = text.slice(0, at);
+    const insert = (before && !before.endsWith("\n") ? "\n" : "") + tokens.join("\n") + "\n";
+    caretAfter.current = at + insert.length;
+    onValueChange(before + insert + text.slice(at));
+    images.forEach((file, i) => {
+      setUploading((n) => n + 1);
+      uploadForumImage(file)
+        .then((url) => onValueChange(latest.current.replace(tokens[i], `![${altFromFileName(file.name)}](${url})`)))
+        .catch((e) => {
+          onValueChange(latest.current.replace(tokens[i] + "\n", "").replace(tokens[i], ""));
+          toast.error(forumErrorMessage(e));
+        })
+        .finally(() => setUploading((n) => n - 1));
+    });
+  }
+
   function keyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (open) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -110,6 +160,22 @@ export function MentionTextarea({ value, onValueChange, postId, onKeyDown, class
         {...rest}
         ref={ref}
         value={value}
+        onPaste={(e) => {
+          if (!allowImages) return;
+          const files = Array.from(e.clipboardData.files);
+          if (files.some(isImageFile)) {
+            e.preventDefault();
+            insertImages(files);
+          }
+        }}
+        onDragOver={(e) => {
+          if (allowImages && e.dataTransfer.types.includes("Files")) e.preventDefault();
+        }}
+        onDrop={(e) => {
+          if (!allowImages || e.dataTransfer.files.length === 0) return;
+          e.preventDefault();
+          insertImages(Array.from(e.dataTransfer.files));
+        }}
         onChange={(e) => {
           onValueChange(e.target.value);
           track(e.target);
@@ -124,8 +190,32 @@ export function MentionTextarea({ value, onValueChange, postId, onKeyDown, class
         aria-expanded={open}
         aria-autocomplete="list"
         aria-controls={open ? listId : undefined}
-        className={className}
+        className={cn(className, allowImages && "pb-9")}
       />
+      {allowImages && (
+        <>
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            multiple
+            hidden
+            onChange={(e) => {
+              insertImages(Array.from(e.target.files ?? []));
+              e.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            aria-label={t("forum_image_attach")}
+            title={t("forum_image_attach_hint")}
+            className="absolute bottom-2 right-2 grid size-7 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-ink"
+          >
+            {uploading > 0 ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
+          </button>
+        </>
+      )}
       {open && (
         <ul
           id={listId}
