@@ -34,6 +34,8 @@ var forumMessages = map[string]string{
 	"not_found":             "Not found.",
 	"forbidden":             "You can't do that.",
 	"login_required":        "Sign in to continue.",
+	"locked":                "This thread is locked.",
+	"admin_only":            "Only moderators can do that.",
 }
 
 func viewerID(u *auth.User) uuid.UUID {
@@ -55,11 +57,23 @@ func canSeeAuthor(viewer *auth.User, authorID uuid.UUID, anonymous bool) bool {
 // prefix long enough to build an excerpt from.
 func forumPostColumns(bodyExpr string) string {
 	return `p.id, p.user_id, p.section, p.problem_slug, p.title, ` + bodyExpr + `,
-	        p.tags, p.is_anonymous, p.is_pinned, p.upvotes, p.downvotes,
+	        p.tags, p.is_anonymous, p.is_pinned, p.is_locked, p.upvotes, p.downvotes,
 	        p.view_count, p.comment_count, p.created_at, p.updated_at,
 	        u.handle, u.display_name, COALESCE(u.avatar_url,''), COALESCE(u.avatar_color,''),
-	        COALESCE(u.role,''), COALESCE(v.value, 0)`
+	        COALESCE(u.role,''), COALESCE(v.value, 0),
+	        EXISTS(SELECT 1 FROM forum_bookmarks b WHERE b.post_id = p.id AND b.user_id = $1),
+	        EXISTS(SELECT 1 FROM forum_post_follows f WHERE f.post_id = p.id AND f.user_id = $1),
+	        ` + reputationExpr
 }
+
+// reputationExpr is the author's (u) reputation: upvotes received on their
+// live posts and comments written under their own name. Anonymous content
+// doesn't count, so reputation can't be used to unmask it.
+const reputationExpr = `
+	(SELECT COALESCE(sum(rp.upvotes), 0) FROM forum_posts rp
+	   WHERE rp.user_id = u.id AND rp.deleted_at IS NULL AND NOT rp.is_anonymous)
+	+ (SELECT COALESCE(sum(rc.upvotes), 0) FROM forum_comments rc
+	   WHERE rc.user_id = u.id AND rc.deleted_at IS NULL AND NOT rc.is_anonymous)`
 
 // forumPostFrom joins author and the viewer's vote ($1 is the viewer id).
 const forumPostFrom = `
@@ -76,9 +90,10 @@ func scanForumPost(row pgx.Row, viewer *auth.User, full bool) (forumPost, error)
 		role     string
 	)
 	if err := row.Scan(&p.ID, &authorID, &p.Section, &p.ProblemSlug, &p.Title, &body,
-		&p.Tags, &p.IsAnonymous, &p.IsPinned, &p.Upvotes, &p.Downvotes,
+		&p.Tags, &p.IsAnonymous, &p.IsPinned, &p.IsLocked, &p.Upvotes, &p.Downvotes,
 		&p.ViewCount, &p.CommentCount, &p.CreatedAt, &p.UpdatedAt,
-		&a.Handle, &a.DisplayName, &a.AvatarURL, &a.AvatarColor, &role, &p.MyVote); err != nil {
+		&a.Handle, &a.DisplayName, &a.AvatarURL, &a.AvatarColor, &role, &p.MyVote,
+		&p.IsBookmarked, &p.IsFollowing, &a.Reputation); err != nil {
 		return forumPost{}, err
 	}
 	p.Score = p.Upvotes - p.Downvotes
@@ -107,7 +122,9 @@ func loadForumPost(ctx context.Context, pool *pgxpool.Pool, id uuid.UUID, viewer
 var (
 	mdFence     = regexp.MustCompile("(?s)```.*?(```|$)")
 	mdLink      = regexp.MustCompile(`!?\[([^\]]*)\]\([^)]*\)`)
-	mdLineStart = regexp.MustCompile(`(?m)^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+|\d+\.\s+)`)
+	mdLineStart = regexp.MustCompile(`(?m)^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+(\[[ xX]\]\s+)?|\d+\.\s+)`)
+	mdTableRule = regexp.MustCompile(`(?m)^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$`)
+	mdTablePipe = regexp.MustCompile(`\s*\|\s*`)
 	mdEmphasis  = regexp.MustCompile("[*_`~]+")
 	mdSpace     = regexp.MustCompile(`\s+`)
 )
@@ -118,6 +135,8 @@ func forumExcerpt(md string) string {
 	s := mdFence.ReplaceAllString(md, " ")
 	s = mdLink.ReplaceAllString(s, "$1")
 	s = mdLineStart.ReplaceAllString(s, "")
+	s = mdTableRule.ReplaceAllString(s, " ")
+	s = mdTablePipe.ReplaceAllString(s, " ")
 	s = mdEmphasis.ReplaceAllString(s, "")
 	s = strings.TrimSpace(mdSpace.ReplaceAllString(s, " "))
 	if utf8.RuneCountInString(s) <= forumExcerptLen {

@@ -27,6 +27,7 @@ import { Button } from "@/shared/ui/Button";
 import { Markdown } from "@/shared/layout/Markdown";
 import { ResumeOrFresh } from "@/features/problems/components/ResumeOrFresh";
 import { CommentsPanel } from "@/features/problems/components/CommentsPanel";
+import { ForumProblemLinks } from "@/features/forum/components/ForumProblemLinks";
 import { ProblemSplitView } from "@/features/problems/components/ProblemSplitView";
 
 const SUBMISSION_STATUS_KEY: Record<Exclude<Submission["status"], "completed">, LocaleKey> = {
@@ -186,7 +187,12 @@ export async function ProblemIntroPage({ params }: ProblemIntroProps) {
             id: "discussion",
             label: t("problem_tab_discussion"),
             icon: <MessageSquare size={14} />,
-            content: <CommentsPanel problemSlug={id} currentUserId={user.id} embedded />,
+            content: (
+              <>
+                <ForumProblemLinks slug={id} />
+                <CommentsPanel problemSlug={id} currentUserId={user.id} embedded />
+              </>
+            ),
           },
           {
             id: "submissions",

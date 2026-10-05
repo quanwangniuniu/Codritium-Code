@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"codritium/backend/internal/community/votes"
+	"codritium/backend/internal/notifications"
 	"codritium/backend/internal/platform/httpx"
 
 	"codritium/backend/internal/problems"
@@ -24,18 +27,39 @@ import (
 
 // ListForumPosts returns one page of the feed.
 //
-//	section: interview|career|compensation|feedback|problems (empty = all, "For You")
+//	section: one of forumSections (empty = all, "For You")
 //	sort:    hot (default) | votes | newest
 //	q:       full-text search over title and body, plus a title substring match
 //	tag:     exact tag
+//	problem: posts linking that problem slug
+//	as_of:   the snapshot time from the first page's response
+//
+// Paging is by offset over a snapshot: every page of one scroll uses the
+// first page's as_of, so posts written since don't push others down a page
+// and "hot" scores don't decay between pages (both used to skip posts).
 func (h Handler) listForumPosts(w http.ResponseWriter, r *http.Request) {
 	viewer := auth.FromContext(r.Context())
 	qs := r.URL.Query()
 	page := httpx.ParsePage(r, forumPageDefault, forumPageMax, forumOffsetMax)
 	limit, offset := page.Limit, page.Offset
 
-	where := []string{"p.deleted_at IS NULL"}
-	args := []any{viewerID(viewer)}
+	// The snapshot comes from the database clock, which stamps created_at,
+	// so a post written a moment ago is never just outside the first page.
+	var asOf time.Time
+	if s := qs.Get("as_of"); s != "" {
+		t, err := time.Parse(time.RFC3339Nano, s)
+		if err != nil {
+			httpx.BadRequest(w, "invalid_as_of", "as_of must be an RFC 3339 time from a previous page.")
+			return
+		}
+		asOf = t
+	} else if err := h.Pool.QueryRow(r.Context(), `SELECT now()`).Scan(&asOf); err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+
+	args := []any{viewerID(viewer), asOf}
+	where := []string{"p.deleted_at IS NULL", "p.created_at <= $2"}
 	arg := func(v any) string {
 		args = append(args, v)
 		return "$" + strconv.Itoa(len(args))
@@ -49,6 +73,9 @@ func (h Handler) listForumPosts(w http.ResponseWriter, r *http.Request) {
 	}
 	if tag := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(qs.Get("tag")), "#")); tag != "" {
 		where = append(where, arg(tag)+" = ANY(p.tags)")
+	}
+	if slug := strings.TrimSpace(qs.Get("problem")); slug != "" {
+		where = append(where, "p.problem_slug = "+arg(slug))
 	}
 	if q := strings.TrimSpace(qs.Get("q")); q != "" {
 		if utf8.RuneCountInString(q) > 100 {
@@ -65,7 +92,7 @@ func (h Handler) listForumPosts(w http.ResponseWriter, r *http.Request) {
 		// Hacker-News-style gravity: engagement decays with age so the
 		// "For You" feed keeps moving.
 		order = `(p.upvotes - p.downvotes + p.comment_count * 0.5 + ln(1 + p.view_count) * 0.25 + 1)
-		         / power(extract(epoch FROM now() - p.created_at) / 3600 + 2, 1.5) DESC,
+		         / power(extract(epoch FROM $2::timestamptz - p.created_at) / 3600 + 2, 1.5) DESC,
 		         p.created_at DESC, p.id DESC`
 	case "votes":
 		order = "(p.upvotes - p.downvotes) DESC, p.created_at DESC, p.id DESC"
@@ -104,7 +131,9 @@ func (h Handler) listForumPosts(w http.ResponseWriter, r *http.Request) {
 	if hasMore {
 		posts = posts[:limit]
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"posts": posts, "has_more": hasMore})
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"posts": posts, "has_more": hasMore, "as_of": asOf.UTC().Format(time.RFC3339Nano),
+	})
 }
 
 // ListPinnedForumPosts returns admin-pinned posts for the top of the feed.
@@ -158,28 +187,15 @@ func (h Handler) listTrendingForumPosts(w http.ResponseWriter, r *http.Request) 
 	httpx.JSON(w, http.StatusOK, map[string]any{"posts": items})
 }
 
-// GetForumPost returns one post with its full body and records a view for
-// signed-in viewers (once per user).
+// GetForumPost returns one post with its full body. Reading doesn't count a
+// view: the page reports one separately (recordForumView), so server-side
+// renders and link prefetches don't inflate the count.
 func (h Handler) getForumPost(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.PathUUID(w, r, "id")
 	if !ok {
 		return
 	}
 	viewer := auth.FromContext(r.Context())
-	if viewer != nil {
-		if _, err := h.Pool.Exec(r.Context(), `
-			WITH ins AS (
-			  INSERT INTO forum_post_views (post_id, user_id)
-			  SELECT $1, $2 WHERE EXISTS (SELECT 1 FROM forum_posts WHERE id = $1 AND deleted_at IS NULL)
-			  ON CONFLICT DO NOTHING
-			  RETURNING post_id
-			)
-			UPDATE forum_posts SET view_count = view_count + 1
-			WHERE id IN (SELECT post_id FROM ins)`, id, viewer.ID); err != nil {
-			httpx.Internal(w, r, err)
-			return
-		}
-	}
 	p, err := loadForumPost(r.Context(), h.Pool, id, viewer)
 	if errors.Is(err, pgx.ErrNoRows) {
 		forumError(w, http.StatusNotFound, "not_found")
@@ -225,7 +241,7 @@ func (req *forumPostRequest) validate(ctx context.Context, pool *pgxpool.Pool) s
 	}
 	if req.ProblemSlug != nil {
 		slug := strings.TrimSpace(*req.ProblemSlug)
-		if slug == "" || req.Section != "problems" {
+		if slug == "" {
 			req.ProblemSlug = nil
 		} else {
 			if exists, err := (problems.Store{Pool: pool}).Exists(ctx, slug); err != nil || !exists {
@@ -256,16 +272,36 @@ func (h Handler) createForumPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req, ok := decodePostRequest(w, r, h.Pool)
-	if !ok {
+	if !ok || !h.allow(w, r, u, postLimit, req.Title+"\n"+req.BodyMD) {
 		return
 	}
+	// The post, its author's follow, and mention notifications land together.
+	tx, err := h.Pool.BeginTx(r.Context(), pgx.TxOptions{})
+	if err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	defer tx.Rollback(r.Context())
 	var id uuid.UUID
-	if err := h.Pool.QueryRow(r.Context(), `
+	if err := tx.QueryRow(r.Context(), `
 		INSERT INTO forum_posts (user_id, section, problem_slug, title, body_md, tags, is_anonymous)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id`,
 		u.ID, req.Section, req.ProblemSlug, req.Title, req.BodyMD, req.Tags, req.IsAnonymous,
 	).Scan(&id); err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	if _, err := tx.Exec(r.Context(),
+		`INSERT INTO forum_post_follows (post_id, user_id) VALUES ($1, $2)`, id, u.ID); err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	if err := notifyNewPost(r.Context(), tx, id, u.ID, req.BodyMD, req.IsAnonymous); err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
 		httpx.Internal(w, r, err)
 		return
 	}
@@ -289,14 +325,25 @@ func (h Handler) updateForumPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req, ok := decodePostRequest(w, r, h.Pool)
-	if !ok {
+	if !ok || !h.allow(w, r, u, editLimit, "") {
 		return
 	}
+	// One statement: lock the post, save the version being replaced (only
+	// when the text or tags actually change), then apply the edit.
 	tag, err := h.Pool.Exec(r.Context(), `
-		UPDATE forum_posts
+		WITH old AS (
+		  SELECT id, title, body_md, tags, updated_at FROM forum_posts
+		  WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+		  FOR UPDATE
+		), rev AS (
+		  INSERT INTO forum_post_revisions (post_id, title, body_md, tags, written_at)
+		  SELECT id, title, body_md, tags, updated_at FROM old
+		  WHERE (title, body_md, tags) IS DISTINCT FROM ($5::text, $6::text, $7::text[])
+		)
+		UPDATE forum_posts p
 		SET section = $3, problem_slug = $4, title = $5, body_md = $6, tags = $7,
 		    is_anonymous = $8, updated_at = now()
-		WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+		FROM old WHERE p.id = old.id`,
 		id, u.ID, req.Section, req.ProblemSlug, req.Title, req.BodyMD, req.Tags, req.IsAnonymous)
 	if err != nil {
 		httpx.Internal(w, r, err)
@@ -381,8 +428,36 @@ func (h Handler) voteForumPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, ok := auth.Require(w, r)
+	if !ok || !h.allow(w, r, u, voteLimit, "") {
+		return
+	}
+	value, ok := votes.DecodeValue(w, r)
 	if !ok {
 		return
 	}
-	votes.Handle(w, r, h.Pool, votes.ForumPost, id, u.ID)
+	res, err := votes.Apply(r.Context(), h.Pool, votes.ForumPost, id, u.ID, value)
+	if errors.Is(err, votes.ErrNotFound) {
+		forumError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	if err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	// An upvote that lifts the score to a milestone tells the author, once
+	// per milestone. A failure here shouldn't fail the vote itself.
+	if m := reachedMilestone(res.Score); value == 1 && m > 0 {
+		if err := h.notifyMilestone(r.Context(), id, m); err != nil {
+			log.Printf("forum: milestone notification for post %s: %v", id, err)
+		}
+	}
+	httpx.JSON(w, http.StatusOK, res)
+}
+
+func (h Handler) notifyMilestone(ctx context.Context, postID uuid.UUID, milestone int) error {
+	var author uuid.UUID
+	if err := h.Pool.QueryRow(ctx, `SELECT user_id FROM forum_posts WHERE id = $1`, postID).Scan(&author); err != nil {
+		return err
+	}
+	return notifications.InsertMilestone(ctx, h.Pool, author, postID, milestone)
 }

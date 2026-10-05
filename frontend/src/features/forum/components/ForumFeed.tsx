@@ -15,6 +15,8 @@ import { ForumPostCard } from "@/features/forum/components/ForumPostCard";
 interface ForumFeedProps {
   initialPosts: ForumPost[];
   initialHasMore: boolean;
+  // The first page's snapshot time; every later page reuses it.
+  asOf?: string;
   query: ForumFeedQuery;
   viewer: ForumViewer | null;
 }
@@ -22,7 +24,7 @@ interface ForumFeedProps {
 // Feed list with infinite scroll: the server renders the first page, and
 // more pages load when the sentinel scrolls into view (with a button
 // fallback). The parent remounts it (via `key`) whenever filters change.
-export function ForumFeed({ initialPosts, initialHasMore, query, viewer }: ForumFeedProps) {
+export function ForumFeed({ initialPosts, initialHasMore, asOf, query, viewer }: ForumFeedProps) {
   useLocale();
   const [posts, setPosts] = useState(initialPosts);
   const [hasMore, setHasMore] = useState(initialHasMore);
@@ -38,9 +40,9 @@ export function ForumFeed({ initialPosts, initialHasMore, query, viewer }: Forum
     setLoading(true);
     setError(null);
     try {
-      const page = await forumApi.listPosts(query, offset.current);
+      const page = await forumApi.listPosts(query, offset.current, asOf);
       offset.current += page.posts.length;
-      // "hot" ordering can shift between requests; skip anything already shown.
+      // Votes can still nudge the order between pages; skip anything shown.
       setPosts((prev) => {
         const seen = new Set(prev.map((p) => p.id));
         return [...prev, ...page.posts.filter((p) => !seen.has(p.id))];
@@ -51,7 +53,7 @@ export function ForumFeed({ initialPosts, initialHasMore, query, viewer }: Forum
     } finally {
       setLoading(false);
     }
-  }, [hasMore, loading, query]);
+  }, [asOf, hasMore, loading, query]);
 
   useEffect(() => {
     const el = sentinel.current;

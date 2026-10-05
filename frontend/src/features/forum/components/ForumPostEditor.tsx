@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { t } from "@/shared/i18n";
@@ -16,33 +16,132 @@ import {
   forumErrorMessage,
   type ForumPostInput,
   type ForumSection,
+  type ForumTagCount,
 } from "@/features/forum/api";
-import { Markdown } from "@/shared/layout/Markdown";
+import { ForumMarkdown } from "@/features/forum/components/ForumMarkdown";
+import { MentionTextarea } from "@/features/forum/components/MentionTextarea";
 
 interface ForumPostEditorProps {
   // Present when editing an existing post.
   postId?: string;
   initial?: ForumPostInput;
   defaultSection?: ForumSection;
+  // Pre-links a problem (from a problem page's "write a post").
+  defaultProblem?: string;
   problems: { slug: string; title: string }[];
+}
+
+// The editor's fields as saved to localStorage between visits.
+interface Draft {
+  section: ForumSection;
+  title: string;
+  body: string;
+  tags: string[];
+  anonymous: boolean;
+  problemSlug: string;
+}
+
+function draftKey(postId?: string): string {
+  return postId ? `forum-draft:edit:${postId}` : "forum-draft:new";
+}
+
+// Storage can be unavailable (private mode, blocked site data); drafts are a
+// convenience, so failures are ignored.
+function loadDraft(key: string): Draft | null {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const d = JSON.parse(raw) as Partial<Draft>;
+    if (typeof d.title !== "string" || typeof d.body !== "string") return null;
+    return {
+      section: FORUM_SECTIONS.includes(d.section as ForumSection) ? (d.section as ForumSection) : "general",
+      title: d.title,
+      body: d.body,
+      tags: Array.isArray(d.tags) ? d.tags.filter((x): x is string => typeof x === "string") : [],
+      anonymous: d.anonymous === true,
+      problemSlug: typeof d.problemSlug === "string" ? d.problemSlug : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveDraft(key: string, d: Draft | null) {
+  try {
+    if (d) window.localStorage.setItem(key, JSON.stringify(d));
+    else window.localStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
+function sameDraft(a: Draft, b: Draft): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 function normalizeTag(raw: string): string {
   return raw.trim().replace(/^#/, "").toLowerCase().split(/\s+/).join("-");
 }
 
-export function ForumPostEditor({ postId, initial, defaultSection, problems }: ForumPostEditorProps) {
+export function ForumPostEditor({ postId, initial, defaultSection, defaultProblem, problems }: ForumPostEditorProps) {
   useLocale();
   const router = useRouter();
-  const [section, setSection] = useState<ForumSection>(initial?.section ?? defaultSection ?? "interview");
-  const [title, setTitle] = useState(initial?.title ?? "");
-  const [body, setBody] = useState(initial?.body_md ?? "");
-  const [tags, setTags] = useState<string[]>(initial?.tags ?? []);
+  // What the form starts from (and returns to when a draft is discarded).
+  const [start] = useState<Draft>(() => ({
+    section: initial?.section ?? defaultSection ?? "general",
+    title: initial?.title ?? "",
+    body: initial?.body_md ?? "",
+    tags: initial?.tags ?? [],
+    anonymous: initial?.is_anonymous ?? false,
+    problemSlug: initial?.problem_slug ?? defaultProblem ?? "",
+  }));
+  const [section, setSection] = useState<ForumSection>(start.section);
+  const [title, setTitle] = useState(start.title);
+  const [body, setBody] = useState(start.body);
+  const [tags, setTags] = useState<string[]>(start.tags);
   const [tagDraft, setTagDraft] = useState("");
-  const [anonymous, setAnonymous] = useState(initial?.is_anonymous ?? false);
-  const [problemSlug, setProblemSlug] = useState(initial?.problem_slug ?? "");
+  // Existing tags matching what's being typed, most used first.
+  const [tagOptions, setTagOptions] = useState<ForumTagCount[]>([]);
+  const [tagIndex, setTagIndex] = useState(-1);
+  const tagListId = useId();
+  const [anonymous, setAnonymous] = useState(start.anonymous);
+  const [problemSlug, setProblemSlug] = useState(start.problemSlug);
   const [tab, setTab] = useState<"write" | "preview">("write");
   const [busy, setBusy] = useState(false);
+  const [restored, setRestored] = useState(false);
+
+  // Autosave: restore an unsaved draft on mount, then keep it updated while
+  // typing. Saving waits for the restore so it can't overwrite the draft.
+  const key = draftKey(postId);
+  const loaded = useRef(false);
+  const apply = useCallback((d: Draft) => {
+    setSection(d.section);
+    setTitle(d.title);
+    setBody(d.body);
+    setTags(d.tags);
+    setAnonymous(d.anonymous);
+    setProblemSlug(d.problemSlug);
+  }, []);
+  useEffect(() => {
+    const d = loadDraft(key);
+    if (d && !sameDraft(d, start)) {
+      apply(d);
+      setRestored(true);
+    }
+    loaded.current = true;
+  }, [apply, key, start]);
+  useEffect(() => {
+    if (!loaded.current) return;
+    const current: Draft = { section, title, body, tags, anonymous, problemSlug };
+    const timer = setTimeout(() => saveDraft(key, sameDraft(current, start) ? null : current), 500);
+    return () => clearTimeout(timer);
+  }, [key, start, section, title, body, tags, anonymous, problemSlug]);
+
+  function discardDraft() {
+    apply(start);
+    saveDraft(key, null);
+    setRestored(false);
+  }
 
   const anonAllowed = FORUM_ANON_SECTIONS.includes(section);
   const titleLen = title.trim().length;
@@ -59,11 +158,46 @@ export function ForumPostEditor({ postId, initial, defaultSection, problems }: F
     setTags([...tags, tag]);
   }
 
+  const tagQuery = normalizeTag(tagDraft);
+  useEffect(() => {
+    if (!tagQuery) {
+      setTagOptions([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      forumApi
+        .tags(tagQuery, 6)
+        .then((r) => {
+          if (cancelled) return;
+          setTagOptions(r.tags);
+          setTagIndex(-1);
+        })
+        .catch(() => !cancelled && setTagOptions([]));
+    }, 150);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [tagQuery]);
+  const shownTagOptions = tagOptions.filter((o) => !tags.includes(o.tag));
+
+  function commitTag(raw: string) {
+    addTag(raw);
+    setTagDraft("");
+    setTagOptions([]);
+  }
+
   function onTagKey(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" || e.key === ",") {
+    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && shownTagOptions.length > 0) {
       e.preventDefault();
-      addTag(tagDraft);
-      setTagDraft("");
+      const n = shownTagOptions.length;
+      setTagIndex((i) => (e.key === "ArrowDown" ? (i + 1) % n : (i - 1 + n) % n));
+    } else if (e.key === "Enter" || e.key === "," || (e.key === "Tab" && tagIndex >= 0)) {
+      e.preventDefault();
+      commitTag(tagIndex >= 0 && shownTagOptions[tagIndex] ? shownTagOptions[tagIndex].tag : tagDraft);
+    } else if (e.key === "Escape") {
+      setTagOptions([]);
     } else if (e.key === "Backspace" && !tagDraft && tags.length > 0) {
       setTags(tags.slice(0, -1));
     }
@@ -80,11 +214,14 @@ export function ForumPostEditor({ postId, initial, defaultSection, problems }: F
       body_md: body,
       tags: finalTags,
       is_anonymous: anonAllowed && anonymous,
-      problem_slug: section === "problems" && problemSlug ? problemSlug : null,
+      problem_slug: problemSlug || null,
     };
     setBusy(true);
     try {
       const post = postId ? await forumApi.updatePost(postId, input) : await forumApi.createPost(input);
+      // Stop autosave first so the pending save can't bring the draft back.
+      loaded.current = false;
+      saveDraft(key, null);
       toast.success(postId ? t("forum_post_updated") : t("forum_post_published"));
       router.push(`/forums/${post.id}`);
       router.refresh();
@@ -105,6 +242,14 @@ export function ForumPostEditor({ postId, initial, defaultSection, problems }: F
         void submit();
       }}
     >
+      {restored && (
+        <div className="flex flex-wrap items-center gap-3 rounded-md border border-divider bg-surface-2 px-3 py-2 text-sm text-muted">
+          {t("forum_draft_restored")}
+          <button type="button" onClick={discardDraft} className="ml-auto text-accent hover:underline">
+            {t("forum_draft_discard")}
+          </button>
+        </div>
+      )}
       <div className="space-y-1.5">
         <input
           value={title}
@@ -136,52 +281,79 @@ export function ForumPostEditor({ postId, initial, defaultSection, problems }: F
             ))}
           </select>
         </label>
-        {section === "problems" && (
-          <label className="space-y-1.5 text-sm">
-            <span className="text-muted">{t("forum_problem_label")}</span>
-            <select value={problemSlug} onChange={(e) => setProblemSlug(e.target.value)} className={field}>
-              <option value="">{t("forum_problem_none")}</option>
-              {problems.map((p) => (
-                <option key={p.slug} value={p.slug}>
-                  {p.title}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
+        <label className="space-y-1.5 text-sm">
+          <span className="text-muted">{t("forum_problem_label")}</span>
+          <select value={problemSlug} onChange={(e) => setProblemSlug(e.target.value)} className={field}>
+            <option value="">{t("forum_problem_none")}</option>
+            {problems.map((p) => (
+              <option key={p.slug} value={p.slug}>
+                {p.title}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <div className="space-y-1.5 text-sm">
         <span className="text-muted">
           {t("forum_tags_label_fmt", { params: { max: FORUM_LIMITS.maxTags } })}
         </span>
-        <div className={cn(field, "flex flex-wrap items-center gap-1.5 py-1.5")}>
-          {tags.map((tag) => (
-            <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-xs text-ink">
-              #{tag}
-              <button
-                type="button"
-                aria-label={t("forum_remove_tag_fmt", { params: { tag } })}
-                onClick={() => setTags(tags.filter((x) => x !== tag))}
-                className="text-faint hover:text-ink"
-              >
-                <X size={12} />
-              </button>
-            </span>
-          ))}
-          {tags.length < FORUM_LIMITS.maxTags && (
-            <input
-              value={tagDraft}
-              onChange={(e) => setTagDraft(e.target.value)}
-              onKeyDown={onTagKey}
-              onBlur={() => {
-                addTag(tagDraft);
-                setTagDraft("");
-              }}
-              placeholder={tags.length === 0 ? t("forum_tags_placeholder") : ""}
-              aria-label={t("forum_tags_placeholder")}
-              className="min-w-[8rem] flex-1 bg-transparent py-0.5 text-sm outline-none placeholder:text-faint"
-            />
+        <div className="relative">
+          <div className={cn(field, "flex flex-wrap items-center gap-1.5 py-1.5")}>
+            {tags.map((tag) => (
+              <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-xs text-ink">
+                #{tag}
+                <button
+                  type="button"
+                  aria-label={t("forum_remove_tag_fmt", { params: { tag } })}
+                  onClick={() => setTags(tags.filter((x) => x !== tag))}
+                  className="text-faint hover:text-ink"
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            ))}
+            {tags.length < FORUM_LIMITS.maxTags && (
+              <input
+                value={tagDraft}
+                onChange={(e) => setTagDraft(e.target.value)}
+                onKeyDown={onTagKey}
+                onBlur={() => commitTag(tagDraft)}
+                placeholder={tags.length === 0 ? t("forum_tags_placeholder") : ""}
+                aria-label={t("forum_tags_placeholder")}
+                role="combobox"
+                aria-expanded={shownTagOptions.length > 0}
+                aria-controls={tagListId}
+                aria-autocomplete="list"
+                className="min-w-[8rem] flex-1 bg-transparent py-0.5 text-sm outline-none placeholder:text-faint"
+              />
+            )}
+          </div>
+          {shownTagOptions.length > 0 && (
+            <ul
+              id={tagListId}
+              role="listbox"
+              className="absolute left-0 top-full z-30 mt-1 w-64 overflow-hidden rounded-md border border-divider bg-surface py-1 shadow-lg"
+            >
+              {shownTagOptions.map((o, i) => (
+                <li key={o.tag} role="option" aria-selected={i === tagIndex}>
+                  <button
+                    type="button"
+                    // Keep focus in the input so its blur doesn't commit the draft.
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => commitTag(o.tag)}
+                    onMouseEnter={() => setTagIndex(i)}
+                    className={cn(
+                      "flex w-full items-center justify-between px-3 py-1.5 text-left text-sm",
+                      i === tagIndex && "bg-surface-2",
+                    )}
+                  >
+                    <span className="text-ink">#{o.tag}</span>
+                    <span className="text-xs tabular-nums text-faint">{o.count}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       </div>
@@ -206,9 +378,10 @@ export function ForumPostEditor({ postId, initial, defaultSection, problems }: F
           <span className="ml-auto text-xs text-faint">{t("forum_markdown_hint")}</span>
         </div>
         {tab === "write" ? (
-          <textarea
+          <MentionTextarea
             value={body}
-            onChange={(e) => setBody(e.target.value)}
+            onValueChange={setBody}
+            allowImages
             placeholder={t("forum_body_placeholder")}
             aria-label={t("forum_body_label")}
             maxLength={FORUM_LIMITS.bodyMax}
@@ -218,7 +391,7 @@ export function ForumPostEditor({ postId, initial, defaultSection, problems }: F
         ) : (
           <div className="min-h-[24rem] bg-surface p-4">
             {body.trim() ? (
-              <Markdown source={body} className="text-[15px] text-ink" />
+              <ForumMarkdown source={body} />
             ) : (
               <p className="text-sm text-faint">{t("forum_preview_empty")}</p>
             )}

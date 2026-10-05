@@ -75,13 +75,14 @@ func TestForum_CreateValidation(t *testing.T) {
 		body string
 		code string
 	}{
-		"bad section":        {`{"section":"contest","title":"Hello world","body_md":"x"}`, "invalid_section"},
-		"short title":        {`{"section":"career","title":"Hi","body_md":"x"}`, "invalid_title"},
-		"empty body":         {`{"section":"career","title":"Hello world","body_md":"   "}`, "invalid_body"},
-		"anon outside allow": {`{"section":"career","title":"Hello world","body_md":"x","is_anonymous":true}`, "anonymous_not_allowed"},
-		"too many tags":      {`{"section":"career","title":"Hello world","body_md":"x","tags":["a","b","c","d","e","f"]}`, "too_many_tags"},
-		"bad tag":            {`{"section":"career","title":"Hello world","body_md":"x","tags":["no/slash"]}`, "invalid_tag"},
-		"unknown problem":    {`{"section":"problems","title":"Hello world","body_md":"x","problem_slug":"no-such-problem"}`, "unknown_problem"},
+		"bad section":          {`{"section":"contest","title":"Hello world","body_md":"x"}`, "invalid_section"},
+		"short title":          {`{"section":"career","title":"Hi","body_md":"x"}`, "invalid_title"},
+		"empty body":           {`{"section":"career","title":"Hello world","body_md":"   "}`, "invalid_body"},
+		"anon outside allow":   {`{"section":"career","title":"Hello world","body_md":"x","is_anonymous":true}`, "anonymous_not_allowed"},
+		"too many tags":        {`{"section":"career","title":"Hello world","body_md":"x","tags":["a","b","c","d","e","f"]}`, "too_many_tags"},
+		"bad tag":              {`{"section":"career","title":"Hello world","body_md":"x","tags":["no/slash"]}`, "invalid_tag"},
+		"old problems section": {`{"section":"problems","title":"Hello world","body_md":"x"}`, "invalid_section"},
+		"unknown problem":      {`{"section":"general","title":"Hello world","body_md":"x","problem_slug":"no-such-problem"}`, "unknown_problem"},
 	}
 	for name, c := range cases {
 		rr := forumCall(t, http.HandlerFunc(deps.createForumPost), http.MethodPost, "/", "", alice, c.body)
@@ -112,16 +113,6 @@ func TestForum_PostLifecycleAndOwnership(t *testing.T) {
 	}
 	if p.Excerpt != "Round 1 Two sum variant with maps." {
 		t.Fatalf("excerpt=%q", p.Excerpt)
-	}
-
-	// Views count once per signed-in user; anonymous reads don't count.
-	for i := 0; i < 2; i++ {
-		forumCall(t, http.HandlerFunc(deps.getForumPost), http.MethodGet, "/", p.ID.String(), bob, "")
-	}
-	forumCall(t, http.HandlerFunc(deps.getForumPost), http.MethodGet, "/", p.ID.String(), nil, "")
-	got := decodeForum[forumPost](t, forumCall(t, http.HandlerFunc(deps.getForumPost), http.MethodGet, "/", p.ID.String(), alice, ""))
-	if got.ViewCount != 2 {
-		t.Fatalf("view_count=%d want 2 (bob once, alice once)", got.ViewCount)
 	}
 
 	edit := `{"section":"interview","title":"Onsite loop recap (edited)","body_md":"new body"}`
@@ -266,17 +257,172 @@ func TestForum_CommentsAndReplies(t *testing.T) {
 	if n := count(); n != 3 {
 		t.Fatalf("comment_count=%d want 3", n)
 	}
-	// Only the author (or an admin) can delete; deleting a top-level comment
-	// takes its replies with it.
-	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.deleteForumComment), http.MethodDelete, "/", top.ID.String(), alice, ""), http.StatusNotFound)
-	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.deleteForumComment), http.MethodDelete, "/", top.ID.String(), bob, ""), http.StatusNoContent)
-	if n := count(); n != 1 {
-		t.Fatalf("comment_count after delete=%d want 1", n)
+	// Only the author (or an admin) can delete. A deleted top-level comment
+	// with replies stays as a blank placeholder so the replies survive.
+	del := func(id uuid.UUID, u *auth.User) *httptest.ResponseRecorder {
+		return forumCall(t, http.HandlerFunc(deps.deleteForumComment), http.MethodDelete, "/", id.String(), u, "")
+	}
+	testutil.WantStatus(t, del(top.ID, alice), http.StatusNotFound)
+	testutil.WantStatus(t, del(top.ID, bob), http.StatusNoContent)
+	if n := count(); n != 2 {
+		t.Fatalf("comment_count after delete=%d want 2", n)
 	}
 	after := decodeForum[struct{ Comments []forumComment }](t,
-		forumCall(t, http.HandlerFunc(deps.listForumComments), http.MethodGet, "/", pid, bob, ""))
-	if len(after.Comments) != 1 || after.Comments[0].ID != second.ID {
+		forumCall(t, http.HandlerFunc(deps.listForumComments), http.MethodGet, "/?sort=newest", pid, alice, ""))
+	if len(after.Comments) != 2 {
 		t.Fatalf("after delete: %+v", after.Comments)
+	}
+	ph := after.Comments[1]
+	if ph.ID != top.ID || !ph.IsDeleted || ph.Body != "" || ph.Author != nil || len(ph.Replies) != 1 {
+		t.Fatalf("placeholder: %+v", ph)
+	}
+	// Placeholders take no new votes or replies.
+	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.voteForumComment), http.MethodPost, "/", top.ID.String(), alice, `{"value":1}`), http.StatusNotFound)
+	testutil.WantStatus(t, comment(alice, `{"body":"late","parent_id":"`+top.ID.String()+`"}`), http.StatusBadRequest)
+
+	// Once its last reply goes, the placeholder goes too.
+	testutil.WantStatus(t, del(reply.ID, alice), http.StatusNoContent)
+	final := decodeForum[struct{ Comments []forumComment }](t,
+		forumCall(t, http.HandlerFunc(deps.listForumComments), http.MethodGet, "/", pid, bob, ""))
+	if len(final.Comments) != 1 || final.Comments[0].ID != second.ID {
+		t.Fatalf("after last reply deleted: %+v", final.Comments)
+	}
+	if n := count(); n != 1 {
+		t.Fatalf("comment_count=%d want 1", n)
+	}
+}
+
+func TestForum_EditComment(t *testing.T) {
+	pool := testutil.Pool(t)
+	deps := Handler{Pool: pool}
+	alice := testutil.NewUser(t, pool, "user")
+	bob := testutil.NewUser(t, pool, "user")
+	admin := testutil.NewUser(t, pool, "admin")
+	p := createForumPost(t, deps, alice, `{"section":"general","title":"Edit me please","body_md":"x"}`)
+	c := decodeForum[forumComment](t, forumCall(t, http.HandlerFunc(deps.createForumComment), http.MethodPost, "/", p.ID.String(), bob, `{"body":"tpyo"}`))
+	if c.EditedAt != nil {
+		t.Fatalf("new comment marked edited: %+v", c)
+	}
+	edit := func(u *auth.User, body string) *httptest.ResponseRecorder {
+		return forumCall(t, http.HandlerFunc(deps.updateForumComment), http.MethodPut, "/", c.ID.String(), u, body)
+	}
+	testutil.WantStatus(t, edit(nil, `{"body":"x"}`), http.StatusUnauthorized)
+	testutil.WantStatus(t, edit(alice, `{"body":"hijack"}`), http.StatusNotFound)
+	testutil.WantStatus(t, edit(admin, `{"body":"hijack"}`), http.StatusNotFound)
+	testutil.WantStatus(t, edit(bob, `{"body":"  "}`), http.StatusBadRequest)
+	rr := edit(bob, `{"body":" typo "}`)
+	testutil.WantStatus(t, rr, http.StatusOK)
+	got := decodeForum[forumComment](t, rr)
+	if got.Body != "typo" || got.EditedAt == nil || !got.IsMine {
+		t.Fatalf("edited: %+v", got)
+	}
+	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.deleteForumComment), http.MethodDelete, "/", c.ID.String(), bob, ""), http.StatusNoContent)
+	testutil.WantStatus(t, edit(bob, `{"body":"after delete"}`), http.StatusNotFound)
+}
+
+func TestForum_RateLimits(t *testing.T) {
+	pool := testutil.Pool(t)
+	deps := Handler{Pool: pool}
+	alice := testutil.NewUser(t, pool, "user")
+	admin := testutil.NewUser(t, pool, "admin")
+	post := `{"section":"general","title":"Rate limit check","body_md":"x"}`
+	for i := 0; i < forumPostsPerHour; i++ {
+		createForumPost(t, deps, alice, post)
+	}
+	rr := forumCall(t, http.HandlerFunc(deps.createForumPost), http.MethodPost, "/", "", alice, post)
+	if rr.Code != http.StatusTooManyRequests || !strings.Contains(rr.Body.String(), "rate_limited") {
+		t.Fatalf("over limit: status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	// Admins aren't limited.
+	for i := 0; i <= forumPostsPerHour; i++ {
+		createForumPost(t, deps, admin, post)
+	}
+}
+
+// viewRequest calls recordForumView as u (nil = signed out) carrying an
+// optional visitor cookie.
+func viewRequest(deps Handler, postID uuid.UUID, u *auth.User, cookie string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req.SetPathValue("id", postID.String())
+	if u != nil {
+		req = req.WithContext(auth.WithUser(req.Context(), u))
+	}
+	if cookie != "" {
+		req.AddCookie(&http.Cookie{Name: visitorCookie, Value: cookie})
+	}
+	rr := httptest.NewRecorder()
+	deps.recordForumView(rr, req)
+	return rr
+}
+
+func TestForum_RecordView(t *testing.T) {
+	pool := testutil.Pool(t)
+	deps := Handler{Pool: pool}
+	alice := testutil.NewUser(t, pool, "user")
+	p := createForumPost(t, deps, alice, `{"section":"general","title":"Count my views","body_md":"x"}`)
+	views := func(rr *httptest.ResponseRecorder) int {
+		t.Helper()
+		testutil.WantStatus(t, rr, http.StatusOK)
+		return decodeForum[struct {
+			ViewCount int `json:"view_count"`
+		}](t, rr).ViewCount
+	}
+
+	// A signed-in reader counts once, however often they reload.
+	if n := views(viewRequest(deps, p.ID, alice, "")); n != 1 {
+		t.Fatalf("first view=%d", n)
+	}
+	if n := views(viewRequest(deps, p.ID, alice, "")); n != 1 {
+		t.Fatalf("repeat view=%d", n)
+	}
+	// A signed-out reader gets a visitor cookie and also counts once.
+	first := viewRequest(deps, p.ID, nil, "")
+	if n := views(first); n != 2 {
+		t.Fatalf("visitor view=%d", n)
+	}
+	var vid string
+	for _, c := range first.Result().Cookies() {
+		if c.Name == visitorCookie {
+			vid = c.Value
+		}
+	}
+	if vid == "" {
+		t.Fatal("no visitor cookie set")
+	}
+	if n := views(viewRequest(deps, p.ID, nil, vid)); n != 2 {
+		t.Fatalf("repeat visitor view=%d", n)
+	}
+	// A day later the same visitor counts again.
+	if _, err := pool.Exec(t.Context(), `UPDATE forum_post_visitor_views SET viewed_at = now() - interval '25 hours' WHERE post_id = $1`, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if n := views(viewRequest(deps, p.ID, nil, vid)); n != 3 {
+		t.Fatalf("next-day visitor view=%d", n)
+	}
+	// Reading the post itself doesn't count.
+	forumCall(t, http.HandlerFunc(deps.getForumPost), http.MethodGet, "/", p.ID.String(), alice, "")
+	if n := views(viewRequest(deps, p.ID, alice, "")); n != 3 {
+		t.Fatalf("after GET=%d", n)
+	}
+	testutil.WantStatus(t, forumCall(t, http.HandlerFunc(deps.deleteForumPost), http.MethodDelete, "/", p.ID.String(), alice, ""), http.StatusNoContent)
+	testutil.WantStatus(t, viewRequest(deps, p.ID, alice, ""), http.StatusNotFound)
+}
+
+func TestForum_SectionsAndProblemLinks(t *testing.T) {
+	pool := testutil.Pool(t)
+	deps := Handler{Pool: pool}
+	alice := testutil.NewUser(t, pool, "admin") // admin: skips the post rate limit
+	for s := range forumSections {
+		createForumPost(t, deps, alice, `{"section":"`+s+`","title":"Section `+s+`","body_md":"x"}`)
+	}
+	createForumPost(t, deps, alice, `{"section":"interview-question","title":"Anonymous question","body_md":"x","is_anonymous":true}`)
+	var slug string
+	if err := pool.QueryRow(t.Context(), `SELECT slug FROM problems LIMIT 1`).Scan(&slug); err != nil {
+		t.Skipf("no problems seeded: %v", err)
+	}
+	got := createForumPost(t, deps, alice, `{"section":"general","title":"About a problem","body_md":"x","problem_slug":"`+slug+`"}`)
+	if got.ProblemSlug == nil || *got.ProblemSlug != slug {
+		t.Fatalf("problem link dropped: %+v", got)
 	}
 }
 
@@ -378,6 +524,8 @@ func TestForumExcerpt(t *testing.T) {
 		"# Title\n\nSome **bold** and `code` [link](http://x) text": "Title Some bold and code link text",
 		"Before\n```go\nfunc main() {}\n```\nAfter":                 "Before After",
 		"- one\n- two\n1. three\n> quoted":                          "one two three quoted",
+		"| a | b |\n|---|:--:|\n| 1 | 2 |":                          "a b 1 2",
+		"- [x] done\n- [ ] todo":                                    "done todo",
 	}
 	for in, want := range cases {
 		if got := forumExcerpt(in); got != want {
@@ -397,7 +545,7 @@ func TestForum_TrendingOnlyReadPosts(t *testing.T) {
 	bob := testutil.NewUser(t, pool, "user")
 	unread := createForumPost(t, deps, alice, `{"section":"career","title":"Nobody read this yet","body_md":"x"}`)
 	read := createForumPost(t, deps, alice, `{"section":"career","title":"Bob read this one","body_md":"x","tags":["resume"]}`)
-	forumCall(t, http.HandlerFunc(deps.getForumPost), http.MethodGet, "/", read.ID.String(), bob, "")
+	testutil.WantStatus(t, viewRequest(deps, read.ID, bob, ""), http.StatusOK)
 
 	list := decodeForum[struct{ Posts []forumTrendingItem }](t,
 		forumCall(t, http.HandlerFunc(deps.listTrendingForumPosts), http.MethodGet, "/", "", nil, ""))

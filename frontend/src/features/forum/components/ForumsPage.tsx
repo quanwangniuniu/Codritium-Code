@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Eye, Flame, Pin, Search, SquarePen, Sparkles, TrendingUp, X } from "lucide-react";
+import { Code2, Eye, Flame, Hash, Pin, Search, SquarePen, Sparkles, TrendingUp, X } from "lucide-react";
 import { compactCount } from "@/shared/format";
 import { currentUser } from "@/features/auth/server";
 import { t } from "@/shared/i18n";
@@ -11,15 +11,17 @@ import {
   type ForumPost,
   type ForumSection,
   type ForumSort,
+  type ForumTagCount,
   type ForumTrendingItem,
   type ForumViewer,
 } from "@/features/forum/api";
-import { getForumFeed, getPinnedForumPosts, getTrendingForumPosts } from "@/features/forum/server";
+import { getForumFeed, getForumTags, getPinnedForumPosts, getTrendingForumPosts } from "@/features/forum/server";
+import { getProblem } from "@/features/problems/server";
 import { ForumFeed } from "@/features/forum/components/ForumFeed";
 import { ForumAuthorName, ForumAvatar } from "@/features/forum/components/ForumAvatar";
 
 interface ForumsPageProps {
-  searchParams: Promise<{ section?: string; sort?: string; q?: string; tag?: string }>;
+  searchParams: Promise<{ section?: string; sort?: string; q?: string; tag?: string; problem?: string }>;
 }
 
 export async function ForumsPage({ searchParams }: ForumsPageProps) {
@@ -30,27 +32,47 @@ export async function ForumsPage({ searchParams }: ForumsPageProps) {
   const sort: ForumSort = sp.sort === "votes" || sp.sort === "newest" ? sp.sort : "hot";
   const q = (sp.q ?? "").trim().slice(0, 100);
   const tag = (sp.tag ?? "").trim().replace(/^#/, "").toLowerCase();
-  const query: ForumFeedQuery = { section, sort, q: q || undefined, tag: tag || undefined };
+  const problem = (sp.problem ?? "").trim();
+  const query: ForumFeedQuery = {
+    section,
+    sort,
+    q: q || undefined,
+    tag: tag || undefined,
+    problem: problem || undefined,
+  };
 
   // Pinned posts headline the landing view only, like LeetCode's banners.
-  const showPinned = !section && !q && !tag;
-  const [user, feed, pinned, trending] = await Promise.all([
+  const showPinned = !section && !q && !tag && !problem;
+  const [user, feed, pinned, trending, popularTags, tagInfo, problemInfo] = await Promise.all([
     currentUser(),
     getForumFeed(query),
     showPinned ? getPinnedForumPosts() : Promise.resolve([] as ForumPost[]),
     getTrendingForumPosts(),
+    getForumTags(),
+    // Tags matching the prefix include the exact one (if any post has it).
+    tag ? getForumTags(tag, 50) : Promise.resolve([] as ForumTagCount[]),
+    problem ? getProblem(problem) : Promise.resolve(null),
   ]);
+  const tagCount = tagInfo.find((x) => x.tag === tag)?.count ?? 0;
   const viewer: ForumViewer | null = user ? { id: user.id, isAdmin: user.role === "admin" } : null;
 
-  function href(next: Partial<Record<"section" | "sort" | "q" | "tag", string | undefined>>) {
-    const merged = { section, sort: sort === "hot" ? undefined : sort, q: q || undefined, tag: tag || undefined, ...next };
+  function href(next: Partial<Record<"section" | "sort" | "q" | "tag" | "problem", string | undefined>>) {
+    const merged = {
+      section,
+      sort: sort === "hot" ? undefined : sort,
+      q: q || undefined,
+      tag: tag || undefined,
+      problem: problem || undefined,
+      ...next,
+    };
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(merged)) if (v) params.set(k, v);
     const qs = params.toString();
     return qs ? `/forums?${qs}` : "/forums";
   }
 
-  const createHref = user ? "/forums/new" : "/login?next=%2Fforums%2Fnew";
+  const newPostPath = problem ? `/forums/new?problem=${encodeURIComponent(problem)}` : "/forums/new";
+  const createHref = user ? newPostPath : `/login?next=${encodeURIComponent(newPostPath)}`;
   const searchForm = (
     <form action="/forums" className="relative">
       {section && <input type="hidden" name="section" value={section} />}
@@ -70,6 +92,32 @@ export async function ForumsPage({ searchParams }: ForumsPageProps) {
     <div className="mx-auto grid max-w-[1300px] gap-8 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:py-8">
       <div className="min-w-0 space-y-5">
         <div className="lg:hidden">{searchForm}</div>
+
+        {tag && (
+          <header className="flex items-center gap-3 rounded-xl border border-divider bg-surface p-4">
+            <span className="grid size-10 place-items-center rounded-lg bg-accent-soft text-accent">
+              <Hash size={20} />
+            </span>
+            <div>
+              <h1 className="text-lg font-semibold">{tag}</h1>
+              <p className="text-sm text-muted">{t("forum_tag_posts_fmt", { params: { n: tagCount } })}</p>
+            </div>
+          </header>
+        )}
+        {problem && (
+          <header className="flex flex-wrap items-center gap-3 rounded-xl border border-divider bg-surface p-4">
+            <span className="grid size-10 place-items-center rounded-lg bg-accent-soft text-accent">
+              <Code2 size={20} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-xs text-muted">{t("forum_problem_posts_label")}</p>
+              <h1 className="truncate text-lg font-semibold">{problemInfo?.title ?? problem}</h1>
+            </div>
+            <Link href={`/problems/${encodeURIComponent(problem)}`} className="ml-auto text-sm text-accent hover:underline">
+              {t("forum_open_problem")}
+            </Link>
+          </header>
+        )}
 
         {pinned.length > 0 && (
           <section aria-label={t("forum_pinned")} className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
@@ -134,12 +182,14 @@ export async function ForumsPage({ searchParams }: ForumsPageProps) {
             </FilterChip>
           )}
           {tag && <FilterChip href={href({ tag: undefined })}>#{tag}</FilterChip>}
+          {problem && <FilterChip href={href({ problem: undefined })}>{problemInfo?.title ?? problem}</FilterChip>}
         </div>
 
         <ForumFeed
           key={JSON.stringify(query)}
           initialPosts={feed.posts}
           initialHasMore={feed.has_more}
+          asOf={feed.as_of}
           query={query}
           viewer={viewer}
         />
@@ -150,6 +200,7 @@ export async function ForumsPage({ searchParams }: ForumsPageProps) {
       <aside className="hidden space-y-4 lg:block">
         {searchForm}
         <TrendingList items={trending} />
+        <PopularTags tags={popularTags} active={tag} />
       </aside>
     </div>
   );
@@ -195,6 +246,34 @@ function FilterChip({ href, children }: { href: string; children: React.ReactNod
       {children}
       <X size={12} />
     </Link>
+  );
+}
+
+function PopularTags({ tags, active }: { tags: ForumTagCount[]; active: string }) {
+  if (tags.length === 0) return null;
+  return (
+    <section className="rounded-xl border border-divider bg-surface p-4">
+      <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold">
+        <Hash size={18} />
+        {t("forum_popular_tags")}
+      </h2>
+      <div className="flex flex-wrap gap-1.5">
+        {tags.map((x) => (
+          <Link
+            key={x.tag}
+            href={x.tag === active ? "/forums" : `/forums?tag=${encodeURIComponent(x.tag)}`}
+            aria-current={x.tag === active ? "page" : undefined}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs transition-colors",
+              x.tag === active ? "bg-accent text-accent-fg" : "bg-surface-2 text-muted hover:text-ink",
+            )}
+          >
+            #{x.tag}
+            <span className="tabular-nums opacity-70">{x.count}</span>
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 

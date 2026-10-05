@@ -6,6 +6,7 @@
 import { authEn } from "@/features/auth/i18n";
 import { forumEn } from "@/features/forum/i18n";
 import { homeEn } from "@/features/home/i18n";
+import { notificationsEn } from "@/features/notifications/i18n";
 import { problemsEn } from "@/features/problems/i18n";
 import { profileEn } from "@/features/profile/i18n";
 import { replyEn } from "@/features/reply/i18n";
@@ -19,6 +20,7 @@ export const EN_DICTIONARIES = {
   auth: authEn,
   forum: forumEn,
   home: homeEn,
+  notifications: notificationsEn,
   problems: problemsEn,
   profile: profileEn,
   reply: replyEn,
@@ -32,6 +34,7 @@ export const en = {
   ...authEn,
   ...forumEn,
   ...homeEn,
+  ...notificationsEn,
   ...problemsEn,
   ...profileEn,
   ...replyEn,
