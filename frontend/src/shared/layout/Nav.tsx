@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { Bell, LogIn } from "lucide-react";
+import { LogIn } from "lucide-react";
 import { currentUser } from "@/features/auth/server";
+import { NotificationBell } from "@/features/notifications/components/NotificationBell";
 import { t } from "@/shared/i18n";
 import { CodritiumLogo } from "@/shared/layout/CodritiumLogo";
 import { ThemeToggle } from "@/shared/layout/ThemeToggle";
@@ -32,13 +33,7 @@ export async function Nav() {
         <div className="flex items-center gap-1.5">
           {user ? (
             <>
-              <button
-                type="button"
-                aria-label={t("nav_notifications")}
-                className="nav-icon-btn"
-              >
-                <Bell size={18} strokeWidth={1.8} />
-              </button>
+              <NotificationBell />
               <ThemeToggle />
               <NavUserMenu
                 displayName={user.display_name}

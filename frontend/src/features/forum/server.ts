@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { apiJSON } from "@/shared/api/server";
 import {
   feedSearchParams,
@@ -27,6 +28,12 @@ export async function getTrendingForumPosts(): Promise<ForumTrendingItem[]> {
   return (await apiJSON<{ posts: ForumTrendingItem[] }>("/api/forum/trending"))?.posts ?? [];
 }
 
-export async function getForumPost(id: string): Promise<ForumPost | null> {
-  return apiJSON<ForumPost>(`/api/forum/posts/${encodeURIComponent(id)}`);
+// The signed-in viewer's saved posts, most recently saved first.
+export async function getForumBookmarks(limit = 50): Promise<ForumPost[]> {
+  return (await apiJSON<ForumFeedPage>(`/api/forum/bookmarks?limit=${limit}`))?.posts ?? [];
 }
+
+// Cached per request so the post page and its metadata share one fetch.
+export const getForumPost = cache(async (id: string): Promise<ForumPost | null> => {
+  return apiJSON<ForumPost>(`/api/forum/posts/${encodeURIComponent(id)}`);
+});

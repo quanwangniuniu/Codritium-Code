@@ -209,12 +209,14 @@ func (h Handler) createForumComment(w http.ResponseWriter, r *http.Request) {
 		forumError(w, http.StatusBadRequest, "anonymous_not_allowed")
 		return
 	}
+	var parentAuthor *uuid.UUID
 	if req.ParentID != nil {
-		var parentPost uuid.UUID
+		var parentPost, author uuid.UUID
 		var grandparent *uuid.UUID
 		err := tx.QueryRow(r.Context(),
-			`SELECT post_id, parent_id FROM forum_comments WHERE id = $1 AND deleted_at IS NULL`,
-			*req.ParentID).Scan(&parentPost, &grandparent)
+			`SELECT post_id, parent_id, user_id FROM forum_comments WHERE id = $1 AND deleted_at IS NULL`,
+			*req.ParentID).Scan(&parentPost, &grandparent, &author)
+		parentAuthor = &author
 		if err != nil || parentPost != postID || grandparent != nil {
 			forumError(w, http.StatusBadRequest, "invalid_parent")
 			return
@@ -231,6 +233,13 @@ func (h Handler) createForumComment(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := tx.Exec(r.Context(),
 		`UPDATE forum_posts SET comment_count = comment_count + 1 WHERE id = $1`, postID); err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	if err := notifyNewComment(r.Context(), tx, commentEvent{
+		postID: postID, postAuthor: meta.authorID, commentID: id, actor: u.ID,
+		parentAuthor: parentAuthor, body: body, anonymous: req.IsAnonymous,
+	}); err != nil {
 		httpx.Internal(w, r, err)
 		return
 	}

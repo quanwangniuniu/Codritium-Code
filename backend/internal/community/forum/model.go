@@ -74,6 +74,8 @@ type forumPost struct {
 	ViewCount    int          `json:"view_count"`
 	CommentCount int          `json:"comment_count"`
 	MyVote       int          `json:"my_vote"`
+	IsBookmarked bool         `json:"is_bookmarked"`
+	IsFollowing  bool         `json:"is_following"`
 	CreatedAt    time.Time    `json:"created_at"`
 	UpdatedAt    time.Time    `json:"updated_at"`
 }

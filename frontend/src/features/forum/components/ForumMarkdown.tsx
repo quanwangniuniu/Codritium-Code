@@ -3,6 +3,7 @@ import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { cn } from "@/shared/lib/cn";
 import { ForumCodeBlock } from "@/features/forum/components/ForumCodeBlock";
+import { remarkMentions } from "@/features/forum/mentions";
 
 interface ForumMarkdownProps {
   source: string;
@@ -12,14 +13,15 @@ interface ForumMarkdownProps {
 }
 
 // Renders user-written forum markdown: GitHub-flavored (tables, task lists,
-// strikethrough, autolinks) with highlighted fenced code. react-markdown never
-// renders raw HTML and drops unsafe URLs (javascript: etc.), so user input
-// can't inject markup. Works in both server and client components.
+// strikethrough, autolinks) with highlighted fenced code and @mentions.
+// react-markdown never renders raw HTML and drops unsafe URLs (javascript:
+// etc.), so user input can't inject markup. Works in both server and client
+// components.
 export function ForumMarkdown({ source, className, compact }: ForumMarkdownProps) {
   return (
     <div className={cn("forum-md min-w-0 break-words", compact && "forum-md-compact", className)}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkMentions]}
         rehypePlugins={[[rehypeHighlight, { detect: false }]]}
         components={components}
       >

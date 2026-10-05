@@ -8,6 +8,7 @@ import { currentUser } from "@/features/auth/server";
 import { listProblems } from "@/features/problems/server";
 import { getMyProfile } from "@/features/profile/server";
 import { listUserSubmissions } from "@/features/submissions/server";
+import { getForumBookmarks } from "@/features/forum/server";
 
 interface ProfilePageProps {
   searchParams: Promise<{ tab?: string }>;
@@ -29,6 +30,7 @@ export async function ProfilePage({ searchParams }: ProfilePageProps) {
   const [allSubmissions, problems] =
     tab === "all" ? await Promise.all([listUserSubmissions(user.id), listProblems()]) : [undefined, []];
   const problemMap = Object.fromEntries(problems.map((p) => [p.id, p]));
+  const savedPosts = tab === "saved" ? await getForumBookmarks() : undefined;
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 sm:px-6 py-6 sm:py-8">
@@ -40,7 +42,13 @@ export async function ProfilePage({ searchParams }: ProfilePageProps) {
             <BadgesCard profile={profile} />
           </div>
           <ActivityCard calendar={profile.calendar} />
-          <ProfileTabs tab={tab} profile={profile} allSubmissions={allSubmissions} problemMap={problemMap} />
+          <ProfileTabs
+            tab={tab}
+            profile={profile}
+            allSubmissions={allSubmissions}
+            problemMap={problemMap}
+            savedPosts={savedPosts}
+          />
         </div>
       </div>
     </div>

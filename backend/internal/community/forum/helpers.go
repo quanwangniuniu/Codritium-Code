@@ -58,7 +58,9 @@ func forumPostColumns(bodyExpr string) string {
 	        p.tags, p.is_anonymous, p.is_pinned, p.upvotes, p.downvotes,
 	        p.view_count, p.comment_count, p.created_at, p.updated_at,
 	        u.handle, u.display_name, COALESCE(u.avatar_url,''), COALESCE(u.avatar_color,''),
-	        COALESCE(u.role,''), COALESCE(v.value, 0)`
+	        COALESCE(u.role,''), COALESCE(v.value, 0),
+	        EXISTS(SELECT 1 FROM forum_bookmarks b WHERE b.post_id = p.id AND b.user_id = $1),
+	        EXISTS(SELECT 1 FROM forum_post_follows f WHERE f.post_id = p.id AND f.user_id = $1)`
 }
 
 // forumPostFrom joins author and the viewer's vote ($1 is the viewer id).
@@ -78,7 +80,8 @@ func scanForumPost(row pgx.Row, viewer *auth.User, full bool) (forumPost, error)
 	if err := row.Scan(&p.ID, &authorID, &p.Section, &p.ProblemSlug, &p.Title, &body,
 		&p.Tags, &p.IsAnonymous, &p.IsPinned, &p.Upvotes, &p.Downvotes,
 		&p.ViewCount, &p.CommentCount, &p.CreatedAt, &p.UpdatedAt,
-		&a.Handle, &a.DisplayName, &a.AvatarURL, &a.AvatarColor, &role, &p.MyVote); err != nil {
+		&a.Handle, &a.DisplayName, &a.AvatarURL, &a.AvatarColor, &role, &p.MyVote,
+		&p.IsBookmarked, &p.IsFollowing); err != nil {
 		return forumPost{}, err
 	}
 	p.Score = p.Upvotes - p.Downvotes

@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"codritium/backend/internal/community/votes"
+	"codritium/backend/internal/notifications"
 	"codritium/backend/internal/platform/httpx"
 
 	"codritium/backend/internal/problems"
@@ -246,13 +248,33 @@ func (h Handler) createForumPost(w http.ResponseWriter, r *http.Request) {
 	if !ok || !h.allow(w, r, u, postLimit) {
 		return
 	}
+	// The post, its author's follow, and mention notifications land together.
+	tx, err := h.Pool.BeginTx(r.Context(), pgx.TxOptions{})
+	if err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	defer tx.Rollback(r.Context())
 	var id uuid.UUID
-	if err := h.Pool.QueryRow(r.Context(), `
+	if err := tx.QueryRow(r.Context(), `
 		INSERT INTO forum_posts (user_id, section, problem_slug, title, body_md, tags, is_anonymous)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id`,
 		u.ID, req.Section, req.ProblemSlug, req.Title, req.BodyMD, req.Tags, req.IsAnonymous,
 	).Scan(&id); err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	if _, err := tx.Exec(r.Context(),
+		`INSERT INTO forum_post_follows (post_id, user_id) VALUES ($1, $2)`, id, u.ID); err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	if err := notifyNewPost(r.Context(), tx, id, u.ID, req.BodyMD, req.IsAnonymous); err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
 		httpx.Internal(w, r, err)
 		return
 	}
@@ -371,5 +393,33 @@ func (h Handler) voteForumPost(w http.ResponseWriter, r *http.Request) {
 	if !ok || !h.allow(w, r, u, voteLimit) {
 		return
 	}
-	votes.Handle(w, r, h.Pool, votes.ForumPost, id, u.ID)
+	value, ok := votes.DecodeValue(w, r)
+	if !ok {
+		return
+	}
+	res, err := votes.Apply(r.Context(), h.Pool, votes.ForumPost, id, u.ID, value)
+	if errors.Is(err, votes.ErrNotFound) {
+		forumError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	if err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+	// An upvote that lifts the score to a milestone tells the author, once
+	// per milestone. A failure here shouldn't fail the vote itself.
+	if m := reachedMilestone(res.Score); value == 1 && m > 0 {
+		if err := h.notifyMilestone(r.Context(), id, m); err != nil {
+			log.Printf("forum: milestone notification for post %s: %v", id, err)
+		}
+	}
+	httpx.JSON(w, http.StatusOK, res)
+}
+
+func (h Handler) notifyMilestone(ctx context.Context, postID uuid.UUID, milestone int) error {
+	var author uuid.UUID
+	if err := h.Pool.QueryRow(ctx, `SELECT user_id FROM forum_posts WHERE id = $1`, postID).Scan(&author); err != nil {
+		return err
+	}
+	return notifications.InsertMilestone(ctx, h.Pool, author, postID, milestone)
 }

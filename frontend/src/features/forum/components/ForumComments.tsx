@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { MessageCircle, Pencil, Reply, Trash2 } from "lucide-react";
 import { t } from "@/shared/i18n";
@@ -19,6 +19,7 @@ import {
 import { ForumMarkdown } from "@/features/forum/components/ForumMarkdown";
 import { ForumAuthorName, ForumAvatar } from "@/features/forum/components/ForumAvatar";
 import { ForumVote } from "@/features/forum/components/ForumVote";
+import { MentionTextarea } from "@/features/forum/components/MentionTextarea";
 
 interface ForumCommentsProps {
   postId: string;
@@ -35,7 +36,15 @@ export function ForumComments({ postId, initialCount, allowAnonymous, viewer }: 
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [count, setCount] = useState(initialCount);
-  const [replyTo, setReplyTo] = useState<string | null>(null);
+  // The open reply box: which thread it's under, and the handle to @ when
+  // replying to a reply (threads are one level deep, as on LeetCode).
+  const [replyTo, setReplyTo] = useState<{ parentId: string; mention?: string } | null>(null);
+
+  function toggleReply(parentId: string, mention?: string) {
+    setReplyTo((cur) =>
+      cur && cur.parentId === parentId && cur.mention === mention ? null : { parentId, mention },
+    );
+  }
 
   const load = useCallback(
     async (nextSort: ForumCommentSort, from: number) => {
@@ -57,6 +66,21 @@ export function ForumComments({ postId, initialCount, allowAnonymous, viewer }: 
   useEffect(() => {
     void load(sort, 0);
   }, [load, sort]);
+
+  // Links from notifications point at #comment-<id>: once the first page is
+  // in, scroll to that comment and flash it.
+  const scrolledToHash = useRef(false);
+  useEffect(() => {
+    if (loading || scrolledToHash.current) return;
+    scrolledToHash.current = true;
+    const hash = window.location.hash;
+    if (!hash.startsWith("#comment-")) return;
+    const el = document.getElementById(hash.slice(1));
+    if (!el) return;
+    el.scrollIntoView({ block: "center" });
+    el.classList.add("forum-comment-flash");
+    setTimeout(() => el.classList.remove("forum-comment-flash"), 2000);
+  }, [loading]);
 
   function added(c: ForumComment) {
     setCount((n) => n + 1);
@@ -156,22 +180,38 @@ export function ForumComments({ postId, initialCount, allowAnonymous, viewer }: 
         <ul className="divide-y divide-divider">
           {comments.map((c) => (
             <li key={c.id} className="py-4">
-              <CommentBody
-                comment={c}
-                viewer={viewer}
-                onReply={viewer && !c.is_deleted ? () => setReplyTo(replyTo === c.id ? null : c.id) : undefined}
-                onDelete={() => remove(c)}
-                onEdited={edited}
-              />
-              {((c.replies?.length ?? 0) > 0 || replyTo === c.id) && (
+              <div id={`comment-${c.id}`} className="scroll-mt-24 rounded-md">
+                <CommentBody
+                  comment={c}
+                  viewer={viewer}
+                  postId={postId}
+                  onReply={viewer && !c.is_deleted ? () => toggleReply(c.id) : undefined}
+                  onDelete={() => remove(c)}
+                  onEdited={edited}
+                />
+              </div>
+              {((c.replies?.length ?? 0) > 0 || replyTo?.parentId === c.id) && (
                 <div className="ml-11 mt-3 space-y-4 border-l border-divider pl-4">
                   {c.replies?.map((r) => (
-                    <CommentBody key={r.id} comment={r} viewer={viewer} onDelete={() => remove(r)} onEdited={edited} />
+                    <div key={r.id} id={`comment-${r.id}`} className="scroll-mt-24 rounded-md">
+                      <CommentBody
+                        comment={r}
+                        viewer={viewer}
+                        postId={postId}
+                        // A reply to a reply joins the same thread, @-ing its
+                        // author (unless they posted anonymously).
+                        onReply={viewer && !c.is_deleted ? () => toggleReply(c.id, r.author?.handle) : undefined}
+                        onDelete={() => remove(r)}
+                        onEdited={edited}
+                      />
+                    </div>
                   ))}
-                  {replyTo === c.id && (
+                  {replyTo?.parentId === c.id && (
                     <CommentComposer
+                      key={replyTo.mention ?? ""}
                       postId={postId}
                       parentId={c.id}
+                      initialBody={replyTo.mention ? `@${replyTo.mention} ` : ""}
                       allowAnonymous={allowAnonymous}
                       onPosted={added}
                       onCancel={() => setReplyTo(null)}
@@ -204,12 +244,14 @@ export function ForumComments({ postId, initialCount, allowAnonymous, viewer }: 
 function CommentBody({
   comment,
   viewer,
+  postId,
   onReply,
   onDelete,
   onEdited,
 }: {
   comment: ForumComment;
   viewer: ForumViewer | null;
+  postId: string;
   onReply?: () => void;
   onDelete: () => void;
   onEdited: (c: ForumComment) => void;
@@ -249,6 +291,7 @@ function CommentBody({
           <div className="mt-2">
             <CommentEditor
               comment={comment}
+              postId={postId}
               onSaved={(c) => {
                 setEditing(false);
                 onEdited(c);
@@ -296,10 +339,12 @@ function CommentBody({
 
 function CommentEditor({
   comment,
+  postId,
   onSaved,
   onCancel,
 }: {
   comment: ForumComment;
+  postId: string;
   onSaved: (c: ForumComment) => void;
   onCancel: () => void;
 }) {
@@ -325,9 +370,10 @@ function CommentEditor({
 
   return (
     <div className="space-y-2">
-      <textarea
+      <MentionTextarea
         value={body}
-        onChange={(e) => setBody(e.target.value)}
+        onValueChange={setBody}
+        postId={postId}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void save();
           if (e.key === "Escape") onCancel();
@@ -358,6 +404,7 @@ function CommentEditor({
 function CommentComposer({
   postId,
   parentId,
+  initialBody = "",
   allowAnonymous,
   onPosted,
   onCancel,
@@ -365,12 +412,13 @@ function CommentComposer({
 }: {
   postId: string;
   parentId: string | null;
+  initialBody?: string;
   allowAnonymous: boolean;
   onPosted: (c: ForumComment) => void;
   onCancel?: () => void;
   autoFocus?: boolean;
 }) {
-  const [body, setBody] = useState("");
+  const [body, setBody] = useState(initialBody);
   const [anonymous, setAnonymous] = useState(false);
   const [busy, setBusy] = useState(false);
   const trimmed = body.trim();
@@ -391,9 +439,10 @@ function CommentComposer({
 
   return (
     <div className="space-y-2">
-      <textarea
+      <MentionTextarea
         value={body}
-        onChange={(e) => setBody(e.target.value)}
+        onValueChange={setBody}
+        postId={postId}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void submit();
         }}

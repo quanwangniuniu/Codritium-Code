@@ -631,3 +631,16 @@ body.is-resizing * {
 .forum-md .hljs-selector-id { color: var(--hl-variable); }
 .forum-md .hljs-emphasis { font-style: italic; }
 .forum-md .hljs-strong { font-weight: 600; }
+.forum-md .forum-mention {
+  font-style: normal;
+  font-weight: 500;
+  color: var(--accent);
+}
+/* Flash for the comment a notification link points at. */
+.forum-comment-flash {
+  animation: forum-comment-flash 2s ease-out;
+}
+@keyframes forum-comment-flash {
+  from { background: var(--accent-soft); box-shadow: 0 0 0 6px var(--accent-soft); }
+  to { background: transparent; box-shadow: 0 0 0 6px transparent; }
+}

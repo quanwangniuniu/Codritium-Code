@@ -30,6 +30,7 @@ import (
 	"codritium/backend/internal/grading"
 	"codritium/backend/internal/llm"
 	"codritium/backend/internal/migrate"
+	"codritium/backend/internal/notifications"
 	"codritium/backend/internal/platform/httpx"
 	"codritium/backend/internal/problems"
 	"codritium/backend/internal/problems/seed"
@@ -167,6 +168,7 @@ func (a *App) build(ctx context.Context) error {
 		forum.Handler{Pool: pool, Cookie: auth.CookieOptions{Domain: cfg.CookieDomain, Secure: cfg.CookieSecure}},
 		comments.Handler{Pool: pool},
 		notes.Handler{Pool: pool},
+		notifications.Handler{Pool: pool},
 	}
 
 	mux := http.NewServeMux()

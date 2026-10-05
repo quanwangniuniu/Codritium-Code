@@ -18,6 +18,7 @@ import {
   type ForumSection,
 } from "@/features/forum/api";
 import { ForumMarkdown } from "@/features/forum/components/ForumMarkdown";
+import { MentionTextarea } from "@/features/forum/components/MentionTextarea";
 
 interface ForumPostEditorProps {
   // Present when editing an existing post.
@@ -306,9 +307,9 @@ export function ForumPostEditor({ postId, initial, defaultSection, problems }: F
           <span className="ml-auto text-xs text-faint">{t("forum_markdown_hint")}</span>
         </div>
         {tab === "write" ? (
-          <textarea
+          <MentionTextarea
             value={body}
-            onChange={(e) => setBody(e.target.value)}
+            onValueChange={setBody}
             placeholder={t("forum_body_placeholder")}
             aria-label={t("forum_body_label")}
             maxLength={FORUM_LIMITS.bodyMax}

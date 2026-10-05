@@ -14,6 +14,7 @@ import { getForumPost } from "@/features/forum/server";
 import { ForumMarkdown } from "@/features/forum/components/ForumMarkdown";
 import { ForumAuthorName, ForumAvatar } from "@/features/forum/components/ForumAvatar";
 import { ForumComments } from "@/features/forum/components/ForumComments";
+import { ForumPostActions } from "@/features/forum/components/ForumPostActions";
 import { ForumPostMenu } from "@/features/forum/components/ForumPostMenu";
 import { ForumViewCount } from "@/features/forum/components/ForumViewCount";
 import { ForumVote } from "@/features/forum/components/ForumVote";
@@ -91,6 +92,7 @@ export async function ForumPostPage({ params }: ForumPostPageProps) {
             <MessageCircle size={16} />
             {compactCount(post.comment_count)}
           </a>
+          {viewer && <ForumPostActions post={post} />}
           <span className="ml-auto">
             <ForumPostMenu post={post} viewer={viewer} />
           </span>

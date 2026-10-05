@@ -79,6 +79,8 @@ export interface ForumPost {
   view_count: number;
   comment_count: number;
   my_vote: -1 | 0 | 1;
+  is_bookmarked: boolean;
+  is_following: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -144,6 +146,15 @@ export interface ForumViewer {
   isAdmin: boolean;
 }
 
+// A user offered by @-mention autocomplete.
+export interface MentionSuggestion {
+  id: string;
+  handle: string;
+  display_name: string;
+  avatar_url: string;
+  avatar_color: string;
+}
+
 export interface VoteResult {
   upvotes: number;
   downvotes: number;
@@ -179,6 +190,21 @@ export const forumApi = {
       method: "POST",
       json: { value },
     }),
+  bookmarkPost: (id: string, bookmarked: boolean) =>
+    apiRequest<{ bookmarked: boolean }>(`/api/forum/posts/${encodeURIComponent(id)}/bookmark`, {
+      method: "POST",
+      json: { bookmarked },
+    }),
+  followPost: (id: string, following: boolean) =>
+    apiRequest<{ following: boolean }>(`/api/forum/posts/${encodeURIComponent(id)}/follow`, {
+      method: "POST",
+      json: { following },
+    }),
+  suggestMentions: (q: string, postId?: string) => {
+    const params = new URLSearchParams({ q });
+    if (postId) params.set("post_id", postId);
+    return apiRequest<{ users: MentionSuggestion[] }>(`/api/forum/mention-suggestions?${params}`);
+  },
   pinPost: (id: string, pinned: boolean) =>
     apiRequest<{ is_pinned: boolean }>(`/api/forum/posts/${encodeURIComponent(id)}/pin`, {
       method: "POST",
