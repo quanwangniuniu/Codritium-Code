@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { t } from "@/shared/i18n";
@@ -16,6 +16,7 @@ import {
   forumErrorMessage,
   type ForumPostInput,
   type ForumSection,
+  type ForumTagCount,
 } from "@/features/forum/api";
 import { ForumMarkdown } from "@/features/forum/components/ForumMarkdown";
 import { MentionTextarea } from "@/features/forum/components/MentionTextarea";
@@ -25,6 +26,8 @@ interface ForumPostEditorProps {
   postId?: string;
   initial?: ForumPostInput;
   defaultSection?: ForumSection;
+  // Pre-links a problem (from a problem page's "write a post").
+  defaultProblem?: string;
   problems: { slug: string; title: string }[];
 }
 
@@ -80,7 +83,7 @@ function normalizeTag(raw: string): string {
   return raw.trim().replace(/^#/, "").toLowerCase().split(/\s+/).join("-");
 }
 
-export function ForumPostEditor({ postId, initial, defaultSection, problems }: ForumPostEditorProps) {
+export function ForumPostEditor({ postId, initial, defaultSection, defaultProblem, problems }: ForumPostEditorProps) {
   useLocale();
   const router = useRouter();
   // What the form starts from (and returns to when a draft is discarded).
@@ -90,13 +93,17 @@ export function ForumPostEditor({ postId, initial, defaultSection, problems }: F
     body: initial?.body_md ?? "",
     tags: initial?.tags ?? [],
     anonymous: initial?.is_anonymous ?? false,
-    problemSlug: initial?.problem_slug ?? "",
+    problemSlug: initial?.problem_slug ?? defaultProblem ?? "",
   }));
   const [section, setSection] = useState<ForumSection>(start.section);
   const [title, setTitle] = useState(start.title);
   const [body, setBody] = useState(start.body);
   const [tags, setTags] = useState<string[]>(start.tags);
   const [tagDraft, setTagDraft] = useState("");
+  // Existing tags matching what's being typed, most used first.
+  const [tagOptions, setTagOptions] = useState<ForumTagCount[]>([]);
+  const [tagIndex, setTagIndex] = useState(-1);
+  const tagListId = useId();
   const [anonymous, setAnonymous] = useState(start.anonymous);
   const [problemSlug, setProblemSlug] = useState(start.problemSlug);
   const [tab, setTab] = useState<"write" | "preview">("write");
@@ -151,11 +158,46 @@ export function ForumPostEditor({ postId, initial, defaultSection, problems }: F
     setTags([...tags, tag]);
   }
 
+  const tagQuery = normalizeTag(tagDraft);
+  useEffect(() => {
+    if (!tagQuery) {
+      setTagOptions([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      forumApi
+        .tags(tagQuery, 6)
+        .then((r) => {
+          if (cancelled) return;
+          setTagOptions(r.tags);
+          setTagIndex(-1);
+        })
+        .catch(() => !cancelled && setTagOptions([]));
+    }, 150);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [tagQuery]);
+  const shownTagOptions = tagOptions.filter((o) => !tags.includes(o.tag));
+
+  function commitTag(raw: string) {
+    addTag(raw);
+    setTagDraft("");
+    setTagOptions([]);
+  }
+
   function onTagKey(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" || e.key === ",") {
+    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && shownTagOptions.length > 0) {
       e.preventDefault();
-      addTag(tagDraft);
-      setTagDraft("");
+      const n = shownTagOptions.length;
+      setTagIndex((i) => (e.key === "ArrowDown" ? (i + 1) % n : (i - 1 + n) % n));
+    } else if (e.key === "Enter" || e.key === "," || (e.key === "Tab" && tagIndex >= 0)) {
+      e.preventDefault();
+      commitTag(tagIndex >= 0 && shownTagOptions[tagIndex] ? shownTagOptions[tagIndex].tag : tagDraft);
+    } else if (e.key === "Escape") {
+      setTagOptions([]);
     } else if (e.key === "Backspace" && !tagDraft && tags.length > 0) {
       setTags(tags.slice(0, -1));
     }
@@ -256,33 +298,62 @@ export function ForumPostEditor({ postId, initial, defaultSection, problems }: F
         <span className="text-muted">
           {t("forum_tags_label_fmt", { params: { max: FORUM_LIMITS.maxTags } })}
         </span>
-        <div className={cn(field, "flex flex-wrap items-center gap-1.5 py-1.5")}>
-          {tags.map((tag) => (
-            <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-xs text-ink">
-              #{tag}
-              <button
-                type="button"
-                aria-label={t("forum_remove_tag_fmt", { params: { tag } })}
-                onClick={() => setTags(tags.filter((x) => x !== tag))}
-                className="text-faint hover:text-ink"
-              >
-                <X size={12} />
-              </button>
-            </span>
-          ))}
-          {tags.length < FORUM_LIMITS.maxTags && (
-            <input
-              value={tagDraft}
-              onChange={(e) => setTagDraft(e.target.value)}
-              onKeyDown={onTagKey}
-              onBlur={() => {
-                addTag(tagDraft);
-                setTagDraft("");
-              }}
-              placeholder={tags.length === 0 ? t("forum_tags_placeholder") : ""}
-              aria-label={t("forum_tags_placeholder")}
-              className="min-w-[8rem] flex-1 bg-transparent py-0.5 text-sm outline-none placeholder:text-faint"
-            />
+        <div className="relative">
+          <div className={cn(field, "flex flex-wrap items-center gap-1.5 py-1.5")}>
+            {tags.map((tag) => (
+              <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-xs text-ink">
+                #{tag}
+                <button
+                  type="button"
+                  aria-label={t("forum_remove_tag_fmt", { params: { tag } })}
+                  onClick={() => setTags(tags.filter((x) => x !== tag))}
+                  className="text-faint hover:text-ink"
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            ))}
+            {tags.length < FORUM_LIMITS.maxTags && (
+              <input
+                value={tagDraft}
+                onChange={(e) => setTagDraft(e.target.value)}
+                onKeyDown={onTagKey}
+                onBlur={() => commitTag(tagDraft)}
+                placeholder={tags.length === 0 ? t("forum_tags_placeholder") : ""}
+                aria-label={t("forum_tags_placeholder")}
+                role="combobox"
+                aria-expanded={shownTagOptions.length > 0}
+                aria-controls={tagListId}
+                aria-autocomplete="list"
+                className="min-w-[8rem] flex-1 bg-transparent py-0.5 text-sm outline-none placeholder:text-faint"
+              />
+            )}
+          </div>
+          {shownTagOptions.length > 0 && (
+            <ul
+              id={tagListId}
+              role="listbox"
+              className="absolute left-0 top-full z-30 mt-1 w-64 overflow-hidden rounded-md border border-divider bg-surface py-1 shadow-lg"
+            >
+              {shownTagOptions.map((o, i) => (
+                <li key={o.tag} role="option" aria-selected={i === tagIndex}>
+                  <button
+                    type="button"
+                    // Keep focus in the input so its blur doesn't commit the draft.
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => commitTag(o.tag)}
+                    onMouseEnter={() => setTagIndex(i)}
+                    className={cn(
+                      "flex w-full items-center justify-between px-3 py-1.5 text-left text-sm",
+                      i === tagIndex && "bg-surface-2",
+                    )}
+                  >
+                    <span className="text-ink">#{o.tag}</span>
+                    <span className="text-xs tabular-nums text-faint">{o.count}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       </div>

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"codritium/backend/internal/community/votes"
@@ -26,18 +27,39 @@ import (
 
 // ListForumPosts returns one page of the feed.
 //
-//	section: interview|career|compensation|feedback|problems (empty = all, "For You")
+//	section: one of forumSections (empty = all, "For You")
 //	sort:    hot (default) | votes | newest
 //	q:       full-text search over title and body, plus a title substring match
 //	tag:     exact tag
+//	problem: posts linking that problem slug
+//	as_of:   the snapshot time from the first page's response
+//
+// Paging is by offset over a snapshot: every page of one scroll uses the
+// first page's as_of, so posts written since don't push others down a page
+// and "hot" scores don't decay between pages (both used to skip posts).
 func (h Handler) listForumPosts(w http.ResponseWriter, r *http.Request) {
 	viewer := auth.FromContext(r.Context())
 	qs := r.URL.Query()
 	page := httpx.ParsePage(r, forumPageDefault, forumPageMax, forumOffsetMax)
 	limit, offset := page.Limit, page.Offset
 
-	where := []string{"p.deleted_at IS NULL"}
-	args := []any{viewerID(viewer)}
+	// The snapshot comes from the database clock, which stamps created_at,
+	// so a post written a moment ago is never just outside the first page.
+	var asOf time.Time
+	if s := qs.Get("as_of"); s != "" {
+		t, err := time.Parse(time.RFC3339Nano, s)
+		if err != nil {
+			httpx.BadRequest(w, "invalid_as_of", "as_of must be an RFC 3339 time from a previous page.")
+			return
+		}
+		asOf = t
+	} else if err := h.Pool.QueryRow(r.Context(), `SELECT now()`).Scan(&asOf); err != nil {
+		httpx.Internal(w, r, err)
+		return
+	}
+
+	args := []any{viewerID(viewer), asOf}
+	where := []string{"p.deleted_at IS NULL", "p.created_at <= $2"}
 	arg := func(v any) string {
 		args = append(args, v)
 		return "$" + strconv.Itoa(len(args))
@@ -51,6 +73,9 @@ func (h Handler) listForumPosts(w http.ResponseWriter, r *http.Request) {
 	}
 	if tag := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(qs.Get("tag")), "#")); tag != "" {
 		where = append(where, arg(tag)+" = ANY(p.tags)")
+	}
+	if slug := strings.TrimSpace(qs.Get("problem")); slug != "" {
+		where = append(where, "p.problem_slug = "+arg(slug))
 	}
 	if q := strings.TrimSpace(qs.Get("q")); q != "" {
 		if utf8.RuneCountInString(q) > 100 {
@@ -67,7 +92,7 @@ func (h Handler) listForumPosts(w http.ResponseWriter, r *http.Request) {
 		// Hacker-News-style gravity: engagement decays with age so the
 		// "For You" feed keeps moving.
 		order = `(p.upvotes - p.downvotes + p.comment_count * 0.5 + ln(1 + p.view_count) * 0.25 + 1)
-		         / power(extract(epoch FROM now() - p.created_at) / 3600 + 2, 1.5) DESC,
+		         / power(extract(epoch FROM $2::timestamptz - p.created_at) / 3600 + 2, 1.5) DESC,
 		         p.created_at DESC, p.id DESC`
 	case "votes":
 		order = "(p.upvotes - p.downvotes) DESC, p.created_at DESC, p.id DESC"
@@ -106,7 +131,9 @@ func (h Handler) listForumPosts(w http.ResponseWriter, r *http.Request) {
 	if hasMore {
 		posts = posts[:limit]
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"posts": posts, "has_more": hasMore})
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"posts": posts, "has_more": hasMore, "as_of": asOf.UTC().Format(time.RFC3339Nano),
+	})
 }
 
 // ListPinnedForumPosts returns admin-pinned posts for the top of the feed.

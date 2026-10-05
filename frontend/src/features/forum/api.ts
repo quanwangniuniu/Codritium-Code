@@ -121,6 +121,25 @@ export interface ForumTrendingItem {
 export interface ForumFeedPage {
   posts: ForumPost[];
   has_more: boolean;
+  // Snapshot time of this scroll; later pages pass it back so the feed
+  // holds still while it loads (absent on bookmark pages).
+  as_of?: string;
+}
+
+export interface ForumTagCount {
+  tag: string;
+  count: number;
+}
+
+// One of the signed-in user's own comments, for their profile.
+export interface MyForumComment {
+  id: string;
+  post_id: string;
+  post_title: string;
+  excerpt: string;
+  is_anonymous: boolean;
+  score: number;
+  created_at: string;
 }
 
 export interface ForumCommentPage {
@@ -142,6 +161,8 @@ export interface ForumFeedQuery {
   sort?: ForumSort;
   q?: string;
   tag?: string;
+  // Posts linking this problem slug.
+  problem?: string;
 }
 
 // Minimal viewer info the client components need.
@@ -195,20 +216,24 @@ export interface VoteResult {
   my_vote: -1 | 0 | 1;
 }
 
-export function feedSearchParams(query: ForumFeedQuery, offset = 0, limit = 20): URLSearchParams {
+export function feedSearchParams(query: ForumFeedQuery, offset = 0, limit = 20, asOf?: string): URLSearchParams {
   const params = new URLSearchParams();
   if (query.section) params.set("section", query.section);
   if (query.sort && query.sort !== "hot") params.set("sort", query.sort);
   if (query.q) params.set("q", query.q);
   if (query.tag) params.set("tag", query.tag);
+  if (query.problem) params.set("problem", query.problem);
   if (offset > 0) params.set("offset", String(offset));
+  if (asOf) params.set("as_of", asOf);
   params.set("limit", String(limit));
   return params;
 }
 
 export const forumApi = {
-  listPosts: (query: ForumFeedQuery, offset: number, limit = 20) =>
-    apiRequest<ForumFeedPage>(`/api/forum/posts?${feedSearchParams(query, offset, limit)}`),
+  listPosts: (query: ForumFeedQuery, offset: number, asOf?: string, limit = 20) =>
+    apiRequest<ForumFeedPage>(`/api/forum/posts?${feedSearchParams(query, offset, limit, asOf)}`),
+  tags: (q: string, limit = 8) =>
+    apiRequest<{ tags: ForumTagCount[] }>(`/api/forum/tags?${new URLSearchParams({ q, limit: String(limit) })}`),
   createPost: (input: ForumPostInput) =>
     apiRequest<ForumPost>("/api/forum/posts", { method: "POST", json: input }),
   updatePost: (id: string, input: ForumPostInput) =>

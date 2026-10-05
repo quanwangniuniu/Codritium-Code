@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   Bookmark,
+  MessageCircle,
   ChevronRight,
   CircleCheck,
   FileText,
@@ -15,17 +16,18 @@ import { t, type LocaleKey } from "@/shared/i18n";
 import type { Problem } from "@/features/problems/types";
 import type { ProfileData } from "@/features/profile/types";
 import type { Submission } from "@/features/submissions/types";
-import type { ForumPost } from "@/features/forum/api";
+import type { ForumPost, MyForumComment } from "@/features/forum/api";
 import { cn } from "@/shared/lib/cn";
 import { DIFFICULTY_HOME_TEXT_CLASS, DIFFICULTY_LABEL_KEY } from "@/shared/labels";
 import { formatRelativeTime } from "@/shared/format";
 
-export type ProfileTab = "recent" | "solved" | "posts" | "saved" | "all";
+export type ProfileTab = "recent" | "solved" | "posts" | "comments" | "saved" | "all";
 
 export const PROFILE_TABS: { id: ProfileTab; icon: LucideIcon; labelKey: LocaleKey }[] = [
   { id: "recent", icon: History, labelKey: "prof_tab_recent" },
   { id: "solved", icon: ListChecks, labelKey: "prof_tab_solved" },
   { id: "posts", icon: MessageSquare, labelKey: "prof_tab_posts" },
+  { id: "comments", icon: MessageCircle, labelKey: "prof_tab_comments" },
   { id: "saved", icon: Bookmark, labelKey: "prof_tab_saved" },
   { id: "all", icon: FileText, labelKey: "prof_tab_all" },
 ];
@@ -38,9 +40,11 @@ interface ProfileTabsProps {
   problemMap?: Record<string, Problem>;
   // Only loaded for the "saved" tab.
   savedPosts?: ForumPost[];
+  // Only loaded for the "comments" tab.
+  myComments?: MyForumComment[];
 }
 
-export function ProfileTabs({ tab, profile, allSubmissions, problemMap, savedPosts }: ProfileTabsProps) {
+export function ProfileTabs({ tab, profile, allSubmissions, problemMap, savedPosts, myComments }: ProfileTabsProps) {
   return (
     <div className="rounded-2xl border border-divider bg-surface p-3 sm:p-4">
       <div className="flex items-center gap-2 overflow-x-auto">
@@ -77,6 +81,7 @@ export function ProfileTabs({ tab, profile, allSubmissions, problemMap, savedPos
         {tab === "recent" && <RecentList items={profile.recent_submissions} />}
         {tab === "solved" && <SolvedList items={profile.solved_problems} />}
         {tab === "posts" && <PostsList items={profile.recent_posts} />}
+        {tab === "comments" && <CommentsList items={myComments ?? []} />}
         {tab === "saved" && <SavedList items={savedPosts ?? []} />}
         {tab === "all" && (
           <div className="p-1 sm:p-2">
@@ -174,6 +179,29 @@ function PostsList({ items }: { items: ProfileData["recent_posts"] }) {
             <MessageSquare size={13} /> {p.comment_count}
           </span>
           <span className="shrink-0 whitespace-nowrap text-right text-xs text-faint sm:w-24">{formatRelativeTime(p.created_at)}</span>
+        </Row>
+      ))}
+    </ul>
+  );
+}
+
+function CommentsList({ items }: { items: MyForumComment[] }) {
+  if (items.length === 0) return <Empty icon={MessageCircle} textKey="prof_empty_comments" href="/forums" ctaKey="prof_empty_saved_cta" />;
+  return (
+    <ul className="divide-y divide-divider/60">
+      {items.map((c) => (
+        <Row key={c.id} href={`/forums/${c.post_id}#comment-${c.id}`}>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-medium">{c.excerpt}</span>
+            <span className="block truncate text-xs text-muted">
+              {t("prof_comment_on_fmt", { params: { title: c.post_title } })}
+              {c.is_anonymous && ` · ${t("prof_comment_anonymous")}`}
+            </span>
+          </span>
+          <span className="hidden sm:inline-flex items-center gap-1 text-xs text-muted tabular-nums">
+            <ThumbsUp size={13} /> {c.score}
+          </span>
+          <span className="shrink-0 whitespace-nowrap text-right text-xs text-faint sm:w-24">{formatRelativeTime(c.created_at)}</span>
         </Row>
       ))}
     </ul>

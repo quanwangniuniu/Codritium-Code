@@ -2,6 +2,8 @@ import { cache } from "react";
 import { apiJSON } from "@/shared/api/server";
 import {
   feedSearchParams,
+  type ForumTagCount,
+  type MyForumComment,
   type ForumFeedPage,
   type ForumFeedQuery,
   type ForumPost,
@@ -26,6 +28,21 @@ export async function getPinnedForumPosts(): Promise<ForumPost[]> {
 
 export async function getTrendingForumPosts(): Promise<ForumTrendingItem[]> {
   return (await apiJSON<{ posts: ForumTrendingItem[] }>("/api/forum/trending"))?.posts ?? [];
+}
+
+// Most-used tags, or just the one tag q when exact (for a tag page header).
+export async function getForumTags(q = "", limit = 15): Promise<ForumTagCount[]> {
+  const params = new URLSearchParams({ q, limit: String(limit) });
+  return (await apiJSON<{ tags: ForumTagCount[] }>(`/api/forum/tags?${params}`))?.tags ?? [];
+}
+
+export async function getRelatedForumPosts(id: string): Promise<ForumPost[]> {
+  return (await apiJSON<{ posts: ForumPost[] }>(`/api/forum/posts/${encodeURIComponent(id)}/related`))?.posts ?? [];
+}
+
+// The signed-in user's own comments, newest first.
+export async function getMyForumComments(limit = 50): Promise<MyForumComment[]> {
+  return (await apiJSON<{ comments: MyForumComment[] }>(`/api/forum/my-comments?limit=${limit}`))?.comments ?? [];
 }
 
 // The signed-in viewer's saved posts, most recently saved first.
