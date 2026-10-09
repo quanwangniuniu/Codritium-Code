@@ -19,7 +19,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 
@@ -32,18 +31,22 @@ import (
 // Agent owns the per-session state needed to run RunTurn. One Agent is
 // long-lived for the session; RunTurn is called once per user message.
 type Agent struct {
-	Stream        LLMStreamClient
-	Events        *events.Store
-	Text          *TextBroadcaster // optional — chat text streamed here (spec §5 keeps it off the events table)
-	Waiter        *DecisionWaiter
-	Tools         Registry
-	Workspace     *Workspace
-	Sandbox       SandboxRunner
-	TmpFS         *SessionTmpFS // per-session scratch dir for Grep / Glob / RunCommand
-	SystemPrompt  string
-	Deny          []DenyRule
-	VisibleTest   string
-	MaxIterations int // safety guard; default 50 if zero
+	Stream          LLMStreamClient
+	Events          *events.Store
+	Text            *TextBroadcaster // optional — chat text streamed here (spec §5 keeps it off the events table)
+	Waiter          *DecisionWaiter
+	Tools           Registry
+	Workspace       *Workspace
+	Sandbox         SandboxRunner
+	TmpFS           *SessionTmpFS // per-session scratch dir for Grep / Glob / RunCommand
+	SystemPrompt    string
+	Deny            []DenyRule
+	VisibleTest     string
+	MaxIterations   int // safety guard; default 20 if zero
+	MaxSearchCalls  int // per-turn Glob/Grep guard; default 4 if zero
+	MaxFileReads    int // per-turn FileRead guard; default 12 if zero
+	MaxOutputTokens int // per-model-call output limit; default 1024 if zero
+	Context         *ContextManager
 
 	// running history (carried across turns within the session)
 	messages []Message
@@ -53,6 +56,15 @@ type Agent struct {
 
 	closeMu sync.Mutex
 	closed  chan struct{} // closed by Close; lazily created
+}
+
+// contextManager returns the session context manager, creating it lazily
+// for agents constructed directly in tests.
+func (a *Agent) contextManager() *ContextManager {
+	if a.Context == nil {
+		a.Context = NewContextManager()
+	}
+	return a.Context
 }
 
 func (a *Agent) closedCh() chan struct{} {
@@ -86,7 +98,11 @@ type RunResult struct {
 
 const (
 	defaultMaxIterations     = 20
+	defaultMaxSearchCalls    = 4
+	defaultMaxFileReads      = 12
+	defaultMaxOutputTokens   = 1024
 	maxRepeatedAutoToolCalls = 3
+	maxEmptyResponseRetries  = 3
 )
 
 var defaultActionRegistry = actionworkflow.NewDefaultRegistry()
@@ -102,6 +118,21 @@ func (a *Agent) RunTurn(ctx context.Context, sessionID uuid.UUID, turnIndex int,
 	maxIter := a.MaxIterations
 	if maxIter <= 0 {
 		maxIter = defaultMaxIterations
+	}
+
+	maxSearchCalls := a.MaxSearchCalls
+	if maxSearchCalls <= 0 {
+		maxSearchCalls = defaultMaxSearchCalls
+	}
+
+	maxFileReads := a.MaxFileReads
+	if maxFileReads <= 0 {
+		maxFileReads = defaultMaxFileReads
+	}
+
+	maxOutputTokens := a.MaxOutputTokens
+	if maxOutputTokens <= 0 {
+		maxOutputTokens = defaultMaxOutputTokens
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -121,6 +152,13 @@ func (a *Agent) RunTurn(ctx context.Context, sessionID uuid.UUID, turnIndex int,
 
 	usage := events.TokenUsage{}
 	iter := 0
+	emptyResponseRetries := 0
+
+	searchCalls := 0
+	searchBudgetExhausted := false
+
+	fileReadCalls := 0
+	fileReadBudgetExhausted := false
 
 	lastAutoToolKey := ""
 	repeatedAutoToolCalls := 0
@@ -134,11 +172,73 @@ func (a *Agent) RunTurn(ctx context.Context, sessionID uuid.UUID, turnIndex int,
 			return a.completeMaxTurns(ctx, sessionID, turnIndex, iter, usage)
 		}
 
-		// 1) call the model
+		// 1) prepare the bounded model context, then call the model.
+		preparedMessages, compactStats := a.contextManager().Prepare(
+			a.messages,
+		)
+		if compactStats != nil {
+			a.messages = preparedMessages
+
+			if a.Events != nil {
+				_, _ = a.Events.Append(
+					ctx,
+					sessionID,
+					events.CompactTriggered{
+						Reason:          "auto",
+						RemovedMessages: compactStats.RemovedMessages,
+						TokensBefore:    compactStats.TokensBefore,
+						TokensAfter:     compactStats.TokensAfter,
+					},
+				)
+			}
+		}
+
+		systemPrompt := a.SystemPrompt
+		latestResult := latestToolResult(a.messages)
+
+		if emptyResponseRetries > 0 {
+			systemPrompt += "\n\nThe previous response was empty. Continue from the latest " +
+				"tool result and either call the next required tool or explain the result."
+		}
+
+		if strings.Contains(latestResult, "test file") &&
+			strings.Contains(latestResult, "not found in workspace") {
+			systemPrompt += "\n\nThe requested test file does not exist. Create it first " +
+				"with FileEdit, wait for approval, and then call RunTests again with " +
+				"the same path. Do not stop after explaining this."
+		}
+
+		if strings.Contains(latestResult, `"already_available":true`) {
+			systemPrompt += "\n\nThe latest tool result is already available in the context. " +
+				"Do not repeat the same tool call. Use the existing result and continue " +
+				"with the investigation, required FileEdit operations, and RunTests. " +
+				"Do not stop after receiving an already-available result."
+		}
+
+		if strings.Contains(latestResult, `"rejected_by_candidate":true`) {
+			systemPrompt += "\n\nThe previous tool call was rejected and was not applied. " +
+				"Do not claim that the rejected change was completed. Review the rejection " +
+				"reason, choose a different approach, and call the appropriate FileEdit or " +
+				"RunTests tool. Continue until the requested work is complete."
+		}
+
+		if searchBudgetExhausted {
+			systemPrompt += "\n\nThe search-tool budget is exhausted. Do not call Glob or Grep again " +
+				"in this turn. Use the visible workspace file list and existing search results, " +
+				"then read only the relevant files and continue with the fix and tests."
+		}
+
+		if fileReadBudgetExhausted {
+			systemPrompt += "\n\nThe FileRead budget is exhausted. Do not call FileRead again in this turn. " +
+				"Use the code and file ranges already available in the context. Proceed with the necessary " +
+				"FileEdit operations and RunTests instead of reading more files."
+		}
+
 		req := TurnRequest{
-			SystemPrompt: a.SystemPrompt,
-			Messages:     a.messages,
-			Tools:        a.toolSpecs(),
+			SystemPrompt:    systemPrompt,
+			Messages:        preparedMessages,
+			Tools:           a.toolSpecs(),
+			MaxOutputTokens: maxOutputTokens,
 		}
 		stream, err := a.Stream.StreamTurn(ctx, req)
 		if err != nil {
@@ -152,6 +252,31 @@ func (a *Agent) RunTurn(ctx context.Context, sessionID uuid.UUID, turnIndex int,
 			return a.completeAborted(ctx, sessionID, turnIndex, iter, usage, "drain: "+drainErr.Error())
 		}
 		usage = addUsage(usage, turnUsage)
+
+		if len(assistantMsg.Content) == 0 && len(pending) == 0 {
+			if emptyResponseRetries < maxEmptyResponseRetries {
+				emptyResponseRetries++
+				continue
+			}
+
+			if a.Text != nil {
+				a.Text.Publish(
+					sessionID,
+					"The local model repeatedly returned an empty response. Please retry.",
+				)
+			}
+
+			return a.completeAborted(
+				ctx,
+				sessionID,
+				turnIndex,
+				iter,
+				usage,
+				"empty model response",
+			)
+		}
+
+		emptyResponseRetries = 0
 		a.recordMessage(ctx, sessionID, assistantMsg)
 
 		// 3) no tool_use → turn ends normally
@@ -166,6 +291,36 @@ func (a *Agent) RunTurn(ctx context.Context, sessionID uuid.UUID, turnIndex int,
 				Name:  tu.Name,
 				Input: actionworkflow.Input(tu.Input),
 			})
+			if isSearchTool(tu.Name) {
+				if searchCalls >= maxSearchCalls {
+					searchBudgetExhausted = true
+					a.recordSearchBudgetExceeded(
+						ctx,
+						sessionID,
+						tu.ID,
+					)
+					continue
+				}
+				searchCalls++
+				if searchCalls >= maxSearchCalls {
+					searchBudgetExhausted = true
+				}
+			}
+			if tu.Name == "FileRead" {
+				if fileReadCalls >= maxFileReads {
+					fileReadBudgetExhausted = true
+					a.recordFileReadBudgetExceeded(
+						ctx,
+						sessionID,
+						tu.ID,
+					)
+					continue
+				}
+				fileReadCalls++
+				if fileReadCalls >= maxFileReads {
+					fileReadBudgetExhausted = true
+				}
+			}
 			if actionExists && !action.RequiresApproval {
 				key := tu.Name + ":" + hashFor(tu.Input)
 				if key == lastAutoToolKey {
@@ -196,13 +351,15 @@ func (a *Agent) RunTurn(ctx context.Context, sessionID uuid.UUID, turnIndex int,
 						}},
 					})
 
-					return a.completeMaxTurns(
-						ctx,
-						sessionID,
-						turnIndex,
-						iter,
-						usage,
-					)
+					if tu.Name == "FileRead" {
+						fileReadBudgetExhausted = true
+					}
+					if isSearchTool(tu.Name) {
+						searchBudgetExhausted = true
+					}
+
+					repeatedAutoToolCalls = 0
+					continue
 				}
 			} else {
 				lastAutoToolKey = ""
@@ -222,52 +379,6 @@ func (a *Agent) RunTurn(ctx context.Context, sessionID uuid.UUID, turnIndex int,
 		}
 		// loop back: model will see new tool_result messages on next iteration
 	}
-}
-
-// recordMessage appends msg to the running history and persists it to the
-// session transcript (session_messages), which the grader reads at submit
-// time. A persistence failure is logged, not fatal: the turn keeps going
-// with the in-memory history intact.
-func (a *Agent) recordMessage(ctx context.Context, sessionID uuid.UUID, msg Message) {
-	a.messages = append(a.messages, msg)
-	if a.Events == nil {
-		return
-	}
-	content, err := json.Marshal(anthropicBlocks(msg.Content))
-	if err != nil {
-		log.Printf("agent loop: marshal transcript message for %s: %v", sessionID, err)
-		return
-	}
-	if err := a.Events.AppendMessage(ctx, sessionID, msg.Role, content); err != nil {
-		log.Printf("agent loop: persist transcript message for %s: %v", sessionID, err)
-	}
-}
-
-// anthropicBlocks renders content blocks in the Anthropic wire shape
-// session_messages.content is documented to hold.
-func anthropicBlocks(blocks []ContentBlock) []map[string]any {
-	out := make([]map[string]any, 0, len(blocks))
-	for _, b := range blocks {
-		switch {
-		case b.Kind == "text":
-			out = append(out, map[string]any{"type": "text", "text": b.Text})
-		case b.Kind == "tool_use" && b.ToolUse != nil:
-			out = append(out, map[string]any{
-				"type":  "tool_use",
-				"id":    b.ToolUse.ID,
-				"name":  b.ToolUse.Name,
-				"input": b.ToolUse.Input,
-			})
-		case b.Kind == "tool_result" && b.ToolResult != nil:
-			out = append(out, map[string]any{
-				"type":        "tool_result",
-				"tool_use_id": b.ToolResult.ToolUseID,
-				"content":     b.ToolResult.Output,
-				"is_error":    b.ToolResult.IsError,
-			})
-		}
-	}
-	return out
 }
 
 // PendingToolUse is what drainStream collects from one streamed completion.
@@ -429,6 +540,37 @@ func summarizeInput(toolName string, input map[string]any) string {
 		return fmt.Sprintf("Edit %s (%d bytes)", path, len(content))
 	case "FileRead":
 		path, _ := input["path"].(string)
+		startLine, hasStart, _ := optionalPositiveInt(
+			input,
+			"start_line",
+		)
+		lineCount, hasCount, _ := optionalPositiveInt(
+			input,
+			"line_count",
+		)
+
+		if hasStart && hasCount {
+			return fmt.Sprintf(
+				"Read %s lines %d-%d",
+				path,
+				startLine,
+				startLine+lineCount-1,
+			)
+		}
+		if hasStart {
+			return fmt.Sprintf(
+				"Read %s from line %d",
+				path,
+				startLine,
+			)
+		}
+		if hasCount {
+			return fmt.Sprintf(
+				"Read first %d lines of %s",
+				lineCount,
+				path,
+			)
+		}
 		return fmt.Sprintf("Read %s", path)
 	case "RunTests":
 		path, _ := input["path"].(string)

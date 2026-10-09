@@ -167,8 +167,9 @@ func (fileReadTool) Name() string { return "FileRead" }
 
 func (fileReadTool) Spec() ToolSpec {
 	return ToolSpec{
-		Name:        "FileRead",
-		Description: "Read the full contents of a file in the workspace.",
+		Name: "FileRead",
+		Description: "Read a file from the workspace. Use start_line and line_count " +
+			"to read only the relevant section of a long file.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -176,13 +177,28 @@ func (fileReadTool) Spec() ToolSpec {
 					"type":        "string",
 					"description": "Workspace-relative file path.",
 				},
+				"start_line": map[string]any{
+					"type":        "integer",
+					"description": "Optional 1-based first line to read.",
+					"minimum":     1,
+				},
+				"line_count": map[string]any{
+					"type":        "integer",
+					"description": "Optional maximum number of lines to return.",
+					"minimum":     1,
+				},
 			},
-			"required": []string{"path"},
+			"required":             []string{"path"},
+			"additionalProperties": false,
 		},
 	}
 }
 
-func (fileReadTool) Execute(ctx context.Context, input map[string]any, deps ToolDeps) (string, bool, error) {
+func (fileReadTool) Execute(
+	ctx context.Context,
+	input map[string]any,
+	deps ToolDeps,
+) (string, bool, error) {
 	path, ok := input["path"].(string)
 	if !ok || path == "" {
 		return `{"error":"path required"}`, true, nil
@@ -192,9 +208,60 @@ func (fileReadTool) Execute(ctx context.Context, input map[string]any, deps Tool
 	}
 	content, ok := deps.Workspace.Get(path)
 	if !ok {
-		return fmt.Sprintf(`{"error":"file not found: %s"}`, path), true, nil
+		return fmt.Sprintf(
+			`{"error":"file not found: %s"}`,
+			path,
+		), true, nil
 	}
-	return content, false, nil
+
+	startLine, hasStart, err := optionalPositiveInt(input, "start_line")
+	if err != nil {
+		return fmt.Sprintf(`{"error":%q}`, err.Error()), true, nil
+	}
+	lineCount, hasCount, err := optionalPositiveInt(input, "line_count")
+	if err != nil {
+		return fmt.Sprintf(`{"error":%q}`, err.Error()), true, nil
+	}
+
+	// Preserve the existing full-file behavior when no range is supplied.
+	if !hasStart && !hasCount {
+		return content, false, nil
+	}
+	if !hasStart {
+		startLine = 1
+	}
+
+	lines := strings.Split(content, "\n")
+	if startLine > len(lines) {
+		return fmt.Sprintf(
+			`{"error":"start_line %d exceeds file length %d"}`,
+			startLine,
+			len(lines),
+		), true, nil
+	}
+
+	endLine := len(lines)
+	if hasCount && startLine+lineCount-1 < endLine {
+		endLine = startLine + lineCount - 1
+	}
+
+	return strings.Join(lines[startLine-1:endLine], "\n"), false, nil
+}
+
+func optionalPositiveInt(
+	input map[string]any,
+	key string,
+) (int, bool, error) {
+	value, exists := input[key]
+	if !exists {
+		return 0, false, nil
+	}
+
+	number, ok := value.(float64)
+	if !ok || number < 1 || number != float64(int(number)) {
+		return 0, true, fmt.Errorf("%s must be a positive integer", key)
+	}
+	return int(number), true, nil
 }
 
 // ─── FileEdit ───────────────────────────────────────────────────────────
@@ -206,8 +273,10 @@ func (fileEditTool) Name() string { return "FileEdit" }
 func (fileEditTool) Spec() ToolSpec {
 	return ToolSpec{
 		Name: "FileEdit",
-		Description: "Propose a replacement for a file in the workspace. The candidate must " +
-			"approve (and may modify) the patch before it lands.",
+		Description: "Replace one exact code block in a workspace file. For an existing file, provide " +
+			"path, exact old_text, and new_text. Include enough surrounding context for old_text to match " +
+			"exactly once. For a new file, provide path and new_text without old_text. The candidate must " +
+			"approve and may modify the patch before it lands.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -215,30 +284,89 @@ func (fileEditTool) Spec() ToolSpec {
 					"type":        "string",
 					"description": "Workspace-relative file path.",
 				},
+				"old_text": map[string]any{
+					"type": "string",
+					"description": "Exact existing code block to replace. " +
+						"Required when editing an existing file.",
+				},
+				"new_text": map[string]any{
+					"type": "string",
+					"description": "Replacement code for old_text, or the complete " +
+						"contents when creating a new file.",
+				},
 				"content": map[string]any{
-					"type":        "string",
-					"description": "Full replacement contents of the file.",
+					"type": "string",
+					"description": "Deprecated full-file replacement format retained " +
+						"for compatibility with stored conversations.",
 				},
 			},
-			"required": []string{"path", "content"},
+			"required": []string{"path"},
+			"anyOf": []any{
+				map[string]any{
+					"required": []string{"new_text"},
+				},
+				map[string]any{
+					"required": []string{"content"},
+				},
+			},
 		},
 	}
 }
 
-func (fileEditTool) Execute(ctx context.Context, input map[string]any, deps ToolDeps) (string, bool, error) {
+func (fileEditTool) Execute(
+	ctx context.Context,
+	input map[string]any,
+	deps ToolDeps,
+) (string, bool, error) {
 	path, _ := input["path"].(string)
-	content, _ := input["content"].(string)
 	if path == "" {
 		return `{"error":"path required"}`, true, nil
 	}
 	if err := checkDeny("FileEdit", path, deps.Deny); err != nil {
 		return fmt.Sprintf(`{"error":%q}`, err.Error()), true, nil
 	}
-	deps.Workspace.Set(path, content)
+
+	var updated string
+
+	if content, ok := input["content"].(string); ok {
+		// Preserve compatibility with stored full-file FileEdit calls.
+		updated = content
+	} else {
+		oldText, _ := input["old_text"].(string)
+		newText, newTextOK := input["new_text"].(string)
+		if !newTextOK {
+			return `{"error":"new_text required"}`, true, nil
+		}
+
+		current, exists := deps.Workspace.Get(path)
+		if !exists {
+			if oldText != "" {
+				return `{"error":"cannot replace old_text in a file that does not exist"}`, true, nil
+			}
+			updated = newText
+		} else {
+			if oldText == "" {
+				return `{"error":"old_text required for an existing file"}`, true, nil
+			}
+
+			matches := strings.Count(current, oldText)
+			if matches == 0 {
+				return `{"error":"old_text was not found"}`, true, nil
+			}
+			if matches > 1 {
+				return `{"error":"old_text matched more than once"}`, true, nil
+			}
+
+			updated = strings.Replace(current, oldText, newText, 1)
+		}
+	}
+
+	deps.Workspace.Set(path, updated)
+
 	resp, _ := json.Marshal(map[string]any{
 		"applied": true,
 		"path":    path,
-		"size":    len(content),
+		"size":    len(updated),
 	})
 	return string(resp), false, nil
 }

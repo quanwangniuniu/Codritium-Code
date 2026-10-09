@@ -39,6 +39,12 @@ func VerifyFileEditInput(
 		return nil, fmt.Errorf("legacy content cannot be empty")
 	}
 
+	if newTextOK && strings.TrimSpace(newText) == "" {
+		return nil, fmt.Errorf(
+			"new_text cannot be empty; preserve the current file and provide the intended replacement",
+		)
+	}
+
 	if context != nil {
 		current, exists := context.Get(path)
 
@@ -47,6 +53,18 @@ func VerifyFileEditInput(
 				return nil, fmt.Errorf(
 					"proposed content for %s is identical to the current file",
 					path,
+				)
+			}
+			currentLines := strings.Count(current, "\n") + 1
+			replacementLines := strings.Count(legacyContent, "\n") + 1
+
+			if exists &&
+				len(current) >= 400 &&
+				(len(legacyContent)*2 < len(current) ||
+					(currentLines >= 20 &&
+						replacementLines*4 < currentLines*3)) {
+				return nil, fmt.Errorf(
+					"replacement removes a large portion of the existing file; read the complete file and preserve unrelated code",
 				)
 			}
 		} else if exists {
@@ -71,6 +89,11 @@ func VerifyFileEditInput(
 			if oldText == newText {
 				return nil, fmt.Errorf(
 					"the proposed edit would not change the file",
+				)
+			}
+			if len(oldText) >= 400 && len(newText)*2 < len(oldText) {
+				return nil, fmt.Errorf(
+					"replacement removes more than half of a large code block; use a smaller exact old_text block and preserve unrelated code",
 				)
 			}
 		} else {

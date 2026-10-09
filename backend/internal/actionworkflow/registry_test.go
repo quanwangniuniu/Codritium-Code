@@ -84,6 +84,82 @@ func TestVerifyFileEditInputRejectsMissingOldText(t *testing.T) {
 	}
 }
 
+func TestVerifyFileEditInputRejectsEmptyNewText(t *testing.T) {
+	context := testValidationContext{
+		"example.py": "value = 1\n",
+	}
+
+	_, err := VerifyFileEditInput(Input{
+		"path":     "example.py",
+		"old_text": "value = 1\n",
+		"new_text": "",
+	}, context)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if err.Error() != "new_text cannot be empty; preserve the current file and provide the intended replacement" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestVerifyFileEditInputRejectsWhitespaceNewText(t *testing.T) {
+	context := testValidationContext{
+		"main.py": "print('hello')\n",
+	}
+
+	_, err := VerifyFileEditInput(
+		Input{
+			"path":     "main.py",
+			"old_text": "print('hello')",
+			"new_text": " \n\t",
+		},
+		context,
+	)
+	if err == nil {
+		t.Fatal("expected whitespace-only new_text to be rejected")
+	}
+}
+
+func TestVerifyFileEditInputRejectsLargeDestructiveReplacement(t *testing.T) {
+	current := strings.Repeat("print('keep this code')\n", 30)
+	context := testValidationContext{
+		"main.py": current,
+	}
+
+	_, err := VerifyFileEditInput(
+		Input{
+			"path":    "main.py",
+			"content": "print('replacement')\n",
+		},
+		context,
+	)
+	if err == nil {
+		t.Fatal("expected large destructive replacement to be rejected")
+	}
+}
+
+func TestVerifyFileEditInputRejectsLargeLineReduction(t *testing.T) {
+	current := strings.Repeat("print('keep this existing code')\n", 40)
+	replacement := strings.Repeat(
+		"print('replacement line with substantially longer content')\n",
+		25,
+	)
+	context := testValidationContext{
+		"main.py": current,
+	}
+
+	_, err := VerifyFileEditInput(
+		Input{
+			"path":    "main.py",
+			"content": replacement,
+		},
+		context,
+	)
+	if err == nil {
+		t.Fatal("expected large line reduction to be rejected")
+	}
+}
+
 func TestNormalizeFileEditNewText(t *testing.T) {
 	t.Run("converts multiline escaped text", func(t *testing.T) {
 		input := `first line\nsecond line\nthird line`
