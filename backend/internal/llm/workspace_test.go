@@ -58,6 +58,136 @@ func TestFileRead_RespectsDenyRules(t *testing.T) {
 	}
 }
 
+func TestFileRead_ReadsSelectedLines(t *testing.T) {
+	deps := ToolDeps{
+		Workspace: &Workspace{
+			Files: map[string]string{
+				"app.py": "line 1\nline 2\nline 3\nline 4\nline 5",
+			},
+		},
+	}
+
+	out, isErr, err := fileReadTool{}.Execute(
+		context.Background(),
+		map[string]any{
+			"path":       "app.py",
+			"start_line": float64(2),
+			"line_count": float64(2),
+		},
+		deps,
+	)
+	if err != nil || isErr {
+		t.Fatalf("partial read failed: out=%q isErr=%v err=%v", out, isErr, err)
+	}
+	if out != "line 2\nline 3" {
+		t.Fatalf("partial read = %q, want %q", out, "line 2\nline 3")
+	}
+}
+
+func TestFileRead_PreservesFullFileRead(t *testing.T) {
+	const content = "line 1\nline 2\nline 3"
+	deps := ToolDeps{
+		Workspace: &Workspace{
+			Files: map[string]string{"app.py": content},
+		},
+	}
+
+	out, isErr, err := fileReadTool{}.Execute(
+		context.Background(),
+		map[string]any{"path": "app.py"},
+		deps,
+	)
+	if err != nil || isErr {
+		t.Fatalf("full read failed: out=%q isErr=%v err=%v", out, isErr, err)
+	}
+	if out != content {
+		t.Fatalf("full read = %q, want %q", out, content)
+	}
+}
+
+func TestFileEdit_ReplacesExactBlock(t *testing.T) {
+	workspace := &Workspace{
+		Files: map[string]string{
+			"app.py": "before\nvalue = 1\nafter\n",
+		},
+	}
+	deps := ToolDeps{Workspace: workspace}
+
+	out, isErr, err := fileEditTool{}.Execute(
+		context.Background(),
+		map[string]any{
+			"path":     "app.py",
+			"old_text": "value = 1",
+			"new_text": "value = 2",
+		},
+		deps,
+	)
+	if err != nil || isErr {
+		t.Fatalf(
+			"targeted edit failed: out=%q isErr=%v err=%v",
+			out,
+			isErr,
+			err,
+		)
+	}
+
+	got, _ := workspace.Get("app.py")
+	want := "before\nvalue = 2\nafter\n"
+	if got != want {
+		t.Fatalf("edited file=%q want %q", got, want)
+	}
+}
+
+func TestFileEdit_RejectsRepeatedOldText(t *testing.T) {
+	workspace := &Workspace{
+		Files: map[string]string{
+			"app.py": "value = 1\nvalue = 1\n",
+		},
+	}
+	deps := ToolDeps{Workspace: workspace}
+
+	_, isErr, err := fileEditTool{}.Execute(
+		context.Background(),
+		map[string]any{
+			"path":     "app.py",
+			"old_text": "value = 1",
+			"new_text": "value = 2",
+		},
+		deps,
+	)
+	if err != nil {
+		t.Fatalf("unexpected execution error: %v", err)
+	}
+	if !isErr {
+		t.Fatal("expected repeated old_text to be rejected")
+	}
+}
+
+func TestFileRead_RejectsInvalidRange(t *testing.T) {
+	deps := ToolDeps{
+		Workspace: &Workspace{
+			Files: map[string]string{"app.py": "line 1\nline 2"},
+		},
+	}
+
+	out, isErr, err := fileReadTool{}.Execute(
+		context.Background(),
+		map[string]any{
+			"path":       "app.py",
+			"start_line": float64(0),
+		},
+		deps,
+	)
+	if err != nil || !isErr || !strings.Contains(out, "positive integer") {
+		t.Fatalf(
+			"invalid range: out=%q isErr=%v err=%v",
+			out,
+			isErr,
+			err,
+		)
+	}
+}
+
 func TestDefaultRegistry_NoHostShell(t *testing.T) {
 	if _, ok := NewDefaultRegistry()["RunCommand"]; ok {
 		t.Fatal("RunCommand must be opt-in: it executes on the backend host")

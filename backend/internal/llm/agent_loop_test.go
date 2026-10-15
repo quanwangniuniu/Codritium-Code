@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -35,18 +36,19 @@ func newTestSession(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	)
 }
 
-// scriptedStream produces a predetermined chunk sequence per StreamTurn
-// call. The script field is a slice-of-slices: scripts[i] is the chunks
-// for the i-th StreamTurn call.
+// scriptedStream produces a predetermined chunk sequence for each StreamTurn
+// call and records the requests sent by the agent for later assertions.
 type scriptedStream struct {
-	mu      sync.Mutex
-	scripts [][]NormalizedChunk
-	calls   int
+	mu       sync.Mutex
+	scripts  [][]NormalizedChunk
+	requests []TurnRequest
+	calls    int
 }
 
 func (s *scriptedStream) StreamTurn(ctx context.Context, req TurnRequest) (StreamReader, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.requests = append(s.requests, req)
 	if s.calls >= len(s.scripts) {
 		return nil, fmt.Errorf("scripted stream exhausted (call %d)", s.calls)
 	}
@@ -147,6 +149,391 @@ func TestRunTurn_NoToolUseEndsNormal(t *testing.T) {
 		if !contains(kinds, w) {
 			t.Fatalf("missing event %q in %v", w, kinds)
 		}
+	}
+}
+
+func TestRunTurn_RetriesEmptyModelResponse(t *testing.T) {
+	pool := newTestPool(t)
+	sid := newTestSession(t, pool)
+	store := events.NewStore(pool)
+
+	stream := &scriptedStream{
+		scripts: [][]NormalizedChunk{
+			{
+				{Kind: "message_stop", StopReason: "end_turn"},
+			},
+			{
+				{Kind: "message_stop", StopReason: "end_turn"},
+			},
+			{
+				{Kind: "message_stop", StopReason: "end_turn"},
+			},
+			{
+				{Kind: "text_delta", Text: "Recovered response."},
+				{Kind: "message_stop", StopReason: "end_turn"},
+			},
+		},
+	}
+
+	agent := &Agent{
+		Stream:    stream,
+		Events:    store,
+		Waiter:    NewDecisionWaiter(),
+		Tools:     NewDefaultRegistry(),
+		Workspace: &Workspace{Files: map[string]string{}},
+	}
+
+	result, err := agent.RunTurn(
+		context.Background(),
+		sid,
+		1,
+		"continue",
+	)
+	if err != nil {
+		t.Fatalf("RunTurn: %v", err)
+	}
+	if result.Reason != "normal" {
+		t.Fatalf("reason=%q want normal", result.Reason)
+	}
+	if stream.calls != 4 {
+		t.Fatalf("stream calls=%d want 4", stream.calls)
+	}
+	if !strings.Contains(
+		stream.requests[1].SystemPrompt,
+		"previous response was empty",
+	) {
+		t.Fatal("retry request does not explain the empty response")
+	}
+	if !strings.Contains(
+		stream.requests[3].SystemPrompt,
+		"previous response was empty",
+	) {
+		t.Fatal("final retry request does not explain the empty response")
+	}
+}
+
+func TestRunTurn_MissingTestRetryPromptsFileCreation(t *testing.T) {
+	pool := newTestPool(t)
+	sid := newTestSession(t, pool)
+	store := events.NewStore(pool)
+
+	stream := &scriptedStream{
+		scripts: [][]NormalizedChunk{
+			{
+				{Kind: "message_stop", StopReason: "end_turn"},
+			},
+			{
+				{Kind: "text_delta", Text: "Recovered response."},
+				{Kind: "message_stop", StopReason: "end_turn"},
+			},
+		},
+	}
+
+	agent := &Agent{
+		Stream: stream,
+		Events: store,
+		Waiter: NewDecisionWaiter(),
+		Tools:  NewDefaultRegistry(),
+		Workspace: &Workspace{
+			Files: map[string]string{},
+		},
+		messages: []Message{
+			{
+				Role: "tool",
+				Content: []ContentBlock{
+					{
+						Kind: "tool_result",
+						ToolResult: &ContentToolResult{
+							ToolUseID: "tu-tests",
+							Output: `{"error":"test file \"test_my.py\" ` +
+								`not found in workspace; create it via FileEdit first"}`,
+							IsError: true,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if _, err := agent.RunTurn(
+		context.Background(),
+		sid,
+		1,
+		"Continue until the tests pass.",
+	); err != nil {
+		t.Fatalf("RunTurn: %v", err)
+	}
+
+	if len(stream.requests) != 2 {
+		t.Fatalf(
+			"stream requests=%d want 2",
+			len(stream.requests),
+		)
+	}
+
+	if !strings.Contains(
+		stream.requests[0].SystemPrompt,
+		"Create it first with FileEdit",
+	) {
+		t.Fatalf(
+			"initial prompt does not require test creation: %s",
+			stream.requests[0].SystemPrompt,
+		)
+	}
+}
+
+func TestRunTurn_RepeatedResultRetryContinuesWork(t *testing.T) {
+	pool := newTestPool(t)
+	sid := newTestSession(t, pool)
+	store := events.NewStore(pool)
+
+	stream := &scriptedStream{
+		scripts: [][]NormalizedChunk{
+			{
+				{Kind: "message_stop", StopReason: "end_turn"},
+			},
+			{
+				{Kind: "text_delta", Text: "Continuing with the existing result."},
+				{Kind: "message_stop", StopReason: "end_turn"},
+			},
+		},
+	}
+
+	agent := &Agent{
+		Stream:    stream,
+		Events:    store,
+		Waiter:    NewDecisionWaiter(),
+		Tools:     NewDefaultRegistry(),
+		Workspace: &Workspace{Files: map[string]string{}},
+		messages: []Message{
+			{
+				Role: "tool",
+				Content: []ContentBlock{
+					{
+						Kind: "tool_result",
+						ToolResult: &ContentToolResult{
+							ToolUseID: "tu-read",
+							Output: `{"already_available":true,"already_read":true,` +
+								`"detail":"Use the existing result or change the input."}`,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if _, err := agent.RunTurn(
+		context.Background(),
+		sid,
+		1,
+		"Continue until the tests pass.",
+	); err != nil {
+		t.Fatalf("RunTurn: %v", err)
+	}
+
+	if len(stream.requests) != 2 {
+		t.Fatalf(
+			"stream requests=%d want 2",
+			len(stream.requests),
+		)
+	}
+
+	if !strings.Contains(
+		stream.requests[0].SystemPrompt,
+		"Do not repeat the same tool call",
+	) {
+		t.Fatalf(
+			"retry prompt does not handle repeated result: %s",
+			stream.requests[0].SystemPrompt,
+		)
+	}
+}
+
+func TestRunTurn_LimitsSearchToolCalls(t *testing.T) {
+	pool := newTestPool(t)
+	sid := newTestSession(t, pool)
+	store := events.NewStore(pool)
+
+	globCall := func(id string) []NormalizedChunk {
+		return []NormalizedChunk{
+			{
+				Kind:        "tool_use_start",
+				ToolUseID:   id,
+				ToolUseName: "Glob",
+			},
+			{
+				Kind:           "tool_use_input_delta",
+				ToolUseID:      id,
+				InputJSONDelta: `{"pattern":"*.py"}`,
+			},
+			{
+				Kind:      "tool_use_stop",
+				ToolUseID: id,
+			},
+			{
+				Kind:       "message_stop",
+				StopReason: "tool_use",
+			},
+		}
+	}
+
+	stream := &scriptedStream{
+		scripts: [][]NormalizedChunk{
+			globCall("tu-glob-1"),
+			globCall("tu-glob-2"),
+			{
+				{
+					Kind: "text_delta",
+					Text: "The proposed edit made no changes, so I stopped.",
+				},
+				{Kind: "message_stop", StopReason: "end_turn"},
+			},
+		},
+	}
+
+	agent := &Agent{
+		Stream:         stream,
+		Events:         store,
+		Waiter:         NewDecisionWaiter(),
+		Tools:          NewDefaultRegistry(),
+		MaxSearchCalls: 1,
+		Workspace: &Workspace{
+			Files: map[string]string{
+				"main.py": "print('hello')",
+			},
+		},
+	}
+
+	result, err := agent.RunTurn(
+		context.Background(),
+		sid,
+		1,
+		"inspect the workspace",
+	)
+	if err != nil {
+		t.Fatalf("RunTurn: %v", err)
+	}
+	if result.Reason != "normal" {
+		t.Fatalf("reason=%q want normal", result.Reason)
+	}
+	if stream.calls != 3 {
+		t.Fatalf("stream calls=%d want 3", stream.calls)
+	}
+
+	if !strings.Contains(
+		stream.requests[2].SystemPrompt,
+		"search-tool budget is exhausted",
+	) {
+		t.Fatal("retry request does not include the search budget instruction")
+	}
+
+	encoded, err := json.Marshal(stream.requests[2].Messages)
+	if err != nil {
+		t.Fatalf("marshal request messages: %v", err)
+	}
+	if !strings.Contains(string(encoded), `search_budget_exhausted`) {
+		t.Fatalf(
+			"request does not contain the search budget result: %s",
+			encoded,
+		)
+	}
+}
+
+func TestRunTurn_LimitsFileReadCalls(t *testing.T) {
+	pool := newTestPool(t)
+	sid := newTestSession(t, pool)
+	store := events.NewStore(pool)
+
+	fileReadCall := func(id string, path string) []NormalizedChunk {
+		input := fmt.Sprintf(`{"path":%q}`, path)
+		return []NormalizedChunk{
+			{
+				Kind:        "tool_use_start",
+				ToolUseID:   id,
+				ToolUseName: "FileRead",
+			},
+			{
+				Kind:           "tool_use_input_delta",
+				ToolUseID:      id,
+				InputJSONDelta: input,
+			},
+			{
+				Kind:      "tool_use_stop",
+				ToolUseID: id,
+			},
+			{
+				Kind:       "message_stop",
+				StopReason: "tool_use",
+			},
+		}
+	}
+
+	stream := &scriptedStream{
+		scripts: [][]NormalizedChunk{
+			fileReadCall("tu-read-1", "main.py"),
+			fileReadCall("tu-read-2", "helper.py"),
+			{
+				{
+					Kind: "text_delta",
+					Text: "I will use the existing file contents.",
+				},
+				{
+					Kind:       "message_stop",
+					StopReason: "end_turn",
+				},
+			},
+		},
+	}
+
+	agent := &Agent{
+		Stream:       stream,
+		Events:       store,
+		Waiter:       NewDecisionWaiter(),
+		Tools:        NewDefaultRegistry(),
+		MaxFileReads: 1,
+		Workspace: &Workspace{
+			Files: map[string]string{
+				"main.py":   "print('main')",
+				"helper.py": "print('helper')",
+			},
+		},
+	}
+
+	result, err := agent.RunTurn(
+		context.Background(),
+		sid,
+		1,
+		"inspect the workspace",
+	)
+	if err != nil {
+		t.Fatalf("RunTurn: %v", err)
+	}
+	if result.Reason != "normal" {
+		t.Fatalf("reason=%q want normal", result.Reason)
+	}
+	if stream.calls != 3 {
+		t.Fatalf("stream calls=%d want 3", stream.calls)
+	}
+
+	if !strings.Contains(
+		stream.requests[2].SystemPrompt,
+		"FileRead budget is exhausted",
+	) {
+		t.Fatal("retry request does not include the FileRead budget instruction")
+	}
+
+	encoded, err := json.Marshal(stream.requests[2].Messages)
+	if err != nil {
+		t.Fatalf("marshal request messages: %v", err)
+	}
+	if !strings.Contains(
+		string(encoded),
+		"file_read_budget_exhausted",
+	) {
+		t.Fatalf(
+			"request does not contain the FileRead budget result: %s",
+			encoded,
+		)
 	}
 }
 
@@ -266,6 +653,23 @@ func TestRunTurn_ToolUseRejected(t *testing.T) {
 		t.Fatalf("RunTurn: %v", err)
 	}
 
+	if len(stream.requests) != 2 {
+		t.Fatalf(
+			"stream requests=%d want 2",
+			len(stream.requests),
+		)
+	}
+
+	if !strings.Contains(
+		stream.requests[1].SystemPrompt,
+		"The previous tool call was rejected",
+	) {
+		t.Fatalf(
+			"retry prompt does not handle rejected tool call: %s",
+			stream.requests[1].SystemPrompt,
+		)
+	}
+
 	// File MUST NOT have changed
 	if got := agent.Workspace.Files["rate_limiter.py"]; got != "starter" {
 		t.Fatalf("workspace mutated on reject; got %q", got)
@@ -278,7 +682,8 @@ func TestRunTurn_ToolUseRejected(t *testing.T) {
 			t.Fatalf("missing event %q in %v", w, kinds)
 		}
 	}
-	// must NOT include tool_result for the rejected use (only message-level reject)
+	// Rejection is recorded in the model conversation, but it must not emit a
+	// successful tool_result event because the tool was not executed.
 	for _, k := range kinds {
 		if k == "tool_result" {
 			t.Fatalf("rejected tool_use should not have emitted tool_result: %v", kinds)
@@ -461,7 +866,10 @@ func TestRunTurn_NoOpFileEditBypassed(t *testing.T) {
 				{Kind: "message_stop", StopReason: "tool_use"},
 			},
 			{
-				{Kind: "text_delta", Text: "Sorry, I'll try a real edit next time."},
+				{
+					Kind: "text_delta",
+					Text: "The proposed edit made no changes, so I stopped.",
+				},
 				{Kind: "message_stop", StopReason: "end_turn"},
 			},
 		},
@@ -713,6 +1121,16 @@ func TestRunTurn_StopsRepeatedIdenticalRead(t *testing.T) {
 			repeatedRead("tu-read-2"),
 			repeatedRead("tu-read-3"),
 			repeatedRead("tu-read-4"),
+			{
+				{
+					Kind: "text_delta",
+					Text: "I will use the existing file contents and continue without reading again.",
+				},
+				{
+					Kind:       "message_stop",
+					StopReason: "end_turn",
+				},
+			},
 		},
 	}
 
@@ -737,11 +1155,18 @@ func TestRunTurn_StopsRepeatedIdenticalRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunTurn: %v", err)
 	}
-	if result.Reason != "max_turns" {
-		t.Fatalf("reason=%q want max_turns", result.Reason)
+	if result.Reason != "normal" {
+		t.Fatalf("reason=%q want normal", result.Reason)
 	}
-	if result.Iterations != 4 {
-		t.Fatalf("iterations=%d want 4", result.Iterations)
+	if result.Iterations != 5 {
+		t.Fatalf("iterations=%d want 5", result.Iterations)
+	}
+
+	if !strings.Contains(
+		stream.requests[4].SystemPrompt,
+		"FileRead budget is exhausted",
+	) {
+		t.Fatal("final request does not contain the FileRead budget instruction")
 	}
 
 	var proposals int
@@ -759,6 +1184,37 @@ func TestRunTurn_StopsRepeatedIdenticalRead(t *testing.T) {
 			"proposals=%d want %d",
 			proposals,
 			maxRepeatedAutoToolCalls,
+		)
+	}
+
+	if len(stream.requests) < 3 {
+		t.Fatalf(
+			"stream requests=%d want at least 3",
+			len(stream.requests),
+		)
+	}
+
+	var repeatedResult map[string]any
+
+	for _, message := range stream.requests[2].Messages {
+		for _, block := range message.Content {
+			if block.ToolResult == nil {
+				continue
+			}
+			if err := json.Unmarshal(
+				[]byte(block.ToolResult.Output),
+				&repeatedResult,
+			); err != nil {
+				continue
+			}
+		}
+	}
+
+	alreadyRead, _ := repeatedResult["already_read"].(bool)
+	if !alreadyRead {
+		t.Fatalf(
+			"third request does not contain an already_read result: %+v",
+			repeatedResult,
 		)
 	}
 }
@@ -840,6 +1296,132 @@ func TestRunTurn_PersistsTranscript(t *testing.T) {
 	}
 	if dup != 0 {
 		t.Fatalf("%d transcript rows share a seq with an event", dup)
+	}
+}
+
+func TestRunTurn_CompactsContextWithoutChangingTranscript(
+	t *testing.T,
+) {
+	pool := newTestPool(t)
+	sid := newTestSession(t, pool)
+	store := events.NewStore(pool)
+
+	originalResponse := "original-response-" +
+		strings.Repeat("x", 2000)
+
+	stream := &scriptedStream{
+		scripts: [][]NormalizedChunk{
+			{
+				{
+					Kind: "text_delta",
+					Text: originalResponse,
+				},
+				{
+					Kind:       "message_stop",
+					StopReason: "end_turn",
+				},
+			},
+			{
+				{
+					Kind: "text_delta",
+					Text: "second response",
+				},
+				{
+					Kind:       "message_stop",
+					StopReason: "end_turn",
+				},
+			},
+		},
+	}
+
+	contextManager := NewContextManager()
+	contextManager.BudgetTokens = 100
+	contextManager.KeepRecentMessages = 1
+
+	agent := &Agent{
+		Stream:  stream,
+		Events:  store,
+		Waiter:  NewDecisionWaiter(),
+		Tools:   NewDefaultRegistry(),
+		Context: contextManager,
+	}
+
+	if _, err := agent.RunTurn(
+		context.Background(),
+		sid,
+		1,
+		"first request",
+	); err != nil {
+		t.Fatalf("first RunTurn: %v", err)
+	}
+
+	if _, err := agent.RunTurn(
+		context.Background(),
+		sid,
+		2,
+		"second request",
+	); err != nil {
+		t.Fatalf("second RunTurn: %v", err)
+	}
+
+	// Compaction should be recorded for replay and debugging.
+	var compactEvents int
+	if err := pool.QueryRow(
+		context.Background(),
+		`SELECT count(*) FROM session_events
+		 WHERE session_id=$1 AND kind='compact_triggered'`,
+		sid,
+	).Scan(&compactEvents); err != nil {
+		t.Fatalf("count compact events: %v", err)
+	}
+	if compactEvents == 0 {
+		t.Fatal("compact_triggered event was not recorded")
+	}
+
+	// The model should receive compacted history on the second turn.
+	if len(stream.requests) != 2 {
+		t.Fatalf(
+			"stream requests=%d want 2",
+			len(stream.requests),
+		)
+	}
+
+	secondRequest, err := json.Marshal(
+		stream.requests[1].Messages,
+	)
+	if err != nil {
+		t.Fatalf("marshal second request: %v", err)
+	}
+	if !strings.Contains(
+		string(secondRequest),
+		"Compacted context summary",
+	) {
+		t.Fatalf(
+			"second request does not contain compacted context: %s",
+			secondRequest,
+		)
+	}
+	if strings.Contains(string(secondRequest), originalResponse) {
+		t.Fatal("second request still contains the full original response")
+	}
+
+	// Compaction only changes model context; the database transcript must
+	// retain the complete original response for My run replay.
+	var persisted int
+	if err := pool.QueryRow(
+		context.Background(),
+		`SELECT count(*) FROM session_messages
+		 WHERE session_id=$1 AND content::text LIKE $2`,
+		sid,
+		"%"+originalResponse+"%",
+	).Scan(&persisted); err != nil {
+		t.Fatalf("query persisted transcript: %v", err)
+	}
+	if persisted != 1 {
+		t.Fatalf(
+			"full original response rows=%d want 1",
+			persisted,
+		)
 	}
 }
 

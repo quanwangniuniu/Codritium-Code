@@ -156,20 +156,74 @@ func (a *Agent) handleToolUse(ctx context.Context, sessionID uuid.UUID, turnInde
 	if !ok {
 		return fmt.Errorf("unknown tool: %s", tu.Name)
 	}
+
+	contextManager := a.contextManager()
+
+	repeatedRead := tu.Name == "FileRead" &&
+		contextManager.AlreadyRead(
+			effectiveInput,
+			a.Workspace,
+		)
+
+	repeatedSearch := (tu.Name == "Glob" || tu.Name == "Grep") &&
+		contextManager.AlreadySearched(
+			tu.Name,
+			effectiveInput,
+			a.Workspace,
+		)
+
 	t0 := time.Now()
-	output, isErr, execErr := tool.Execute(ctx, effectiveInput, ToolDeps{
-		Workspace:       a.Workspace,
-		Sandbox:         a.Sandbox,
-		Deny:            a.Deny,
-		VisibleTestFile: a.VisibleTest,
-		TmpFS:           a.TmpFS,
-	})
-	if execErr != nil {
-		return execErr
+
+	var (
+		output  string
+		isErr   bool
+		execErr error
+	)
+
+	if repeatedRead || repeatedSearch {
+		repeatedOutput := map[string]any{
+			"already_available": true,
+			"detail": "The same tool result is already available in the current context. " +
+				"Use the existing result or change the input.",
+		}
+		if repeatedRead {
+			repeatedOutput["already_read"] = true
+		}
+
+		encodedOutput, _ := json.Marshal(repeatedOutput)
+		output = string(encodedOutput)
+	} else {
+		output, isErr, execErr = tool.Execute(
+			ctx,
+			effectiveInput,
+			ToolDeps{
+				Workspace:       a.Workspace,
+				Sandbox:         a.Sandbox,
+				Deny:            a.Deny,
+				VisibleTestFile: a.VisibleTest,
+				TmpFS:           a.TmpFS,
+			},
+		)
+		if execErr != nil {
+			return execErr
+		}
+
+		if tu.Name == "FileRead" && !isErr {
+			contextManager.RememberRead(
+				effectiveInput,
+				a.Workspace,
+			)
+		}
+
+		if (tu.Name == "Glob" || tu.Name == "Grep") && !isErr {
+			contextManager.RememberSearch(
+				tu.Name,
+				effectiveInput,
+				a.Workspace,
+			)
+		}
 	}
-	if err := action.ValidateResult(output, isErr); err != nil {
-		return fmt.Errorf("verify %s result: %w", tu.Name, err)
-	}
+
 	dur := time.Since(t0).Milliseconds()
 
 	_, _ = a.Events.Append(ctx, sessionID, events.ToolResult{
